@@ -19,20 +19,21 @@ int main(int argc, char** argv)
     }
 
     // Get all of the lines...
-    Line* make_line;
-    while ((make_line = input_get_next_line(input)) != NULL)
-    {
-        // printf("--> %s:%u\n--> %s:%u\n%s\n", line->loc.filename, line->loc.line_no, 
-        //         line->real_loc.filename, line->real_loc.line_no, line->line_buffer);
-    }
-
-    // Find a line
-    Line* line = input_find_real_line(input, 46);
-    if (line)
+    Line* line = input->current_line;
+    do
     {
         printf("--> %s:%u\n--> %s:%u\n%s\n", line->loc.filename, line->loc.line_no, 
-                line->real_loc.filename, line->real_loc.line_no, line->line_buffer);
-    }
+                input->location.filename, input->location.line_no, line->line_buffer);
+        input_set_line(input, 10);       
+    } while ((line = input_get_next_line(input)) != NULL);
+
+    // Find a line
+    // Line* line = input_find_real_line(input, 1);
+    // if (line)
+    // {
+    //     printf("--> %s:%u\n--> %s:%u\n%s\n", line->loc.filename, line->loc.line_no, 
+    //             line->real_loc.filename, line->real_loc.line_no, line->line_buffer);
+    // }
 
     input_delete(input);
 

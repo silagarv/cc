@@ -296,18 +296,59 @@ Line input_reader_next_line(InputReader* reader)
 static Input* input_from_fp(FILE* fp, char* filename, 
         SearchPathEntry* start_path)
 {
+    // Get our reader
+    InputReader* reader = input_reader_from_file(fp, filename);
+    
+    // Read the lines from memeory
+    vector(Line) lines = vector_new(sizeof(Line), 1);
+    while (1)
+    {
+        Line next_line = input_reader_next_line(reader);
+
+        if (!next_line.line_buffer)
+        {
+            break;
+        }
+
+        vector_push(lines, next_line);
+    }
+
+    // delete input reader
+    input_reader_free(reader);
+
     Input* input = xmalloc(sizeof(Input));
+    // *input = (Input) {
+    //     .filename = filename,
+
+    //     .reader = input_reader_from_file(fp, filename),
+
+    //     .lines = vector_new(sizeof(Line), 1),
+
+    //     .depth = 0, // unknown for now
+
+    //     .entry = start_path,
+    //     .parent = NULL // unknown for now
+    // };
+
     *input = (Input) {
         .filename = filename,
 
-        .reader = input_reader_from_file(fp, filename),
+        .lines = lines,
 
-        .lines = vector_new(sizeof(Line), 1),
+        .curr_line_idx = 0,
+        .current_line = lines,
 
-        .depth = 0, // unknown for now
+        .line_pos = 0,
 
+        .location = {
+            .filename = lines[0].loc.filename,
+            .line_no = lines[0].loc.line_no,
+            .col_no = 0
+        },
+
+        .depth = 0,
         .entry = start_path,
-        .parent = NULL // unknown for now
+        .parent = NULL
     };
 
     return input;
@@ -331,32 +372,51 @@ void input_delete(Input* input)
     }
     vector_delete(input->lines);
 
-    input_reader_free(input->reader);
     free(input);
 }
 
 void input_set_filename(Input* input, char* new_filename)
 {
-    input_reader_set_filename(input->reader, new_filename);
+    input->location.filename = new_filename;
 }
 
+// note that this function is made to alter the current line
+// for a #line directive it should be fully processed and then get the next line
+// and only THEN should the line be set
 void input_set_line(Input* input, size_t new_line)
 {
-    input_reader_set_line(input->reader, new_line);
+    input->location.line_no = new_line;
 }
 
 Line* input_get_next_line(Input* input)
 {
-    Line next_line = input_reader_next_line(input->reader);
+    const Line* prev_line = input->current_line;
 
-    if (!next_line.line_buffer)
+    const size_t num_lines = vector_get_count(input->lines);
+
+    // increment the lines
+    input->curr_line_idx++;
+
+    // if we're equal or gone over (num_lines == 0 if empty)
+    // then set line to NULL and return it
+    if (input->curr_line_idx >= num_lines)
     {
+        input->current_line = NULL;
         return NULL;
     }
 
-    vector_push(input->lines, next_line);
+    // increment the current line
+    input->current_line++;
 
-    return input->lines + vector_get_count(input->lines) - 1;
+    // Now we need to properly increment the current line number
+    uint32_t line_num_diff = input->current_line->real_loc.line_no - 
+            prev_line->real_loc.line_no;
+
+    // Fix our location by adding the line different 
+    input->location.line_no += line_num_diff;
+    input->location.col_no = 0;
+
+    return input->current_line;
 }
 
 Line* input_find_real_line(Input* input, size_t real_line)

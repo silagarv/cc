@@ -54,33 +54,20 @@ typedef struct InputReader {
     SourceLocation real_location; // unmofidied location
 } InputReader;
 
-// typedef struct Input {
-//     char* filename; // the filename we were given for this input
-
-//     vector(Line) lines; // the lines we have read from the input
-
-//     size_t curr_line_idx;
-//     Line* current_line;
-
-//     size_t line_pos;
-
-//     SourceLocation location; // the current location we think we are
-//     // note that columns will always be the same we just need to adjust
-//     // the filename and the line number so the location has enough info with
-//     // the current line for us
-
-//     size_t depth; // include depth for runaway inclusion
-//     SearchPathEntry* entry; // the entry we found this input at
-//     struct Input* parent; // the parent input
-// } Input;
-
-// Structure for an input itself
 typedef struct Input {
     char* filename; // the filename we were given for this input
 
-    InputReader* reader; // the reader that will use the input
-
     vector(Line) lines; // the lines we have read from the input
+
+    size_t curr_line_idx; // the index of the current line we have
+    Line* current_line; // a pointer to the line in lines
+
+    size_t line_pos; // the current char we are on
+
+    SourceLocation location; // the current location we think we are
+    // note that columns will always be the same we just need to adjust
+    // the filename and the line number so the location has enough info with
+    // the current line for us
 
     size_t depth; // include depth for runaway inclusion
     SearchPathEntry* entry; // the entry we found this input at
