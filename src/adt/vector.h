@@ -6,6 +6,13 @@
 
 #include "core/xmalloc.h"
 
+typedef struct Vector {
+    void* elems;
+    size_t elem_size;
+    size_t count;
+    size_t cap;
+} Vector;
+
 typedef struct VectorHeader {
     size_t elem_size;
     size_t len;

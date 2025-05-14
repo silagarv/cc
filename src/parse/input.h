@@ -17,12 +17,6 @@
 // TODO: but could maybe have a map which assigns id's to location's that we get
 // TODO: then since these are global and sequestial they are O(1) lookup
 
-// TODO: since we have the location map what if an input first reals all of it's
-// TODO: lines and then just gives them the real location. Since we will create
-// TODO: a lexer that is line based we can have the lexer struct remember the
-// TODO: location that we *think* we are at anyways so then we can keep both 
-// TODO: real and fake location and then just add to location map as needed
-
 // Structure to hold an entry to a search path we want to go to
 typedef struct SearchPathEntry {
     char* filepath;
@@ -83,7 +77,7 @@ typedef struct InputManager {
     // ptr since what if a token uses that pointer. Then it is invalid, so we 
     // need to keep them around for the entire lifetime of the token. So since
     // input manager will be around for the same life time we can keep it
-    Arena filenames;
+    vector(char*) filenames;
 
     // Our different include paths here
     SearchPath quote_paths;
@@ -116,6 +110,9 @@ Line* input_get_next_line(Input* input);
 
 Line* input_find_real_line(Input* input, size_t real_line);
 
+SourceLocation input_get_location(Input* input);
+SourceLocation input_get_real_location(Input* input);
+
 // Functions to manage an input manager
 InputManager* input_manager_new(void);
 void input_manager_delete(InputManager* manager);
@@ -125,7 +122,8 @@ char* input_manager_allocate_filename(InputManager* manager, char* filename);
 char* input_manager_allocate_filename_len(InputManager* manager, char* filename,
         size_t len);
 
-void add_searchpath(Arena* arena, SearchPath* path, char* filename, bool sys);
+void add_searchpath(InputManager* arena, SearchPath* path, char* filename, 
+        bool sys);
 
 void input_manager_add_quote_path(InputManager* manager, char* filepath);
 void input_manager_add_bracket_path(InputManager* manager, char* filepath);

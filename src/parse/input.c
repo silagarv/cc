@@ -310,7 +310,7 @@ static Input* input_from_fp(FILE* fp, char* filename,
         .location = {
             .filename = lines[0].loc.filename,
             .line_no = lines[0].loc.line_no,
-            .col_no = 0
+            .col_no = 1
         },
 
         .depth = 0,
@@ -399,13 +399,32 @@ Line* input_find_real_line(Input* input, size_t real_line)
     return NULL;
 }
 
+SourceLocation input_get_location(Input* input)
+{
+    return input->location;
+}
+
+SourceLocation input_get_real_location(Input* input)
+{
+    // We have somehow got the wrong name
+    assert(!strcmp(input->filename, input->current_line->loc.filename));
+
+    SourceLocation loc = (SourceLocation) {
+        .filename = input->current_line->loc.filename,
+        .line_no = input->current_line->loc.line_no,
+        .col_no = input->location.col_no,
+    };
+
+    return loc;
+}
+
 InputManager* input_manager_new(void)
 {
     InputManager* manager = xmalloc(sizeof(InputManager));
     *manager = (InputManager) {
         .inputs = vector_new(sizeof(Input*), 1),
 
-        .filenames = arena_new(),
+        .filenames = vector_new(sizeof(char*), 32),
 
         .quote_paths = (SearchPath) {
             .start = NULL,
@@ -459,7 +478,11 @@ void input_manager_delete(InputManager* manager)
     vector_delete(manager->inputs);
     
     // Free our filenames
-    arena_delete(&manager->filenames);
+    for (size_t i = 0; i < vector_get_count(manager->filenames); i++)
+    {
+        free(manager->filenames[i]);
+    }
+    vector_delete(manager->filenames);
 
     // free the manager itself
     free(manager);
@@ -467,23 +490,35 @@ void input_manager_delete(InputManager* manager)
 
 char* input_manager_allocate_filename_buffer(InputManager* manager, size_t len)
 {
-    return arena_allocate(&manager->filenames, len);
+    // return arena_allocate(&manager->filenames, len);
+    panic("unimplemented: input_manager_allocate_filename_buffer");
+    return NULL;
 }
 
 char* input_manager_allocate_filename(InputManager* manager, char* filename)
 {
-    return arena_dup_string(&manager->filenames, filename);
+    size_t len = strlen(filename) + 1;
+    char* new_buffer = xmalloc(sizeof(char) * len);
+    strcpy(new_buffer, filename);
+
+    vector_push(manager->filenames, new_buffer);
+
+    return new_buffer;
 }
 
 char* input_manager_allocate_filename_len(InputManager* manager, char* filename,
         size_t len)
 {
-    return arena_dup_n_string(&manager->filenames, filename, len);
+    panic("unimplemented: input_manager_allocate_filename_len");
+    return NULL;
 }
 
-void add_searchpath(Arena* arena, SearchPath* path, char* filename, bool sys)
+void add_searchpath(InputManager* manager, SearchPath* path, char* filename, 
+        bool sys)
 {
-    char* allocated_filename = arena_dup_string(arena, filename);
+    char* allocated_filename = 
+            input_manager_allocate_filename(manager, filename);
+
     SearchPathEntry* new_entry = searchpath_entry_new(allocated_filename, sys);
 
     *path->anchor = new_entry;
@@ -492,23 +527,23 @@ void add_searchpath(Arena* arena, SearchPath* path, char* filename, bool sys)
 
 void input_manager_add_quote_path(InputManager* manager, char* filepath)
 {
-    add_searchpath(&manager->filenames, &manager->quote_paths, filepath, false);
+    add_searchpath(manager, &manager->quote_paths, filepath, false);
 }
 
 void input_manager_add_bracket_path(InputManager* manager, char* filepath)
 {
-    add_searchpath(&manager->filenames, &manager->bracket_paths, filepath, 
+    add_searchpath(manager, &manager->bracket_paths, filepath, 
             false);
 }
 
 void input_manager_add_system_path(InputManager* manager, char* filepath)
 {
-    add_searchpath(&manager->filenames, &manager->system_paths, filepath, true);
+    add_searchpath(manager, &manager->system_paths, filepath, true);
 }
 
 void input_manager_add_after_path(InputManager* manager, char* filepath)
 {
-    add_searchpath(&manager->filenames, &manager->after_paths, filepath, true);
+    add_searchpath(manager, &manager->after_paths, filepath, true);
 }
 
 void input_manager_finish_setup(InputManager* manager)
@@ -570,6 +605,8 @@ Line* input_manager_find_real_line(InputManager* manager, char* filename,
 
     return input_find_real_line(input, real_line);
 }
+
+
 
 
 

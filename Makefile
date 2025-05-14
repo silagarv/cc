@@ -1,4 +1,4 @@
-CC = gcc
+CC = clang
 CFLAGS = -Wall -Wextra -pedantic -std=c99 -g3 -O0 -Wshadow -Wwrite-strings \
 	-Wno-unused-parameter -Wno-unused-function -Wno-unused-variable
 
