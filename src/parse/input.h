@@ -137,15 +137,9 @@ void input_manager_finish_setup(InputManager* manager);
 
 void input_manager_print_include_paths(InputManager* manager);
 
-// TODO: rething how I want this to work...
-
-FILE* input_manager_get_file(InputManager* manager, char* filepath);
-FILE* input_manager_find_file(InputManager* manager, char* filename, 
-        SearchPathEntry* entry, char* current_file);
-
 Input* input_manager_get_input(InputManager* manager, char* filename);
-
-// TODO: maybe add function input_manager_get_input(...)
+Input* input_manager_find_input(InputManager* manager, char* filename,
+        SearchPathEntry* entry, char* current_file);
 
 Input* input_manager_find_real_file(InputManager* manager, char* filename);
 Line* input_manager_find_real_line(InputManager* manager, char* filename,

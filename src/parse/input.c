@@ -394,9 +394,11 @@ Line* input_find_real_line(Input* input, size_t real_line)
     // TODO: optimise the function, maybe through binary search or even
     // TODO: just some simple early termination conditions
 
-    for (size_t i = 0; i < vector_get_count(&input->lines); i++) {
+    for (size_t i = 0; i < vector_get_count(&input->lines); i++) 
+    {
         Line* line = vector_get(&input->lines, i);
-        if (line->loc.line_no == real_line) {
+        if (line->loc.line_no == real_line) 
+        {
             return line;
         }
     }
@@ -478,8 +480,8 @@ void input_manager_delete(InputManager* manager)
     // Free our inputs
     for (size_t i = 0; i < vector_get_count(&manager->inputs); i++)
     {
-        Input* input = vector_get(&manager->inputs, i);
-        input_delete(input);
+        Input** input = vector_get(&manager->inputs, i);
+        input_delete(*input);
     }
     vector_delete(&manager->inputs);
     
@@ -581,23 +583,53 @@ void input_manager_print_include_paths(InputManager* manager)
     fprintf(stderr, "End of search list.\n\n");
 }
 
-FILE* input_manager_get_file(InputManager* manager, char* filepath);
+FILE* input_manager_get_file(InputManager* manager, char* filepath)
+{
+    (void) manager; // For consistency
+
+    return fopen(filepath, "r"); 
+}
+
 FILE* input_manager_find_file(InputManager* manager, char* filename, 
-        SearchPathEntry* entry, char* current_file);
+        SearchPathEntry* entry, char* current_file)
+{
+    panic("unimplemented: input_manager_find_file");
 
-Input* input_manager_get_input(InputManager* manager, char* filename);
+    return NULL;
+}
 
-// TODO: maybe add function input_manager_get_input(...)
+Input* input_manager_get_input(InputManager* manager, char* filename)
+{
+    // Allocate the filename 
+    char* alloced_filename = input_manager_allocate_filename(manager, filename);
+
+    // now actually get the input
+    FILE* fp = input_manager_get_file(manager, alloced_filename);
+
+    Input* input = input_from_fp(fp, filename, NULL);
+
+    vector_push(&manager->inputs, &input);
+    
+    return NULL;
+}
+
+// TODO: maybe change to a quote and bracket input situation????
+Input* input_manager_find_input(InputManager* manager, char* filename,
+        SearchPathEntry* entry, char* current_file)
+{
+    panic("unimplemented: input_manager_find_input");
+    return NULL;
+}
 
 Input* input_manager_find_real_file(InputManager* manager, char* filename)
 {
     for (size_t i = 0; i < vector_get_count(&manager->inputs); i++)
     {
-        Input* input = vector_get(&manager->inputs, i);
+        Input** input = vector_get(&manager->inputs, i);
         
-        if (!strcmp(input->filename, filename))
+        if (!strcmp((*input)->filename, filename))
         {
-            return input;
+            return *input;
         }
     }
 
@@ -616,12 +648,3 @@ Line* input_manager_find_real_line(InputManager* manager, char* filename,
 
     return input_find_real_line(input, real_line);
 }
-
-
-
-
-
-
-
-
-

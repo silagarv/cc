@@ -63,5 +63,5 @@ void* vector_get(Vector* vec, size_t pos)
 {
     assert(pos < vector_get_count(vec));
 
-    return (char*) vec->elems + vec->elem_size * pos;
+    return ((char*) vec->elems + vec->elem_size * pos);
 }
