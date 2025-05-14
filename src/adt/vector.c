@@ -4,57 +4,64 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <string.h>
 
 #include "core/xmalloc.h"
 
-#include <stdio.h>
-
-static size_t vector_get_alloc_size(size_t elem_size, size_t capacity)
+Vector vector_new(size_t elem_size, size_t start_capacity)
 {
-    return (sizeof(VectorHeader) + elem_size * capacity);
+    Vector vec = (Vector) {
+        .elems = xmalloc(elem_size * start_capacity),
+        .elem_size = elem_size,
+        .count = 0,
+        .cap = start_capacity
+    };
+
+    return vec;
 }
 
-void* vector_new(size_t elem_size, size_t start_capacity)
+void vector_delete(Vector* vec)
 {
-    size_t to_alloc = vector_get_alloc_size(elem_size, start_capacity);
-    VectorHeader* header = xmalloc(to_alloc);
-
-    header->elem_size = elem_size;
-    header->len = 0;
-    header->cap = start_capacity;
-
-    return (void*) (header + 1);
+    free(vec->elems);
 }
 
-void vector_delete(void* vec)
+size_t vector_get_capacity(Vector* vec)
 {
-    free(vector_get_header(vec));
+    return vec->cap;
 }
 
-static bool vector_should_expand(void** vec)
+size_t vector_get_count(Vector* vec)
 {
-    VectorHeader* header = vector_get_header(*vec);
-    return header->len == header->cap;
+    return vec->count;
 }
 
-static void vector_do_expand(void** vec)
+static void vector_resize(Vector* vec)
 {
-    VectorHeader* header = vector_get_header(*vec);
-
-    // Double the vector size and realloc
-    header->cap *= 2;
-    size_t new_size = vector_get_alloc_size(header->elem_size, header->cap);
-
-    header = xrealloc(header, new_size);
-
-    // ensure the vector is set
-    *vec = (void*) (header + 1);
+    vec->cap *= 2;
+    vec->elems = xrealloc(vec->elems, vec->elem_size * vec->cap);
 }
 
-void vector_maybe_expand(void** vec)
+void vector_push(Vector* vec, void* elem)
 {
-    if (vector_should_expand(vec))
+    if (vector_get_count(vec) == vector_get_capacity(vec))
     {
-        vector_do_expand(vec);
+        vector_resize(vec);
     }
+
+    char* starting = ((char*) vec->elems) + vec->elem_size * vec->count;
+    memcpy(starting, elem, vec->elem_size);
+
+    vec->count++;
+}
+
+void vector_pop(Vector* vec)
+{
+    vec->count--;
+}
+
+void* vector_get(Vector* vec, size_t pos)
+{
+    assert(pos < vector_get_count(vec));
+
+    return (char*) vec->elems + vec->elem_size * pos;
 }

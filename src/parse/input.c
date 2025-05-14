@@ -280,7 +280,7 @@ static Input* input_from_fp(FILE* fp, char* filename,
     InputReader* reader = input_reader_from_file(fp, filename);
     
     // Read the lines from memeory
-    vector(Line) lines = vector_new(sizeof(Line), 32);
+    Vector lines = vector_new(sizeof(Line), 32);
     while (1)
     {
         Line next_line = input_reader_next_line(reader);
@@ -290,11 +290,14 @@ static Input* input_from_fp(FILE* fp, char* filename,
             break;
         }
 
-        vector_push(lines, next_line);
+        vector_push(&lines, &next_line);
     }
 
     // delete input reader
     input_reader_free(reader);
+
+    // Get the start line for getting the first location
+    Line* start_line = vector_get(&lines, 0);
 
     Input* input = xmalloc(sizeof(Input));
     *input = (Input) {
@@ -303,13 +306,13 @@ static Input* input_from_fp(FILE* fp, char* filename,
         .lines = lines,
 
         .curr_line_idx = 0,
-        .current_line = lines,
+        .current_line = start_line,
 
         .line_pos = 0,
 
         .location = {
-            .filename = lines[0].loc.filename,
-            .line_no = lines[0].loc.line_no,
+            .filename = start_line->loc.filename,
+            .line_no = start_line->loc.line_no,
             .col_no = 1
         },
 
@@ -334,10 +337,11 @@ Input* input_new(FILE* fp, char* filename, SearchPathEntry* entry)
 void input_delete(Input* input)
 {   
     // Free all of our lines and the array itself 
-    for (size_t i = 0; i < vector_get_count(input->lines); i++) {
-        free(input->lines[i].line_buffer);
+    for (size_t i = 0; i < vector_get_count(&input->lines); i++) {
+        Line* line = vector_get(&input->lines, i);
+        free(line->line_buffer);
     }
-    vector_delete(input->lines);
+    vector_delete(&input->lines);
 
     free(input);
 }
@@ -358,7 +362,7 @@ void input_set_line(Input* input, size_t new_line)
 Line* input_get_next_line(Input* input)
 {
     const Line* prev_line = input->current_line;
-    const size_t num_lines = vector_get_count(input->lines);
+    const size_t num_lines = vector_get_count(&input->lines);
 
     // increment the lines
     input->curr_line_idx++;
@@ -390,9 +394,10 @@ Line* input_find_real_line(Input* input, size_t real_line)
     // TODO: optimise the function, maybe through binary search or even
     // TODO: just some simple early termination conditions
 
-    for (size_t i = 0; i < vector_get_count(input->lines); i++) {
-        if (input->lines[i].loc.line_no == real_line) {
-            return input->lines + i;
+    for (size_t i = 0; i < vector_get_count(&input->lines); i++) {
+        Line* line = vector_get(&input->lines, i);
+        if (line->loc.line_no == real_line) {
+            return line;
         }
     }
 
@@ -471,18 +476,20 @@ void input_manager_delete(InputManager* manager)
     }
 
     // Free our inputs
-    for (size_t i = 0; i < vector_get_count(manager->inputs); i++)
+    for (size_t i = 0; i < vector_get_count(&manager->inputs); i++)
     {
-        input_delete(manager->inputs[i]);
+        Input* input = vector_get(&manager->inputs, i);
+        input_delete(input);
     }
-    vector_delete(manager->inputs);
+    vector_delete(&manager->inputs);
     
     // Free our filenames
-    for (size_t i = 0; i < vector_get_count(manager->filenames); i++)
+    for (size_t i = 0; i < vector_get_count(&manager->filenames); i++)
     {
-        free(manager->filenames[i]);
+        char** filename = vector_get(&manager->filenames, i);
+        free(*filename);
     }
-    vector_delete(manager->filenames);
+    vector_delete(&manager->filenames);
 
     // free the manager itself
     free(manager);
@@ -490,7 +497,6 @@ void input_manager_delete(InputManager* manager)
 
 char* input_manager_allocate_filename_buffer(InputManager* manager, size_t len)
 {
-    // return arena_allocate(&manager->filenames, len);
     panic("unimplemented: input_manager_allocate_filename_buffer");
     return NULL;
 }
@@ -501,7 +507,7 @@ char* input_manager_allocate_filename(InputManager* manager, char* filename)
     char* new_buffer = xmalloc(sizeof(char) * len);
     strcpy(new_buffer, filename);
 
-    vector_push(manager->filenames, new_buffer);
+    vector_push(&manager->filenames, &new_buffer);
 
     return new_buffer;
 }
@@ -509,8 +515,13 @@ char* input_manager_allocate_filename(InputManager* manager, char* filename)
 char* input_manager_allocate_filename_len(InputManager* manager, char* filename,
         size_t len)
 {
-    panic("unimplemented: input_manager_allocate_filename_len");
-    return NULL;
+    char* new_buffer = xmalloc(sizeof(char) * (len + 1));
+    strncpy(new_buffer, filename, len);
+    new_buffer[len] = '\0';
+
+    vector_push(&manager->filenames, &new_buffer);
+
+    return new_buffer;
 }
 
 void add_searchpath(InputManager* manager, SearchPath* path, char* filename, 
@@ -580,9 +591,9 @@ Input* input_manager_get_input(InputManager* manager, char* filename);
 
 Input* input_manager_find_real_file(InputManager* manager, char* filename)
 {
-    for (size_t i = 0; i < vector_get_count(manager->inputs); i++)
+    for (size_t i = 0; i < vector_get_count(&manager->inputs); i++)
     {
-        Input* input = manager->inputs[i];
+        Input* input = vector_get(&manager->inputs, i);
         
         if (!strcmp(input->filename, filename))
         {

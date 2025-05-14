@@ -50,7 +50,8 @@ typedef struct InputReader {
 typedef struct Input {
     char* filename; // the filename we were given for this input
 
-    vector(Line) lines; // the lines we have read from the input
+    // Vector(Line)
+    Vector lines; // the lines we have read from the input
 
     size_t curr_line_idx; // the index of the current line we have
     Line* current_line; // a pointer to the line in lines
@@ -70,14 +71,16 @@ typedef struct Input {
 
 // A structure which represents all of the inputs that we have managed
 typedef struct InputManager {
-    // An array of all of our inputs
-    vector(Input*) inputs;
+    // vector(Input*) inputs;
+    Vector inputs;
 
     // This is for one main reason. We can change filename but we can't free the
     // ptr since what if a token uses that pointer. Then it is invalid, so we 
     // need to keep them around for the entire lifetime of the token. So since
     // input manager will be around for the same life time we can keep it
-    vector(char*) filenames;
+
+    // vector(char*) filenames;
+    Vector filenames;
 
     // Our different include paths here
     SearchPath quote_paths;

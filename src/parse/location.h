@@ -29,7 +29,8 @@ typedef struct LocationEntry {
 } LocationEntry;
 
 typedef struct LocationMap {
-    vector(LocationEntry) entries;
+    // vector(LocationEntry)
+    Vector entries;
 } LocationMap;
 
 LocationMap location_map_create(void);

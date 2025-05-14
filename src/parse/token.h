@@ -21,7 +21,8 @@ typedef struct Token {
 } Token;
 
 typedef struct TokenStream {
-    vector(Token) tokens;
+    // vector(Token) tokens;
+    Vector tokens;
     size_t current_token;
 } TokenStream;
 

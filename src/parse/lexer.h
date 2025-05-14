@@ -11,7 +11,8 @@ typedef struct Lexer {
     InputManager* inputs; // the input manager we are using
     LocationMap* locations; // a pointer to the location map in the TU
 
-    vector(Token) tokens; // a list of all our tokens
+    // vector(Token) tokens; // a list of all our tokens
+    Vector tokens;
 } Lexer;
 
 

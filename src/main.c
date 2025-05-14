@@ -18,7 +18,7 @@ int main(int argc, char** argv)
 
     Input* in = input_new(fopen(argv[1], "r"), argv[1], NULL);
 
-    
+
 
     input_delete(in);
 

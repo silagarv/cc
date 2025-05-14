@@ -13,54 +13,17 @@ typedef struct Vector {
     size_t cap;
 } Vector;
 
-typedef struct VectorHeader {
-    size_t elem_size;
-    size_t len;
-    size_t cap;
-} VectorHeader;
+Vector vector_new(size_t elem_size, size_t start_capacity);
 
-// TODO: credit layec vector implementation more or less ripped from there
-// https://github.com/laye-lang/laye-legacy/blob/
-// b619041c8420a8abb1576dca5096a1744ae1a91b/lca/include/lca.h#L4
+void vector_delete(Vector* vec);
 
-#define vector(T) T*
+size_t vector_get_capacity(Vector* vec);
+size_t vector_get_count(Vector* vec);
 
-void* vector_new(size_t elem_size, size_t start_capacity);
+void vector_push(Vector* vec, void* elem);
 
-// only deletes the pointer if items themselves are pointers mem is leaked
-void vector_delete(void* vec);
+void vector_pop(Vector* vec);
 
-#define vector_get_header(V) (((VectorHeader*)(V)) - 1)
-
-#define vector_get_count(V) ((V) ? vector_get_header(V)->len : 0)
-
-#define vector_set_count(V, count) \
-    do \
-    { \
-        Vector_get_header(V)->len = count; \
-    } while (0)
-
-void vector_maybe_expand(void** vec);
-
-#define vector_push(V, E) \
-    do \
-    { \
-        vector_maybe_expand((void*) &V); \
-        (V)[vector_get_count(V)] = E; \
-        vector_get_header(V)->len++; \
-    } while (0)
-
-// TODO: above 
-
-#define vector_pop(V) \
-    do \
-    { \
-        if (vector_get_count(V)) \
-        { \
-            vector_get_header(V)->len--; \
-        } \
-    } while (0) \
-
-#define vector_last(V) (V[vector_get_count(V) - 1])
+void* vector_get(Vector* vec, size_t pos);
 
 #endif /* VECTOR_H */
