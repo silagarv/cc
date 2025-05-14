@@ -51,7 +51,6 @@ typedef struct InputReader {
     int c; // the previous char
 
     SourceLocation location; // the location within the file 
-    SourceLocation real_location; // unmofidied location
 } InputReader;
 
 typedef struct Input {
@@ -65,6 +64,7 @@ typedef struct Input {
     size_t line_pos; // the current char we are on
 
     SourceLocation location; // the current location we think we are
+
     // note that columns will always be the same we just need to adjust
     // the filename and the line number so the location has enough info with
     // the current line for us
@@ -79,7 +79,10 @@ typedef struct InputManager {
     // An array of all of our inputs
     vector(Input*) inputs;
 
-    // an arena to store all of our filename allocations
+    // This is for one main reason. We can change filename but we can't free the
+    // ptr since what if a token uses that pointer. Then it is invalid, so we 
+    // need to keep them around for the entire lifetime of the token. So since
+    // input manager will be around for the same life time we can keep it
     Arena filenames;
 
     // Our different include paths here
@@ -100,9 +103,6 @@ void searchpath_append(SearchPath* start, SearchPath* after);
 InputReader* input_reader_from_file(FILE* fp, char* filename);
 void input_reader_free(InputReader* reader);
 
-void input_reader_set_filename(InputReader* reader, char* new_filename);
-void input_reader_set_line(InputReader* reader, size_t new_line);
-
 Line input_reader_next_line(InputReader* reader);
 
 // Functions to manage an input
@@ -120,6 +120,11 @@ Line* input_find_real_line(Input* input, size_t real_line);
 InputManager* input_manager_new(void);
 void input_manager_delete(InputManager* manager);
 
+char* input_manager_allocate_filename_buffer(InputManager* manager, size_t len);
+char* input_manager_allocate_filename(InputManager* manager, char* filename);
+char* input_manager_allocate_filename_len(InputManager* manager, char* filename,
+        size_t len);
+
 void add_searchpath(Arena* arena, SearchPath* path, char* filename, bool sys);
 
 void input_manager_add_quote_path(InputManager* manager, char* filepath);
@@ -131,14 +136,13 @@ void input_manager_finish_setup(InputManager* manager);
 
 void input_manager_print_include_paths(InputManager* manager);
 
-char* input_manager_allocate_filename_buffer(InputManager* manager, size_t len);
-char* input_manager_allocate_filename(InputManager* manager, char* filename);
-char* input_manager_allocate_filename_len(InputManager* manager, char* filename,
-        size_t len);
+// TODO: rething how I want this to work...
 
 FILE* input_manager_get_file(InputManager* manager, char* filepath);
 FILE* input_manager_find_file(InputManager* manager, char* filename, 
         SearchPathEntry* entry, char* current_file);
+
+Input* input_manager_get_input(InputManager* manager, char* filename);
 
 // TODO: maybe add function input_manager_get_input(...)
 

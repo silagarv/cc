@@ -1,6 +1,8 @@
 #include "input.h"
 
 #include <assert.h>
+#include <string.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -63,12 +65,6 @@ InputReader* input_reader_from_file(FILE* fp, char* filename)
             .filename = filename,
             .line_no = 0,
             .col_no = 0
-        },
-
-        .real_location = (SourceLocation) {
-            .filename = filename,
-            .line_no = 0,
-            .col_no = 0
         }
     };
 
@@ -77,23 +73,12 @@ InputReader* input_reader_from_file(FILE* fp, char* filename)
 
 void input_reader_free(InputReader* reader)
 {
-    // assert(!ferror(reader->fp) && "FILE* error");
-    // assert(feof(reader->fp) && "InputReader not EOF");
+    assert(!ferror(reader->fp) && "FILE* error");
+    assert(feof(reader->fp) && "InputReader not EOF");
 
     fclose(reader->fp);
     free(reader->buffer);
     free(reader);
-}
-
-void input_reader_set_filename(InputReader* reader, char* new_filename)
-{
-    reader->location.filename = new_filename;
-}
-
-// Set the next line to be the value of new_line
-void input_reader_set_line(InputReader* reader, size_t new_line)
-{
-    reader->location.line_no = new_line - 1;
 }
 
 static int input_reader_next_char(InputReader* reader)
@@ -117,13 +102,8 @@ static int input_reader_next_char(InputReader* reader)
     {
         reader->location.line_no++;
         reader->location.col_no = 0;
-
-        reader->real_location.line_no++;
-        reader->real_location.col_no = 0;
     }
     reader->location.col_no++;
-
-    reader->real_location.col_no++;
 
     // Set the new current char 
     reader->c = reader->buffer[reader->pos++];
@@ -139,7 +119,7 @@ Line input_reader_next_line(InputReader* reader)
         return (Line) {0};
     }
 
-    LineBuilder builder = line_builder(reader->location, reader->real_location);
+    LineBuilder builder = line_builder(reader->location);
 
     do
     {
@@ -300,7 +280,7 @@ static Input* input_from_fp(FILE* fp, char* filename,
     InputReader* reader = input_reader_from_file(fp, filename);
     
     // Read the lines from memeory
-    vector(Line) lines = vector_new(sizeof(Line), 1);
+    vector(Line) lines = vector_new(sizeof(Line), 32);
     while (1)
     {
         Line next_line = input_reader_next_line(reader);
@@ -317,19 +297,6 @@ static Input* input_from_fp(FILE* fp, char* filename,
     input_reader_free(reader);
 
     Input* input = xmalloc(sizeof(Input));
-    // *input = (Input) {
-    //     .filename = filename,
-
-    //     .reader = input_reader_from_file(fp, filename),
-
-    //     .lines = vector_new(sizeof(Line), 1),
-
-    //     .depth = 0, // unknown for now
-
-    //     .entry = start_path,
-    //     .parent = NULL // unknown for now
-    // };
-
     *input = (Input) {
         .filename = filename,
 
@@ -391,7 +358,6 @@ void input_set_line(Input* input, size_t new_line)
 Line* input_get_next_line(Input* input)
 {
     const Line* prev_line = input->current_line;
-
     const size_t num_lines = vector_get_count(input->lines);
 
     // increment the lines
@@ -409,12 +375,12 @@ Line* input_get_next_line(Input* input)
     input->current_line++;
 
     // Now we need to properly increment the current line number
-    uint32_t line_num_diff = input->current_line->real_loc.line_no - 
-            prev_line->real_loc.line_no;
+    const uint32_t line_num_diff = input->current_line->loc.line_no - 
+            prev_line->loc.line_no;
 
-    // Fix our location by adding the line different 
+    // Fix our location by adding the line difference and reset col_no
     input->location.line_no += line_num_diff;
-    input->location.col_no = 0;
+    input->location.col_no = 1;
 
     return input->current_line;
 }
@@ -425,13 +391,186 @@ Line* input_find_real_line(Input* input, size_t real_line)
     // TODO: just some simple early termination conditions
 
     for (size_t i = 0; i < vector_get_count(input->lines); i++) {
-        if (input->lines[i].real_loc.line_no == real_line) {
+        if (input->lines[i].loc.line_no == real_line) {
             return input->lines + i;
         }
     }
 
     return NULL;
 }
+
+InputManager* input_manager_new(void)
+{
+    InputManager* manager = xmalloc(sizeof(InputManager));
+    *manager = (InputManager) {
+        .inputs = vector_new(sizeof(Input*), 1),
+
+        .filenames = arena_new(),
+
+        .quote_paths = (SearchPath) {
+            .start = NULL,
+            .anchor = &manager->quote_paths.start
+        },
+
+        .bracket_paths = (SearchPath) {
+            .start = NULL,
+            .anchor = &manager->bracket_paths.start
+        },
+
+        .system_paths = (SearchPath) {
+            .start = NULL,
+            .anchor = &manager->system_paths.start
+        },
+
+        .after_paths = (SearchPath) {
+            .start = NULL,
+            .anchor = &manager->after_paths.start
+        }
+    };
+
+    input_manager_add_system_path(manager, 
+            (char*) "/usr/lib/gcc/x86_64-linux-gnu/11/include");
+    input_manager_add_system_path(manager, 
+            (char*) "/usr/local/include");
+    input_manager_add_system_path(manager, 
+            (char*) "/usr/include/x86_64-linux-gnu");
+    input_manager_add_system_path(manager, 
+            (char*) "/usr/include");
+
+    return manager;
+}
+
+void input_manager_delete(InputManager* manager)
+{   
+    // Free our searchpath structs
+    SearchPathEntry* entry = manager->quote_paths.start;
+    while (entry != NULL) {
+        SearchPathEntry* tmp = entry;
+        entry = entry->next;
+
+        free(tmp);
+    }
+
+    // Free our inputs
+    for (size_t i = 0; i < vector_get_count(manager->inputs); i++)
+    {
+        input_delete(manager->inputs[i]);
+    }
+    vector_delete(manager->inputs);
+    
+    // Free our filenames
+    arena_delete(&manager->filenames);
+
+    // free the manager itself
+    free(manager);
+}
+
+char* input_manager_allocate_filename_buffer(InputManager* manager, size_t len)
+{
+    return arena_allocate(&manager->filenames, len);
+}
+
+char* input_manager_allocate_filename(InputManager* manager, char* filename)
+{
+    return arena_dup_string(&manager->filenames, filename);
+}
+
+char* input_manager_allocate_filename_len(InputManager* manager, char* filename,
+        size_t len)
+{
+    return arena_dup_n_string(&manager->filenames, filename, len);
+}
+
+void add_searchpath(Arena* arena, SearchPath* path, char* filename, bool sys)
+{
+    char* allocated_filename = arena_dup_string(arena, filename);
+    SearchPathEntry* new_entry = searchpath_entry_new(allocated_filename, sys);
+
+    *path->anchor = new_entry;
+    path->anchor = &new_entry->next;
+}
+
+void input_manager_add_quote_path(InputManager* manager, char* filepath)
+{
+    add_searchpath(&manager->filenames, &manager->quote_paths, filepath, false);
+}
+
+void input_manager_add_bracket_path(InputManager* manager, char* filepath)
+{
+    add_searchpath(&manager->filenames, &manager->bracket_paths, filepath, 
+            false);
+}
+
+void input_manager_add_system_path(InputManager* manager, char* filepath)
+{
+    add_searchpath(&manager->filenames, &manager->system_paths, filepath, true);
+}
+
+void input_manager_add_after_path(InputManager* manager, char* filepath)
+{
+    add_searchpath(&manager->filenames, &manager->after_paths, filepath, true);
+}
+
+void input_manager_finish_setup(InputManager* manager)
+{
+    searchpath_append(&manager->system_paths, &manager->after_paths);
+    searchpath_append(&manager->bracket_paths, &manager->system_paths);
+    searchpath_append(&manager->quote_paths, &manager->bracket_paths);
+}
+
+void input_manager_print_include_paths(InputManager* manager)
+{
+    fprintf(stderr, "#include \"...\" search starts here:\n");
+    for (SearchPathEntry* entry = manager->quote_paths.start; 
+            entry != manager->bracket_paths.start; entry = entry->next) {
+        fprintf(stderr, " %s\n", entry->filepath);
+    }
+
+    fprintf(stderr, "#include <...> search starts here:\n");
+    for (SearchPathEntry* entry = manager->bracket_paths.start; entry != NULL; 
+        entry = entry->next) {
+        fprintf(stderr, " %s\n", entry->filepath);
+    }
+
+    fprintf(stderr, "End of search list.\n\n");
+}
+
+FILE* input_manager_get_file(InputManager* manager, char* filepath);
+FILE* input_manager_find_file(InputManager* manager, char* filename, 
+        SearchPathEntry* entry, char* current_file);
+
+Input* input_manager_get_input(InputManager* manager, char* filename);
+
+// TODO: maybe add function input_manager_get_input(...)
+
+Input* input_manager_find_real_file(InputManager* manager, char* filename)
+{
+    for (size_t i = 0; i < vector_get_count(manager->inputs); i++)
+    {
+        Input* input = manager->inputs[i];
+        
+        if (!strcmp(input->filename, filename))
+        {
+            return input;
+        }
+    }
+
+    return NULL;
+}
+
+Line* input_manager_find_real_line(InputManager* manager, char* filename,
+        size_t real_line)
+{
+    Input* input = input_manager_find_real_file(manager, filename);
+
+    if (!input)
+    {
+        return NULL;
+    }
+
+    return input_find_real_line(input, real_line);
+}
+
 
 
 

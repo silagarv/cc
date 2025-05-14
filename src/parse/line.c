@@ -6,7 +6,7 @@
 
 #define LINE_START_SIZE 40
 
-LineBuilder line_builder(SourceLocation start_loc, SourceLocation real_loc)
+LineBuilder line_builder(SourceLocation start_loc)
 {
     LineBuilder builder = (LineBuilder) {
         .start_loc = (LineLocation) {
@@ -14,11 +14,6 @@ LineBuilder line_builder(SourceLocation start_loc, SourceLocation real_loc)
             // we assume we want to be starting on the next line and reader->c
             // is '\n' so we'll increment it here
             .line_no = start_loc.line_no + 1
-        },
-
-        .real_start_loc = (LineLocation) {
-            .filename = real_loc.filename,
-            .line_no = real_loc.line_no + 1
         },
 
         .line_buffer = xmalloc(sizeof(char) * LINE_START_SIZE),
@@ -65,7 +60,6 @@ Line from_line_builder(LineBuilder* builder)
 
     return (Line) {
         .loc = builder->start_loc,
-        .real_loc = builder->real_start_loc,
 
         .line_buffer = builder->line_buffer,
         .line_length = builder->line_length,

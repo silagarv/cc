@@ -8,6 +8,7 @@ typedef struct TranslationUnit {
     InputManager input_manager;
     LocationMap location_manager;
 
+    
 } TranslationUnit;
 
 #endif /* TRANSLATION_UNIT_H */

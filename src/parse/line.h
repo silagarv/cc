@@ -8,7 +8,6 @@
 
 typedef struct Line {
     LineLocation loc;
-    LineLocation real_loc;
 
     char* line_buffer;
     size_t line_length;
@@ -31,7 +30,7 @@ typedef struct LineBuilder {
     bool ending_newline;
 } LineBuilder;
 
-LineBuilder line_builder(SourceLocation start_loc, SourceLocation real_loc);
+LineBuilder line_builder(SourceLocation start_loc);
 void line_builder_free(LineBuilder* builder);
 
 void line_builder_add_char(LineBuilder* builder, char c);

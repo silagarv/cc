@@ -11,31 +11,15 @@
 
 int main(int argc, char** argv)
 {
-    Input* input = input_new(fopen(argv[1], "r"), argv[1], NULL);
+    InputManager* input_manager = input_manager_new();
+    input_manager_finish_setup(input_manager);
 
-    if (!input)
-    {
-        exit(EXIT_FAILURE);
-    }
+    input_manager_print_include_paths(input_manager);
 
-    // Get all of the lines...
-    Line* line = input->current_line;
-    do
-    {
-        printf("--> %s:%u\n--> %s:%u\n%s\n", line->loc.filename, line->loc.line_no, 
-                input->location.filename, input->location.line_no, line->line_buffer);
-        input_set_line(input, 10);       
-    } while ((line = input_get_next_line(input)) != NULL);
+    input_new(fopen(argv[1], "r"), argv[1], NULL);
 
-    // Find a line
-    // Line* line = input_find_real_line(input, 1);
-    // if (line)
-    // {
-    //     printf("--> %s:%u\n--> %s:%u\n%s\n", line->loc.filename, line->loc.line_no, 
-    //             line->real_loc.filename, line->real_loc.line_no, line->line_buffer);
-    // }
 
-    input_delete(input);
+    input_manager_delete(input_manager);
 
     exit(EXIT_SUCCESS);
 }
