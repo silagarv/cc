@@ -1,4 +1,4 @@
-CC = clang
+CC = gcc
 CFLAGS = -Wall -Wextra -pedantic -std=c99 -g3 -O0 -Wshadow -Wwrite-strings \
 	-Wno-unused-parameter -Wno-unused-function -Wno-unused-variable
 
@@ -10,13 +10,16 @@ CFLAGS += $(IFLAGS)
 .PHONY: clean
 
 ADT = libcc/adt/vector.c \
-	libcc/adt/buffer.c
+	libcc/adt/buffer.c \
+	libcc/adt/string_map.c
 
 CORE = libcc/core/panic.c \
-	libcc/core/xmalloc.c \
-	libcc/core/location.c
+	libcc/core/xmalloc.c
 
-PP = libcc/pp/token.c
+PP = libcc/pp/location.c \
+	libcc/pp/source.c \
+	libcc/pp/line.c \
+	libcc/pp/token.c
 
 DRIVER = #src/driver/diagnostic.c
 

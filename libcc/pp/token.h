@@ -4,7 +4,9 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-#include "core/location.h"
+#include "adt/vector.h"
+
+#include "pp/location.h"
 
 typedef enum TokenType {
     TOKEN_EOF,
@@ -17,6 +19,14 @@ typedef struct Token {
     size_t len;
     LocationID loc;
 } Token;
+
+// A stream of tokens that we can append to and read from
+typedef struct TokenStream {
+    Vector* tokens;
+    size_t current_token;
+} TokenStream;
+
+bool is_token_equal(Token* tok, const char* str);
 
 bool is_token_keyword(Token* tok);
 

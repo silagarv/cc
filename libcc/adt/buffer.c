@@ -1,12 +1,14 @@
 #include "buffer.h"
 
+#include <stddef.h>
 #include <stdlib.h>
+#include <assert.h>
 
-#include "core/location.h"
+#include "pp/location.h"
 #include "core/panic.h"
 #include "core/xmalloc.h"
 
-#define BUFFER_START_SIZE (20)
+#define BUFFER_START_SIZE (40)
 
 Buffer* buffer_new(void)
 {
@@ -19,6 +21,48 @@ Buffer* buffer_new(void)
     };
 
     return buff;
+}
+
+Buffer* buffer_new_size(size_t start_cap)
+{
+    Buffer* buff = xmalloc(sizeof(Buffer));
+    *buff = (Buffer)
+    {
+        .buffer = xmalloc(sizeof(char) * start_cap),
+        .len = 0,
+        .cap = start_cap
+    };
+
+    return buff;
+}
+
+Buffer buffer_new_stack(void)
+{
+    Buffer buff = (Buffer)
+    {
+        .buffer = xmalloc(sizeof(char) * BUFFER_START_SIZE),
+        .len = 0,
+        .cap = BUFFER_START_SIZE
+    };
+
+    return buff;
+}
+
+Buffer buffer_new_stack_size(size_t start_cap)
+{
+    Buffer buff = (Buffer)
+    {
+        .buffer = xmalloc(sizeof(char) * start_cap),
+        .len = 0,
+        .cap = start_cap
+    };
+
+    return buff;
+}
+
+void buffer_delete_stack(Buffer* buff)
+{
+    free(buff->buffer);
 }
 
 void buffer_delete(Buffer* buff)
@@ -40,6 +84,13 @@ size_t buffer_get_cap(Buffer* buff)
 char* buffer_get_ptr(Buffer* buff)
 {
     return buff->buffer;
+}
+
+void buffer_set_len(Buffer* buff, size_t len)
+{
+    assert(buff->len <= buff->cap);
+
+    buff->len = len;
 }
 
 void buffer_reset(Buffer* buff)

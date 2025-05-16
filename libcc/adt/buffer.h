@@ -10,11 +10,18 @@ typedef struct Buffer {
 } Buffer;
 
 Buffer* buffer_new(void);
+Buffer* buffer_new_size(size_t start_cap);
 void buffer_delete(Buffer* buff);
+
+Buffer buffer_new_stack(void);
+Buffer buffer_new_stack_size(size_t start_cap);
+void buffer_delete_stack(Buffer* buff);
 
 size_t buffer_get_len(Buffer* buff);
 size_t buffer_get_cap(Buffer* buff);
 char* buffer_get_ptr(Buffer* buff);
+
+void buffer_set_len(Buffer* buff, size_t len);
 
 void buffer_reset(Buffer* buff);
 
