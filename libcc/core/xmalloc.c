@@ -13,7 +13,8 @@ void* xmalloc(size_t size)
 {
     void* ptr = malloc(size);
 
-    if (!ptr) {
+    if (!ptr) 
+    {
         xmem_error();
     }
 
@@ -24,7 +25,8 @@ void* xcalloc(size_t nmenb, size_t size)
 {
     void* ptr = calloc(nmenb, size);
 
-    if (!ptr) {
+    if (!ptr) 
+    {
         xmem_error();
     }
 
@@ -35,7 +37,8 @@ void* xrealloc(void* ptr, size_t size)
 {
     ptr = realloc(ptr, size);
     
-    if (!ptr) {
+    if (!ptr) 
+    {
         xmem_error();
     }
 

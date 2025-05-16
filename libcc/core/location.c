@@ -6,9 +6,11 @@
 
 #define LOCATION_MAP_START_SIZE 64
 
-LocationMap location_map_create(void)
+LocationMap* location_map_create(void)
 {
-    LocationMap new_map = {
+    LocationMap* new_map = xmalloc(sizeof(LocationMap));
+    *new_map = (LocationMap) 
+    {
         .entries = vector_new(sizeof(LocationEntry), LOCATION_MAP_START_SIZE)
     };
 
@@ -17,26 +19,27 @@ LocationMap location_map_create(void)
 
 void location_map_delete(LocationMap* map)
 {
-    vector_delete(&map->entries);
+    vector_delete(map->entries);
 }
 
 LocationID location_map_insert(LocationMap* map, SourceLocation location, 
         SourceLocation real_location)
 {
-    LocationEntry entry = {
-        .id = vector_get_count(&map->entries),
+    LocationEntry entry = 
+    {
+        .id = vector_get_count(map->entries),
         .location = location,
         .real_location = real_location
     };
 
-    vector_push(&map->entries, &entry);
+    vector_push(map->entries, &entry);
 
     return entry.id;
 }
 
 static bool location_map_has_location_id(LocationMap* map, LocationID id)
 {
-    return (vector_get_count(&map->entries) >= id);
+    return (vector_get_count(map->entries) >= id);
 }
 
 SourceLocation* location_map_real_location(LocationMap* map, LocationID id)
@@ -46,7 +49,7 @@ SourceLocation* location_map_real_location(LocationMap* map, LocationID id)
         return NULL;
     }
 
-    LocationEntry* loc = vector_get(&map->entries, id);
+    LocationEntry* loc = vector_get(map->entries, id);
 
     return &loc->real_location;
 }
@@ -58,7 +61,7 @@ SourceLocation* location_map_location(LocationMap* map, LocationID id)
         return NULL;
     }
 
-    LocationEntry* loc = vector_get(&map->entries, id);
+    LocationEntry* loc = vector_get(map->entries, id);
 
     return &loc->location;
 }

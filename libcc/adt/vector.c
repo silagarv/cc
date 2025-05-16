@@ -8,9 +8,11 @@
 
 #include "core/xmalloc.h"
 
-Vector vector_new(size_t elem_size, size_t start_capacity)
+Vector* vector_new(size_t elem_size, size_t start_capacity)
 {
-    Vector vec = (Vector) {
+    Vector* vec = xmalloc(sizeof(Vector));
+    *vec = (Vector) 
+    {
         .elems = xmalloc(elem_size * start_capacity),
         .elem_size = elem_size,
         .count = 0,

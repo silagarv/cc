@@ -17,9 +17,6 @@ typedef struct SourceLocation {
     uint32_t col_no;
 } SourceLocation;
 
-// the following is for giving tokens a location ID that can be easily mapped
-// back to a real source line
-
 typedef size_t LocationID;
 
 typedef struct LocationEntry {
@@ -28,12 +25,12 @@ typedef struct LocationEntry {
     SourceLocation real_location;
 } LocationEntry;
 
+// not really a map since can easily be accessed by ID
 typedef struct LocationMap {
-    // vector(LocationEntry)
-    Vector entries;
+    Vector* entries;
 } LocationMap;
 
-LocationMap location_map_create(void);
+LocationMap* location_map_create(void);
 void location_map_delete(LocationMap* map);
 
 LocationID location_map_insert(LocationMap* map, SourceLocation location, 
