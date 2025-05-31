@@ -1,37 +1,31 @@
-CC = clang
-CFLAGS = -Wall -Wextra -pedantic -std=c99 -g3 -O0 -Wshadow -Wwrite-strings \
-	-Wno-unused-parameter -Wno-unused-function -Wno-unused-variable
+CC = clang-18
+CFLAGS = -Wall -Wextra -pedantic -std=c99 -g3 -O0 -Wshadow \
+	-Wno-unused-parameter -Wno-unused-function -Wno-unused-variable \
+	-x c
 
-IFLAGS = -Ilibcc
+IFLAGS = -Isrc
 CFLAGS += $(IFLAGS)
 
 .Default_Goal: cc
 
 .PHONY: clean
 
-ADT = libcc/adt/vector.c \
-	libcc/adt/buffer.c \
-	libcc/adt/string_map.c
+UTIL = src/util/panic.c \
+	src/util/xmalloc.c \
+	src/util/buffer.c \
+	src/util/vector.c
 
-CORE = libcc/core/panic.c \
-	libcc/core/xmalloc.c
+DIAGNOSTIC = src/diagnostic/diagnostic.c
 
-PP = libcc/pp/location.c \
-	libcc/pp/source.c \
-	libcc/pp/line.c \
-	libcc/pp/token.c
+FRONTEND = src/frontend/source.c \
+	src/frontend/line_map.c \
+	src/frontend/location_map.c \
+	src/frontend/location_resolver.c \
+	src/frontend/token.c
 
-DRIVER = #src/driver/diagnostic.c
+SRC = $(UTIL) $(DIAGNOSTIC) $(FRONTEND)
 
-TREE = #src/tree/ast.c
-
-PARSE = 
-
-CODEGEN = 
-
-SRC = $(ADT) $(CORE) $(PP) $(DRIVER) $(TREE) $(PARSE) $(CODEGEN)
-
-cc: $(SRC) libcc/main.c
+cc: $(SRC) src/main.c
 	$(CC) $(CFLAGS) $^ -o $@
 
 clean:

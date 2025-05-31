@@ -2,20 +2,20 @@
 #define BUFFER_H
 
 #include <stddef.h>
+#include <stdio.h>
+#include <stdbool.h>
 
-typedef struct Buffer {
+typedef struct Buffer
+{
     char* buffer;
     size_t len;
     size_t cap;
 } Buffer;
 
-Buffer* buffer_new(void);
 Buffer* buffer_new_size(size_t start_cap);
-void buffer_delete(Buffer* buff);
+Buffer* buffer_new(void);
 
-Buffer buffer_new_stack(void);
-Buffer buffer_new_stack_size(size_t start_cap);
-void buffer_delete_stack(Buffer* buff);
+void buffer_free(Buffer* buff);
 
 size_t buffer_get_len(Buffer* buff);
 size_t buffer_get_cap(Buffer* buff);
@@ -28,7 +28,10 @@ void buffer_reset(Buffer* buff);
 void buffer_add_char(Buffer* buff, char c);
 void buffer_make_cstr(Buffer* buff);
 
-int buffer_get(Buffer* buff, size_t idx);
+char buffer_get(Buffer* buff, size_t idx);
+
+// Read into a buffer from fp, returning true if >0 chars read
+bool buffer_read_from_file(Buffer* buff, FILE* fp);
 
 // TODO: extend buffer to be able to handle filenames and other strings???
 

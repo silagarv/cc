@@ -7,7 +7,7 @@ void panic(const char* msg)
 {
     fputs("internal compiler error: ", stderr);
     fputs(msg, stderr);
-    fputc('\n', stderr);
+    fputs("\n\n", stderr);
     fflush(stderr);
     abort();
 }

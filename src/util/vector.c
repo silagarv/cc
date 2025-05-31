@@ -6,7 +6,8 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include "core/xmalloc.h"
+#include "panic.h"
+#include "xmalloc.h"
 
 Vector* vector_new(size_t elem_size, size_t start_capacity)
 {
@@ -22,9 +23,10 @@ Vector* vector_new(size_t elem_size, size_t start_capacity)
     return vec;
 }
 
-void vector_delete(Vector* vec)
+void vector_free(Vector* vec)
 {
     free(vec->elems);
+    free(vec);
 }
 
 size_t vector_get_capacity(Vector* vec)
@@ -56,9 +58,17 @@ void vector_push(Vector* vec, void* elem)
     vec->count++;
 }
 
-void vector_pop(Vector* vec)
+void* vector_pop(Vector* vec)
 {
+    if (!vector_get_count(vec))
+    {
+        panic("attempting to pop from empty vector");
+    }
+
     vec->count--;
+
+    // we now get from element that was just at the end...
+    return vector_get(vec, vector_get_count(vec));
 }
 
 void* vector_get(Vector* vec, size_t pos)

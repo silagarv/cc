@@ -4,18 +4,14 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-#include "adt/vector.h"
-
-#include "pp/location.h"
-
 // Our token types here
 // Note that we use the pp definitions of tokens mainly which are then converted
 // on demand by the parser. E.g. if its a number it gets converted, and properly
 // checked there, and e.g. string literals are concatenated by parser
-typedef enum TokenType {
-    TOKEN_EOF,
+enum TokenType {
+    TOKEN_UNKNOWN,
 
-    TOKEN_LBRACKET, /* punctuators start */
+    TOKEN_LBRACKET,
     TOKEN_RBRACKET,
     TOKEN_LPAREN,
     TOKEN_RPAREN,
@@ -68,9 +64,9 @@ typedef enum TokenType {
     TOKEN_LT_PERCENT,
     TOKEN_PERCENT_GT,
     TOKEN_PERCENT_COLON,
-    TOKEN_PERCENT_COLON_PERCENT_COLON, /* end of punctuators */
+    TOKEN_PERCENT_COLON_PERCENT_COLON,
 
-    TOKEN_AUTO, /* keyword tokens here */
+    TOKEN_AUTO,
     TOKEN_BREAK,
     TOKEN_CASE,
     TOKEN_CHAR,
@@ -113,44 +109,18 @@ typedef enum TokenType {
     TOKEN_CHARACTER,
     TOKEN_STRING,
 
-    TOKEN_HEADER_NAME, /* special pp token */
-    TOKEN_NEWLINE, /* special token (ignored usually) */
+    TOKEN_HEADER_NAME,
+    TOKEN_NEWLINE,
 
-    TOKEN_PARAM, /* parameter for a macro */
+    TOKEN_EOF
+};
+typedef enum TokenType TokenType;
 
-    TOKEN_UNKNOWN /* special token again... */
-} TokenType;
-
-// compact token type...
-typedef struct Token {
+struct Token {
     TokenType type;
-    char* start;
-    size_t len;
-    LocationID loc;
-} Token;
 
-// A stream of tokens that we can append to and read from
-typedef struct TokenStream {
-    Vector* tokens;
-    size_t current_token;
-} TokenStream;
-
-const char* token_get_name(Token* tok);
-
-bool is_token_str_equal(Token* tok, const char* str);
-
-bool is_token_equal(Token* tok1, Token* tok2);
-
-bool is_token_keyword(Token* tok);
-
-bool is_token_identifier(Token* tok);
-
-bool is_token_punctuator(Token* tok);
-
-bool is_token_defineable(Token* tok);
-
-bool is_token_type(Token* tok, TokenType type);
-
-// TODO: maybe more functions about tokens pasting when we get there
+    
+};
+typedef struct Token Token;
 
 #endif /* TOKEN_H */

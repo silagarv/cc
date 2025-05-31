@@ -1,8 +1,0 @@
-Ok - since c has a very must left recursive grammar, we will need to rewrite
-it so that recursive descent works...
-
-This is where all of that will go... and this will inform the way the compiler
-is written.
-
-
-

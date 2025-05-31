@@ -3,25 +3,13 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <stdbool.h>
+#include <stdio.h>
 
-#include "pp/location.h"
-#include "core/panic.h"
-#include "core/xmalloc.h"
+#include "panic.h"
+#include "xmalloc.h"
 
 #define BUFFER_START_SIZE (40)
-
-Buffer* buffer_new(void)
-{
-    Buffer* buff = xmalloc(sizeof(Buffer));
-    *buff = (Buffer)
-    {
-        .buffer = xmalloc(sizeof(char) * BUFFER_START_SIZE),
-        .len = 0,
-        .cap = BUFFER_START_SIZE
-    };
-
-    return buff;
-}
 
 Buffer* buffer_new_size(size_t start_cap)
 {
@@ -36,36 +24,12 @@ Buffer* buffer_new_size(size_t start_cap)
     return buff;
 }
 
-Buffer buffer_new_stack(void)
+Buffer* buffer_new(void)
 {
-    Buffer buff = (Buffer)
-    {
-        .buffer = xmalloc(sizeof(char) * BUFFER_START_SIZE),
-        .len = 0,
-        .cap = BUFFER_START_SIZE
-    };
-
-    return buff;
+    return buffer_new_size(BUFFER_START_SIZE);
 }
 
-Buffer buffer_new_stack_size(size_t start_cap)
-{
-    Buffer buff = (Buffer)
-    {
-        .buffer = xmalloc(sizeof(char) * start_cap),
-        .len = 0,
-        .cap = start_cap
-    };
-
-    return buff;
-}
-
-void buffer_delete_stack(Buffer* buff)
-{
-    free(buff->buffer);
-}
-
-void buffer_delete(Buffer* buff)
+void buffer_free(Buffer* buff)
 {
     free(buff->buffer);
     free(buff);
@@ -129,7 +93,7 @@ void buffer_make_cstr(Buffer* buff)
     buffer_add_char_internal(buff, '\0', false);
 }
 
-int buffer_get(Buffer* buff, size_t idx)
+char buffer_get(Buffer* buff, size_t idx)
 {
     if (idx >= buff->len)
     {
@@ -137,4 +101,13 @@ int buffer_get(Buffer* buff, size_t idx)
     }
 
     return buff->buffer[idx];
+}
+
+bool buffer_read_from_file(Buffer* buff, FILE* fp)
+{
+    const size_t read = fread(buff->buffer, sizeof(char), buff->cap, fp);
+
+    buff->len = read;
+
+    return (read > 0);
 }
