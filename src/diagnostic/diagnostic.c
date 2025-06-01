@@ -49,8 +49,8 @@ static const DiagnosticColours colour_on =
     .fatal = "\033[91m",
     .error = "\033[91m",
     .warning = "\033[93m",
-    .note = "\033[96m",
-    .help = "\033[92m",
+    .note = "\033[94m",
+    .help = "\033[96m",
     .white = "\033[97m",
     .highlight = "\033[1m",
     .reset_highlight = "\033[22m",
@@ -63,7 +63,8 @@ void diagnostics_init(void)
 {
     colours = colour_on;
 }
-const char* diagnostic_kind_to_name(DiagnosticKind kind)
+
+static const char* diagnostic_kind_to_name(DiagnosticKind kind)
 {
     switch (kind)
     {
@@ -79,7 +80,7 @@ const char* diagnostic_kind_to_name(DiagnosticKind kind)
     }
 }
 
-const char* diagnostic_kind_to_colour(DiagnosticKind kind)
+static const char* diagnostic_kind_to_colour(DiagnosticKind kind)
 {
     switch (kind)
     {

@@ -1,7 +1,6 @@
 CC = clang-18
 CFLAGS = -Wall -Wextra -pedantic -std=c99 -g3 -O0 -Wshadow \
-	-Wno-unused-parameter -Wno-unused-function -Wno-unused-variable \
-	-x c
+	-Wno-unused-parameter -Wno-unused-function -Wno-unused-variable
 
 IFLAGS = -Isrc
 CFLAGS += $(IFLAGS)

@@ -1,4 +1,3 @@
-
 #include <stdlib.h>//shutup clangd
 
 #include <stdio.h>
@@ -9,8 +8,6 @@
 #include "frontend/location_resolver.h"
 
 #include "diagnostic/diagnostic.h"
-
-
 
 int main(int argc, char** argv)
 {
