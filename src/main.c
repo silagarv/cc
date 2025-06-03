@@ -23,8 +23,6 @@ int main(int argc, char** argv)
             "src/main.c");
 
     source = buffered_source_push(source, source_new);
-
-    
     
     Line line;
     while (line_read_from_buffered_source(source, &line))

@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "panic.h"
 
@@ -35,6 +36,16 @@ void buffer_free(Buffer* buff)
 {
     free(buff->buffer);
     free(buff);
+}
+
+Buffer* buffer_from_cstr(const char* string)
+{
+    const size_t len = strlen(string);
+
+    Buffer* buffer = buffer_new_size(len + 1);
+    sprintf(buffer_get_ptr(buffer), "%s", string);
+
+    return buffer;
 }
 
 size_t buffer_get_len(Buffer* buff)
@@ -154,4 +165,14 @@ void buffer_printf(Buffer* buff, const char* fmt, ...)
     va_start(ap, fmt);
     buffer_vprintf(buff, fmt, ap);
     va_end(ap);
+}
+
+Buffer* buffer_from_format(const char* fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    Buffer* buff = buffer_new();
+    buffer_vprintf(buff, fmt, ap);
+    va_end(ap);
+    return buff;
 }
