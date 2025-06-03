@@ -7,6 +7,8 @@
 #include <stdio.h>
 
 #include "panic.h"
+
+#include "panic.h"
 #include "xmalloc.h"
 
 #define BUFFER_START_SIZE (40)
@@ -110,4 +112,18 @@ bool buffer_read_from_file(Buffer* buff, FILE* fp)
     buff->len = read;
 
     return (read > 0);
+}
+
+void buffer_vprintf(Buffer* buff, const char* fmt, va_list args)
+{
+    // TODO: figure out how to do this...
+    panic("unimplemented");
+}
+
+void buffer_printf(Buffer* buff, const char* fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    buffer_vprintf(buff, fmt, ap);
+    va_end(ap);
 }

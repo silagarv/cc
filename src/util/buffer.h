@@ -4,13 +4,15 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <stdarg.h>
 
-typedef struct Buffer
+struct Buffer
 {
     char* buffer;
     size_t len;
     size_t cap;
-} Buffer;
+};
+typedef struct Buffer Buffer;
 
 Buffer* buffer_new_size(size_t start_cap);
 Buffer* buffer_new(void);
@@ -33,6 +35,7 @@ char buffer_get(Buffer* buff, size_t idx);
 // Read into a buffer from fp, returning true if >0 chars read
 bool buffer_read_from_file(Buffer* buff, FILE* fp);
 
-// TODO: extend buffer to be able to handle filenames and other strings???
+void buffer_vprintf(Buffer* buff, const char* fmt, va_list args);
+void buffer_printf(Buffer* buff, const char* fmt, ...);
 
 #endif /* BUFFER_H */

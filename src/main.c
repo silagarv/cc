@@ -2,32 +2,21 @@
 
 #include <stdio.h>
 
-#include "frontend/source.h"
-#include "frontend/line_map.h"
-#include "frontend/location_map.h"
-#include "frontend/location_resolver.h"
-
-#include "diagnostic/diagnostic.h"
+#include "preprocessor/buffered_source.h"
+#include "preprocessor/line.h"
 
 int main(int argc, char** argv)
 {
-    diagnostics_init();
-
-    if (argc == 1)
+    BufferedSource* source = buffered_source_new(fopen("src/main.c", "r"), 
+            "src/main.c", NULL);
+    
+    Line line;
+    while (line_read_from_buffered_source(source, &line))
     {
-        fatal_error("no input file");
-        exit(1);
+        printf("%s:%u:\n", line.source_real_name, line.real_line_no);
+        printf("%s", line_get_ptr(&line));
+        line_free(&line);
     }
 
-    LocationResolver* resolver = location_resolver_new();
-    Source* src = source_new(argv[1], fopen(argv[1], "r"));
-
-    Line* line;
-    while ((line = source_read_line(src)) != NULL)
-    {
-        location_resolver_add_line(resolver, line);
-    }
-
-    location_resolver_free(resolver);
-    source_free(src);
+    buffered_source_free(source);
 }

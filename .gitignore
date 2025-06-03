@@ -53,3 +53,5 @@ dkms.conf
 
 cc
 compile_commands.json
+
+src/frontend

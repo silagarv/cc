@@ -154,16 +154,16 @@ void help(char* fmt, ...)
     va_end(args);
 }
 
-void print_error_line(Line* line, char* fmt, ...)
-{
-    va_list args;
-    va_start(args, fmt);
-    diagnostic_internal(DIAGNOSTIC_ERROR, fmt, args);
-    va_end(args);
+// void print_error_line(Line* line, char* fmt, ...)
+// {
+//     va_list args;
+//     va_start(args, fmt);
+//     diagnostic_internal(DIAGNOSTIC_ERROR, fmt, args);
+//     va_end(args);
 
-    fprintf(stderr, "%s\n", line_get_ptr(line));
-    if (!line->ending_newline)
-    {
-        fprintf(stderr, "\n");
-    }
-}
+//     fprintf(stderr, "%s\n", line_get_ptr(line));
+//     if (!line->ending_newline)
+//     {
+//         fprintf(stderr, "\n");
+//     }
+// }

@@ -1,110 +1,36 @@
-#include "source.h"
+#include "line.h"
 
-#include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdint.h>
 #include <stdbool.h>
-#include <assert.h>
 
-#include "diagnostic/diagnostic.h"
-#include "util/panic.h"
 #include "util/xmalloc.h"
 #include "util/buffer.h"
 
-#define SOURCE_BUFFER_SIZE (4096)
+#include "diagnostic/diagnostic.h"
+
 #define LINE_START_SIZE (20)
 
-Source* source_new(char* start_name, FILE* fp)
+static void line_clean(Line* line)
 {
-    Source* source = xmalloc(sizeof(Source));
-    *source = (Source) 
-    {
-        .fp = fp,
-
-        .buffer = buffer_new_size(SOURCE_BUFFER_SIZE),
-        .buffer_pos = 0,
-
-        .name = start_name,
-        .current_name = start_name,
-        
-        .line_no = 1,
-        .current_line_no = 1
-    };
-
-    return source;
+    *line = (Line) {0};
 }
 
-void source_free(Source* source)
+static void line_get_fresh(Line* line, BufferedSource* source)
 {
-    buffer_free(source->buffer);
-    fclose(source->fp);
-    free(source);
-}
+    line_clean(line);
 
-void source_set_current_name(Source* source, char* new_name)
-{
-    source->current_name = new_name;
-}
-
-void source_set_current_line_number(Source* source, uint32_t new_line)
-{
-    source->current_line_no = new_line;
-}
-
-static bool source_is_end_of_buffer(Source* source)
-{
-    return (buffer_get_len(source->buffer) == source->buffer_pos);
-}
-
-static bool source_read_from_file(Source* source)
-{
-    assert(source_is_end_of_buffer(source));
-
-    const bool success = buffer_read_from_file(source->buffer, source->fp);
-
-    source->buffer_pos = 0;
-
-    return success;
-}
-
-static bool source_is_end_of_file(Source* source)
-{
-    return (source->buffer_pos == 0 && feof(source->fp));
-}
-
-static int source_read_char(Source* source)
-{
-    if (source_is_end_of_buffer(source) && !source_read_from_file(source))
-    {
-        assert(source_is_end_of_file(source));
-
-        return EOF;
-    }
-
-    const char c = buffer_get(source->buffer, source->buffer_pos++);
-
-    // since we only care about starting line this is fine...
-    if (c == '\n')
-    {
-        source->line_no++;
-        source->current_line_no++;
-    }
-
-    return c;
-}
-
-static Line* line_get_fresh(Source* src)
-{
-    Line* line = xmalloc(sizeof(Line));
     *line = (Line)
     {
         .id = LINEID_MAX,
 
-        .source_name = src->current_name,
-        .source_real_name = src->name,
+        .source_name = source->current_name,
+        .source_real_name = source->name,
 
-        .line_no = src->current_line_no,
-        .real_line_no = src->line_no,
+        .line_no = source->current_line_no,
+        .real_line_no = source->line_no,
 
         .buffer = buffer_new_size(LINE_START_SIZE),
 
@@ -112,14 +38,12 @@ static Line* line_get_fresh(Source* src)
         .backslash_newline = false,
         .ending_newline = false
     };
-
-    return line;
 }
 
 // Function to recover on the incorrect characrers again returning true
 // if we got eof or newline otherwise false
-static bool line_get_internal_bad_char_recover(Line* line, Source* source, 
-        int bad_char)
+static bool line_get_internal_bad_char_recover(Line* line, 
+        BufferedSource* source, int bad_char)
 {
     if (bad_char == EOF)
     {
@@ -140,9 +64,10 @@ static bool line_get_internal_bad_char_recover(Line* line, Source* source,
 }
 
 // Returns true if we got an EOF whilst handling
-static bool line_get_internal_handle_backslash(Line* line, Source* source)
+static bool line_get_internal_handle_backslash(Line* line, 
+        BufferedSource* source)
 {
-    const int next_char = source_read_char(source);
+    const int next_char = buffered_source_read_char(source);
 
     if (next_char != '\n')
     {
@@ -162,9 +87,10 @@ static bool line_get_internal_handle_backslash(Line* line, Source* source)
 }
 
 // Returns true if we got an EOF or newline whilst handline
-static bool line_get_internal_handle_trigraph(Line* line, Source* source)
+static bool line_get_internal_handle_trigraph(Line* line, 
+        BufferedSource* source)
 {
-    const int next_char = source_read_char(source);
+    const int next_char = buffered_source_read_char(source);
 
     if (next_char != '?')
     {
@@ -175,7 +101,7 @@ static bool line_get_internal_handle_trigraph(Line* line, Source* source)
     }
 
     // here we recieved "??"
-    const int next_next_char = source_read_char(source);
+    const int next_next_char = buffered_source_read_char(source);
     int trigraph;
 
     switch (next_next_char)
@@ -217,11 +143,11 @@ static bool line_get_internal_handle_trigraph(Line* line, Source* source)
     return false;
 }
 
-static bool line_get_internal(Line* line, Source* source)
+static bool line_get_internal(Line* line, BufferedSource* source)
 {
     while (true)
     {
-        const int curr = source_read_char(source);
+        const int curr = buffered_source_read_char(source);
 
         // In here if we want to exit the while loop i.e. we got EOF or a '\n'
         // then we break out of the switch. Otherwise we continue and go back
@@ -270,24 +196,23 @@ static bool line_get_internal(Line* line, Source* source)
     return true;
 }
 
-Line* source_read_line(Source* source)
+bool line_read_from_buffered_source(BufferedSource* source, Line* line)
 {
-    Line* line = line_get_fresh(source);
+    line_get_fresh(line, source);
+    
+    const bool success = line_get_internal(line, source);
 
-    if (!line_get_internal(line, source))
+    if (success && line_get_length(line) == 0)
     {
-        return NULL;
+        internal_compiler_error("line got successfully but length is 0");
     }
 
-    assert(line_get_length(line));
-
-    return line;
+    return success;
 }
 
 void line_free(Line* line)
 {
     buffer_free(line->buffer);
-    free(line);
 }
 
 void line_set_id(Line* line, LineID id)

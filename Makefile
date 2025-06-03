@@ -1,5 +1,5 @@
 CC = clang-18
-CFLAGS = -Wall -Wextra -pedantic -std=c99 -g3 -O0 -Wshadow \
+CFLAGS = -Wall -Wextra -pedantic -std=c2x -g3 -O0 -Wshadow \
 	-Wno-unused-parameter -Wno-unused-function -Wno-unused-variable
 
 IFLAGS = -Isrc
@@ -16,13 +16,16 @@ UTIL = src/util/panic.c \
 
 DIAGNOSTIC = src/diagnostic/diagnostic.c
 
-FRONTEND = src/frontend/source.c \
-	src/frontend/line_map.c \
-	src/frontend/location_map.c \
-	src/frontend/location_resolver.c \
-	src/frontend/token.c
+# FRONTEND = src/frontend/source.c \
+# 	src/frontend/line_map.c \
+# 	src/frontend/location_map.c \
+# 	src/frontend/location_resolver.c \
+# 	src/frontend/token.c
 
-SRC = $(UTIL) $(DIAGNOSTIC) $(FRONTEND)
+PREPROCESSOR = src/preprocessor/buffered_source.c \
+	src/preprocessor/line.c
+
+SRC = $(UTIL) $(DIAGNOSTIC) $(PREPROCESSOR) #$(FRONTEND)
 
 cc: $(SRC) src/main.c
 	$(CC) $(CFLAGS) $^ -o $@
