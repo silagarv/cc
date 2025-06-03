@@ -11,8 +11,7 @@
 
 #define SOURCE_BUFFER_SIZE (4096)
 
-BufferedSource* buffered_source_from_file(FILE* fp, char* start_name, 
-        BufferedSource* prev)
+BufferedSource* buffered_source_from_file(FILE* fp, char* start_name)
 {
     BufferedSource* source = xmalloc(sizeof(BufferedSource));
     *source = (BufferedSource) 
@@ -34,8 +33,7 @@ BufferedSource* buffered_source_from_file(FILE* fp, char* start_name,
     return source;
 }
 
-BufferedSource* buffered_source_from_buffer(Buffer* buffer, char* start_name, 
-        BufferedSource* prev)
+BufferedSource* buffered_source_from_buffer(Buffer* buffer, char* start_name)
 {
     BufferedSource* source = xmalloc(sizeof(BufferedSource));
     *source = (BufferedSource) 
@@ -116,4 +114,25 @@ int buffered_source_read_char(BufferedSource* source)
     }
 
     return c;
+}
+
+BufferedSource* buffered_source_push(BufferedSource* prev, BufferedSource* new)
+{
+    new->prev = prev;
+
+    return new;
+}
+
+BufferedSource* buffered_source_pop(BufferedSource* old)
+{
+    BufferedSource* new = old->prev;
+
+    buffered_source_free(old);
+
+    return new;
+}
+
+bool buffered_source_has_next(BufferedSource* source)
+{
+    return (source->prev != NULL);
 }

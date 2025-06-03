@@ -192,6 +192,12 @@ static bool line_get_internal(Line* line, BufferedSource* source)
         return false;
     }
 
+    // add a newline to the end of the buffer if we need to
+    if (!line->ending_newline)
+    {
+        buffer_add_char(line->buffer, '\n');
+    }
+
     buffer_make_cstr(line->buffer);
 
     return true;

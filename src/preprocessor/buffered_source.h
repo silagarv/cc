@@ -24,10 +24,8 @@ struct BufferedSource {
 };
 typedef struct BufferedSource BufferedSource;
 
-BufferedSource* buffered_source_from_file(FILE* fp, char* start_name, 
-        BufferedSource* prev);
-BufferedSource* buffered_source_from_buffer(Buffer* buffer, char* start_name, 
-        BufferedSource* prev);
+BufferedSource* buffered_source_from_file(FILE* fp, char* start_name);
+BufferedSource* buffered_source_from_buffer(Buffer* buffer, char* start_name);
 
 void buffered_source_free(BufferedSource* source);
 
@@ -35,5 +33,10 @@ void buffered_source_set_line_no(BufferedSource* source, uint32_t new_no);
 void buffered_source_set_name(BufferedSource* source, char* new_name);
 
 int buffered_source_read_char(BufferedSource* source);
+
+BufferedSource* buffered_source_push(BufferedSource* prev, BufferedSource* new);
+BufferedSource* buffered_source_pop(BufferedSource* old);
+
+bool buffered_source_has_next(BufferedSource* source);
 
 #endif /* BUFFERED_SOURCE_H */

@@ -17,8 +17,14 @@ int main(int argc, char** argv)
         exit(1);
     }
 
-    BufferedSource* source = buffered_source_from_file(fopen("src/main.c", "r"), 
-            "src/main.c", NULL);
+    BufferedSource* source = NULL;
+
+    BufferedSource* source_new = buffered_source_from_file(fopen("src/main.c", "r"), 
+            "src/main.c");
+
+    source = buffered_source_push(source, source_new);
+
+    
     
     Line line;
     while (line_read_from_buffered_source(source, &line))
