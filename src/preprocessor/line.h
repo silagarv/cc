@@ -9,8 +9,6 @@
 
 typedef uint32_t LineID;
 
-#define LINEID_MAX (UINT32_MAX)
-
 struct Line
 {
     // non-owned filenames

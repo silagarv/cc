@@ -11,7 +11,7 @@
 
 #define SOURCE_BUFFER_SIZE (4096)
 
-BufferedSource* buffered_source_new(FILE* fp, char* start_name, 
+BufferedSource* buffered_source_from_file(FILE* fp, char* start_name, 
         BufferedSource* prev)
 {
     BufferedSource* source = xmalloc(sizeof(BufferedSource));
@@ -34,9 +34,37 @@ BufferedSource* buffered_source_new(FILE* fp, char* start_name,
     return source;
 }
 
+BufferedSource* buffered_source_from_buffer(Buffer* buffer, char* start_name, 
+        BufferedSource* prev)
+{
+    BufferedSource* source = xmalloc(sizeof(BufferedSource));
+    *source = (BufferedSource) 
+    {
+        .fp = NULL,
+
+        .buffer = buffer,
+        .buffer_pos = 0,
+
+        .name = start_name,
+        .current_name = start_name,
+        
+        .line_no = 1,
+        .current_line_no = 1,
+        
+        .prev = NULL
+    };
+
+    return source;
+}
+
 void buffered_source_free(BufferedSource* source)
 {
-    fclose(source->fp);
+    // Can only fclose an actual file...
+    if (source->fp)
+    {
+        fclose(source->fp);
+    }
+
     buffer_free(source->buffer);
     free(source);
 }
@@ -58,7 +86,14 @@ static bool buffered_source_is_eob(BufferedSource* source)
 
 static bool buffered_source_read_more(BufferedSource* source)
 {
-    return buffer_read_from_file(source->buffer, source->fp);
+    // If our buffered source is from a file...
+    if (source->fp)
+    {
+        return buffer_read_from_file(source->buffer, source->fp);
+    }
+    
+    // Otherwise it could be some builtin or command line
+    return false; // so nothing more to read
 }
 
 int buffered_source_read_char(BufferedSource* source)

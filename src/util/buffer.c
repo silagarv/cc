@@ -116,8 +116,36 @@ bool buffer_read_from_file(Buffer* buff, FILE* fp)
 
 void buffer_vprintf(Buffer* buff, const char* fmt, va_list args)
 {
-    // TODO: figure out how to do this...
-    panic("unimplemented");
+    const size_t buffer_start_len = buff->len;
+
+    while (true)
+    {
+        // Get the maxlen we can print and the starting ptr
+        const size_t max_len = buff->cap - buff->len;
+        char* print_start = buff->buffer + buffer_start_len;
+
+        // Copy args, print and get the number of chars attemped to put in
+        va_list args_copy;
+        va_copy(args_copy, args);
+        int printed = vsnprintf(print_start, max_len, fmt, args_copy);
+        va_end(args_copy);
+
+        // Check for encoding error
+        if (printed < 0)
+        {
+            panic("unable to print into buffer in buffer_vprintf");
+        }
+
+        // If printed >= 0 the cast is okay and check if we 'overran' buff
+        if (printed >= 0 && (size_t) printed < max_len)
+        {
+            buff->len += (size_t) printed;
+            break;
+        }
+
+        // If we overran we need to resize and try again
+        buffer_resize(buff);
+    }
 }
 
 void buffer_printf(Buffer* buff, const char* fmt, ...)

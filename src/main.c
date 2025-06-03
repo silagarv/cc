@@ -2,12 +2,22 @@
 
 #include <stdio.h>
 
+#include "diagnostic/diagnostic.h"
+
 #include "preprocessor/buffered_source.h"
 #include "preprocessor/line.h"
 
 int main(int argc, char** argv)
 {
-    BufferedSource* source = buffered_source_new(fopen("src/main.c", "r"), 
+    diagnostics_init();
+
+    if (argc == 1)
+    {
+        fatal_error("no input files");
+        exit(1);
+    }
+
+    BufferedSource* source = buffered_source_from_file(fopen("src/main.c", "r"), 
             "src/main.c", NULL);
     
     Line line;

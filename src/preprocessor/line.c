@@ -6,10 +6,11 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "util/panic.h"
 #include "util/xmalloc.h"
 #include "util/buffer.h"
 
-#include "diagnostic/diagnostic.h"
+#define LINEID_MAX (UINT32_MAX)
 
 #define LINE_START_SIZE (20)
 
@@ -204,7 +205,7 @@ bool line_read_from_buffered_source(BufferedSource* source, Line* line)
 
     if (success && line_get_length(line) == 0)
     {
-        internal_compiler_error("line got successfully but length is 0");
+        panic("line got successfully but length is 0");
     }
 
     return success;
@@ -219,7 +220,7 @@ void line_set_id(Line* line, LineID id)
 {
     if (line->id != LINEID_MAX)
     {
-        internal_compiler_error("attempting to set line id more than once");
+        panic("attempting to set line id more than once");
     }
 
     line->id = id;
@@ -229,7 +230,7 @@ LineID line_get_id(Line* line)
 {
     if (line->id == LINEID_MAX)
     {
-        internal_compiler_error("attempting to get line id of an unset line");
+        panic("attempting to get line id of an unset line");
     }
 
     return line->id;

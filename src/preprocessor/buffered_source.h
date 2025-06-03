@@ -24,8 +24,11 @@ struct BufferedSource {
 };
 typedef struct BufferedSource BufferedSource;
 
-BufferedSource* buffered_source_new(FILE* fp, char* start_name, 
+BufferedSource* buffered_source_from_file(FILE* fp, char* start_name, 
         BufferedSource* prev);
+BufferedSource* buffered_source_from_buffer(Buffer* buffer, char* start_name, 
+        BufferedSource* prev);
+
 void buffered_source_free(BufferedSource* source);
 
 void buffered_source_set_line_no(BufferedSource* source, uint32_t new_no);

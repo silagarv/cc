@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <stddef.h>
 
-#include "frontend/source.h"
 #include "util/panic.h"
 
 enum DiagnosticKind 
@@ -94,11 +93,6 @@ static const char* diagnostic_kind_to_colour(DiagnosticKind kind)
             panic("invalid diagnostic kind");
             return NULL;
     }
-}
-
-void internal_compiler_error(char* msg)
-{
-    panic(msg);
 }
 
 static void diagnostic_internal(DiagnosticKind kind, char* fmt, va_list args)
