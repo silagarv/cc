@@ -25,6 +25,9 @@ size_t buffer_get_len(Buffer* buff);
 size_t buffer_get_cap(Buffer* buff);
 char* buffer_get_ptr(Buffer* buff);
 
+bool buffer_is_equal(Buffer* buff1, Buffer* buff2);
+bool buffer_equals_str(Buffer* buff, const char* str);
+
 void buffer_set_len(Buffer* buff, size_t len);
 
 void buffer_reset(Buffer* buff);

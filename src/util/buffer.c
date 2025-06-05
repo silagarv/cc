@@ -63,6 +63,44 @@ char* buffer_get_ptr(Buffer* buff)
     return buff->buffer;
 }
 
+static bool buffer_is_equal_internal(const char* str1, const char* str2, 
+        size_t len)
+{    
+    return (strncmp(str1, str2, len) == 0);
+}
+
+bool buffer_is_equal(Buffer* buff1, Buffer* buff2)
+{
+    // First check the two lengths
+    const size_t len1 = buffer_get_len(buff1);
+    const size_t len2 = buffer_get_len(buff2);
+
+    if (len1 != len2)
+    {
+        return false;
+    }
+
+    const char* str1 = buffer_get_ptr(buff1);
+    const char* str2 = buffer_get_ptr(buff2);
+
+    return buffer_is_equal_internal(str1, str2, len1);
+}
+
+bool buffer_equals_str(Buffer* buff, const char* str)
+{
+    const size_t len1 = buffer_get_len(buff);
+    const size_t len2 = strlen(str);
+
+    if (len1 != len2)
+    {
+        return false;
+    }
+
+    const char* str_buff = buffer_get_ptr(buff);
+
+    return buffer_is_equal_internal(str_buff, str, len1);
+}
+
 void buffer_set_len(Buffer* buff, size_t len)
 {
     assert(buff->len <= buff->cap);
@@ -147,14 +185,14 @@ void buffer_vprintf(Buffer* buff, const char* fmt, va_list args)
             panic("unable to print into buffer in buffer_vprintf");
         }
 
-        // If printed >= 0 the cast is okay and check if we 'overran' buff
-        if (printed >= 0 && (size_t) printed < max_len)
+        // the cast is okay since printed >= 0, check if we 'overran' buff
+        if ((size_t) printed < max_len)
         {
             buff->len += (size_t) printed;
             break;
         }
 
-        // If we overran we need to resize and try again
+        // If we 'overran' we need to resize and try again
         buffer_resize(buff);
     }
 }

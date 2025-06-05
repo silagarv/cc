@@ -185,6 +185,7 @@ static bool line_get_internal(Line* line, BufferedSource* source)
         break;
     }
 
+    // Check if all we got was eof
     if (!line_get_length(line))
     {
         line_free(line);
@@ -209,6 +210,7 @@ bool line_read_from_buffered_source(BufferedSource* source, Line* line)
     
     const bool success = line_get_internal(line, source);
 
+    // Easy sanity check here
     if (success && line_get_length(line) == 0)
     {
         panic("line got successfully but length is 0");

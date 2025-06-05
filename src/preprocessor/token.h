@@ -4,13 +4,19 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+#include "util/static_string.h"
+
+#include "preprocessor/location.h"
+
 // Our token types here
 // Note that we use the pp definitions of tokens mainly which are then converted
 // on demand by the parser. E.g. if its a number it gets converted, and properly
 // checked there, and e.g. string literals are concatenated by parser
 enum TokenType {
-    TOKEN_UNKNOWN,
+    TOKEN_UNKNOWN = -1,
+    TOKEN_EOF,
 
+    // Punctuators
     TOKEN_LBRACKET,
     TOKEN_RBRACKET,
     TOKEN_LPAREN,
@@ -66,6 +72,7 @@ enum TokenType {
     TOKEN_PERCENT_COLON,
     TOKEN_PERCENT_COLON_PERCENT_COLON,
 
+    // Keyword tokens
     TOKEN_AUTO,
     TOKEN_BREAK,
     TOKEN_CASE,
@@ -104,23 +111,57 @@ enum TokenType {
     TOKEN_COMPLEX,
     TOKEN_IMAGINARY,
 
+    // Special tokens begin here
     TOKEN_IDENTIFIER,
     TOKEN_NUMBER,
     TOKEN_CHARACTER,
     TOKEN_STRING,
 
     TOKEN_HEADER_NAME,
+    TOKEN_MACRO_PARAMATER,
     TOKEN_NEWLINE,
-
-    TOKEN_EOF
 };
 typedef enum TokenType TokenType;
 
+// TODO: maybe turn opt value into a pointer if we want to save space???
 struct Token {
-    TokenType type;
+    TokenType type; // the type of token
+    Location loc; // location id (which includes alot more info)
 
-    
+    StaticString opt_value; // optional value for specific tokens if needed
+
+    // Some flags for the token
+    bool is_space_before; // was space before token
+    bool is_expansion_forbidden; // are we allowed to expand token?
 };
 typedef struct Token Token;
+
+struct TokenList {
+    Token* tokens;
+    size_t used;
+    size_t allocated;
+};
+typedef struct TokenList TokenList;
+
+void token_freshen_up(Token* tok);
+void token_free(Token* tok);
+
+const char* token_get_name(Token* tok);
+const char* token_get_string(Token* tok);
+
+size_t token_get_length(Token* tok);
+
+bool token_equal_string(Token* tok, const char* str);
+bool token_equal_token(Token* tok1, Token* tok2);
+
+bool token_concatenate(Token* tok1, Token* tok2, Token* dest);
+
+bool token_stringize(Token* src, Token* dest);
+bool token_list_stringize(TokenList* token, Token* dest);
+
+bool token_string_cat(Token* tok1, Token* tok2, Token* dest);
+bool token_list_string_cat(TokenList* list, Token* dest);
+
+// Perhaps some stuff here for concatenations and other things
 
 #endif /* TOKEN_H */

@@ -87,7 +87,12 @@ static bool buffered_source_read_more(BufferedSource* source)
     // If our buffered source is from a file...
     if (source->fp)
     {
-        return buffer_read_from_file(source->buffer, source->fp);
+        // Make sure we reset buffer pos... otherwise not at eob
+        const bool success = buffer_read_from_file(source->buffer, source->fp);
+
+        source->buffer_pos = 0;
+
+        return success;
     }
     
     // Otherwise it could be some builtin or command line
@@ -132,7 +137,7 @@ BufferedSource* buffered_source_pop(BufferedSource* old)
     return new;
 }
 
-bool buffered_source_has_next(BufferedSource* source)
+bool buffered_source_has_prev(BufferedSource* source)
 {
     return (source->prev != NULL);
 }

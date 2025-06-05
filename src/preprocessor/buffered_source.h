@@ -37,6 +37,6 @@ int buffered_source_read_char(BufferedSource* source);
 BufferedSource* buffered_source_push(BufferedSource* prev, BufferedSource* new);
 BufferedSource* buffered_source_pop(BufferedSource* old);
 
-bool buffered_source_has_next(BufferedSource* source);
+bool buffered_source_has_prev(BufferedSource* source);
 
 #endif /* BUFFERED_SOURCE_H */
