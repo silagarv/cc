@@ -6,6 +6,7 @@
 
 #include "util/panic.h"
 #include "util/xmalloc.h"
+#include "util/buffer.h"
 
 // For when we have already allocated the string
 void static_string_init(StaticString* dest, char* val)
@@ -62,4 +63,21 @@ char static_string_get(const StaticString* str, size_t idx)
     }
 
     return str->ptr[idx];
+}
+
+void static_string_from_buffer(StaticString* dest, Buffer* src)
+{
+    dest->ptr = buffer_get_ptr(src);
+    dest->len = buffer_get_len(src);
+}
+
+bool static_string_equal(const StaticString* str1, const char* str2)
+{
+    return (strcmp(str1->ptr, str2) == 0);
+}
+
+bool static_string_starts_with(const StaticString* str, const char* starting)
+{
+    size_t starting_len = strlen(starting);
+    return (strncmp(str->ptr, starting, starting_len) == 0);
 }
