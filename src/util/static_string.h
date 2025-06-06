@@ -19,6 +19,8 @@ void static_string_init_len(StaticString* dest, char* val, size_t len);
 void static_string_free(StaticString* str);
 
 void static_string_copy(const StaticString* src, StaticString* dest);
+void static_string_copy_len(const StaticString* src, StaticString* dest, 
+        size_t len);
 
 char* static_string_get_ptr(const StaticString* str);
 size_t static_string_get_len(const StaticString* str);

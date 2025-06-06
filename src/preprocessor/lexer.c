@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <assert.h>
+#include <time.h>
 
 #include "util/buffer.h"
 #include "util/static_string.h"
@@ -11,13 +13,38 @@
 
 #include "preprocessor/files.h"
 
-void lexer_init(Lexer* lexer, void* line_map, void* location_map)
+void lexer_initialise(Lexer* lexer, void* line_map, void* location_map)
 {
     // TODO: init macro map and other things here
+    lexer->builtin_defines = buffer_new();
+    lexer->command_line_macros = buffer_new();
+    lexer->command_line_include = buffer_new();
+
+    lexer_add_builtin_macros(lexer);
 }
 
-void lexer_finish(Lexer* lexer)
+void lexer_finalise(Lexer* lexer)
 {
+    // TODO: implement lexer finalisation before tokenising things
+}
+
+void lexer_close(Lexer* lexer)
+{
+    if (lexer->builtin_defines)
+    {
+        buffer_free(lexer->builtin_defines);
+    }
+
+    if (lexer->command_line_macros)
+    {
+        buffer_free(lexer->command_line_macros);
+    }
+
+    if (lexer->command_line_include)
+    {
+        buffer_free(lexer->command_line_include);
+    }
+
     while (lexer->souce_stack)
     {
         lexer->souce_stack = buffered_source_pop(lexer->souce_stack);
@@ -66,15 +93,139 @@ static void buffer_add_include(Buffer* buffer, const char* filename)
 
 // need some functions for parsing command line definitions lol
 
+// returns false if failed to get...
+static void get_date_macro(StaticString* str)
+{
+    static const char months[12][3] =
+    {
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    };
+
+    const time_t current_time = time(NULL);
+
+    // if we failed to get the time
+    if (current_time == (time_t)(-1))
+    {
+        // TODO: should we just silently fail here or issue warning?
+        static_string_init_copy(str, "??? ?? ????");
+
+        return;
+    }
+
+    // Convert to local time and build macro value
+    const struct tm* local_time = localtime(&current_time);
+    
+    char buffer[12];
+    const int wrote = snprintf(buffer, 12, "%.3s %2d %4d", 
+            months[local_time->tm_mon], local_time->tm_mday, 
+            local_time->tm_year + 1900);
+
+    assert(wrote == 11);
+
+    static_string_init_copy(str, buffer);
+}
+
+static void get_time_macro(StaticString* str)
+{
+    const time_t current_time = time(NULL);
+
+    // if we failed to get the time
+    if (current_time == (time_t)(-1))
+    {
+        // TODO: should we just silently fail here or issue warning?
+        static_string_init_copy(str, "??:??:??");
+
+        return;
+    }
+    
+    // Convert to local time and build macro value
+    const struct tm* local_time = localtime(&current_time);
+
+    char buffer[9];
+    const int wrote = snprintf(buffer, 9, "%.02d:%.02d:%.02d", 
+            local_time->tm_hour, local_time->tm_min, local_time->tm_sec);
+
+    assert(wrote == 8);
+
+    static_string_init_copy(str, buffer);
+}
+
 void lexer_add_builtin_macros(Lexer* lexer)
 {
-    Buffer* builtin_buffer = buffer_new();
-    buffer_add_define_definition(builtin_buffer, "__STDC__", "1");
-    buffer_add_define_definition(builtin_buffer, "__STDC_VERSION__", "199901L");
-    // TODO: add more of this stuff
+    // although __DATE__ and __TIME__ are technically dynamic, they only really
+    // need to be calculated once, any more than that is just not necessary
+    StaticString date;
+    StaticString time;
+    get_date_macro(&date);
+    get_time_macro(&time);
 
+    buffer_add_define_definition(lexer->builtin_defines, "__DATE__", date.ptr);
+    buffer_add_define_definition(lexer->builtin_defines, "__TIME__", time.ptr);
+
+    static_string_free(&date);
+    static_string_free(&time);
+
+    buffer_add_define_definition(lexer->builtin_defines, "__STDC__", "1");
+    buffer_add_define_definition(lexer->builtin_defines, "__STDC_VERSION__", "199901L");
+    buffer_add_define_definition(lexer->builtin_defines, "__STDC_HOSTED__", "1");
     
-    buffer_free(builtin_buffer);
+    // NOTE: add more of this stuff if needed (maybe we don't IDK)
+}
+
+void lexer_undef_builtin_macros(Lexer* lexer)
+{
+    // Nothing to do here??? since we only define bare minimum standard macros
+}
+
+void lexer_add_include_path(Lexer* lexer, StaticString* path);
+
+void lexer_add_command_line_macro(Lexer* lexer, StaticString* definition)
+{
+    // TODO: change this so we actually use the StaticString properly 
+    // TODO: instead of getting the ptr and cheesing it...
+    char* current_ptr = definition->ptr;
+    while (*current_ptr != '\0' && *current_ptr != '=')
+    {
+        current_ptr++;
+    }
+
+    if (*current_ptr == '\0')
+    {
+        // Simple case, macro has no '=' so we just put it in as is
+        buffer_add_define(lexer->command_line_macros, definition->ptr);
+    }
+    else
+    {   
+        // TODO: below gross?
+
+        // Complex case, macro has '=' so need to get the first and last part
+        // of the command line argument
+
+        // Copy the first part into a new string add define then free string
+        StaticString first_part;
+        static_string_copy_len(definition, &first_part, 
+                current_ptr - definition->ptr);
+
+        const char* last_part = current_ptr + 1;
+
+        buffer_add_define_definition(lexer->command_line_macros, first_part.ptr, 
+                last_part);
+
+        static_string_free(&first_part);
+    }
+}
+
+void lexer_add_command_line_undef(Lexer* lexer, StaticString* undef)
+{
+    buffer_add_undef_macro(lexer->command_line_macros, undef->ptr);
+}
+
+// void lexer_add_command_line_imacros(Lexer* lexer, StaticString* filename);
+
+void lexer_add_command_line_include(Lexer* lexer, StaticString* filename)
+{
+    buffer_add_include(lexer->command_line_include, filename->ptr);
 }
 
 bool lexer_tokenise(Lexer* lexer, TokenList* tokens)

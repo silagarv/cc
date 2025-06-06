@@ -1,9 +1,32 @@
 #include "command_line.h"
 
+#include <string.h>
+
 #include "util/static_string.h"
 
 #include "driver/options.h"
 #include "driver/diagnostic.h"
+
+bool is_argument(char* maybe_arg)
+{
+    // Check we didn't get "-" for stdin to be used in the future
+    if (maybe_arg[0] == '-' && maybe_arg[1] != '\0')
+    {
+        return true;
+    }
+
+    return false;
+}
+
+bool is_argument_type(char* maybe_arg, char prefix)
+{
+    if (maybe_arg[0] == '-' && maybe_arg[1] == prefix)
+    {
+        return true;
+    }
+
+    return false;
+}
 
 bool command_line_parse(Options* options, int argc, char** argv)
 {

@@ -23,7 +23,7 @@ int compiler_main(int argc, char** argv)
 
     Lexer lexer = {0};
     TokenList tokens = {0};
-    lexer_init(&lexer, NULL, NULL);
+    lexer_initialise(&lexer, NULL, NULL);
 
     if (!lexer_push_start_file(&lexer, &options.file))
     {
@@ -41,7 +41,7 @@ int compiler_main(int argc, char** argv)
 
 bad_tokenisation:
 bad_file:
-    lexer_finish(&lexer);
+    lexer_close(&lexer);
     static_string_free(&options.file);
 bad_options:
     return ret_val;

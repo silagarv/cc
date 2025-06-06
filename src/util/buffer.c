@@ -38,6 +38,11 @@ void buffer_free(Buffer* buff)
     free(buff);
 }
 
+void buffer_free_ptr_only(Buffer* buff)
+{
+    free(buff);
+}
+
 Buffer* buffer_from_cstr(const char* string)
 {
     const size_t len = strlen(string);

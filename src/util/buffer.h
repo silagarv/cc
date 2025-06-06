@@ -18,6 +18,7 @@ Buffer* buffer_new_size(size_t start_cap);
 Buffer* buffer_new(void);
 
 void buffer_free(Buffer* buff);
+void buffer_free_ptr_only(Buffer* buff);
 
 Buffer* buffer_from_cstr(const char* string);
 

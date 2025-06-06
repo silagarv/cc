@@ -39,6 +39,15 @@ void static_string_copy(const StaticString* src, StaticString* dest)
     static_string_init_copy(dest, src->ptr);
 }
 
+void static_string_copy_len(const StaticString* src, StaticString* dest, 
+        size_t len)
+{
+    dest->ptr = xmalloc(sizeof(char) * (len + 1));
+    strncpy(dest->ptr, src->ptr, len);
+    dest->ptr[len] = '\0';
+    dest->len = len;
+}
+
 // the ptr will always be some allocated value so no need to worry
 void static_string_free(StaticString* str)
 {
