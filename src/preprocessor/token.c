@@ -156,7 +156,7 @@ const char* token_get_name(Token* tok)
     }
 
     panic("unable to get token type in token_get_name");
-    return NULL;
+    return ""; // quiet -fanalyzer warning since it must be non-null
 }
 const char* token_get_string(Token* tok)
 {   
