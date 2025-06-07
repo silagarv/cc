@@ -90,3 +90,80 @@ bool static_string_starts_with(const StaticString* str, const char* starting)
     size_t starting_len = strlen(starting);
     return (strncmp(str->ptr, starting, starting_len) == 0);
 }
+
+void static_string_list_init(StaticStringList* list)
+{
+    *list = (StaticStringList)
+    {
+        .strings = xmalloc(sizeof(StaticString)),
+        .used = 0,
+        .allocated = 1
+    };
+}
+
+void static_string_list_init_len(StaticStringList* list, size_t len)
+{
+    *list = (StaticStringList)
+    {
+        .strings = xmalloc(sizeof(StaticString) * len),
+        .used = 0,
+        .allocated = len
+    };
+}
+
+void static_string_list_free(StaticStringList* list)
+{
+    const size_t len = list->used;
+    for (size_t i = 0; i < len; i++)
+    {
+        static_string_free(&list->strings[i]);
+    }
+    free(list->strings);
+}
+
+size_t static_string_list_length(StaticStringList* list)
+{
+    return list->used;
+}
+
+size_t static_string_list_capacity(StaticStringList* list)
+{
+    return list->allocated;
+}
+
+StaticString* static_string_list_get(StaticStringList* list, size_t i)
+{
+    if (i >= list->used)
+    {
+        panic("attempted to get out of range string");
+    }
+
+    return &list->strings[i];
+}
+
+static void static_string_list_expand(StaticStringList* list)
+{
+    list->allocated *= 2;
+    list->strings = xrealloc(list->strings, 
+            sizeof(StaticString) * list->allocated);
+}
+
+StaticString* static_string_list_get_next_free(StaticStringList* list)
+{
+    if (list->used == list->allocated)
+    {
+        static_string_list_expand(list);
+    }
+
+    return &list->strings[list->used++];
+}
+
+void static_string_list_push_back(StaticStringList* list, StaticString* str)
+{
+    if (list->used == list->allocated)
+    {
+        static_string_list_expand(list);
+    }
+
+    list->strings[list->used++] = *str;
+}
