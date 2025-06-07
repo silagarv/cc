@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <time.h>
 
+#include "util/panic.h"
 #include "util/buffer.h"
 #include "util/static_string.h"
 
@@ -51,13 +52,13 @@ void lexer_close(Lexer* lexer)
     }
 }
 
-bool lexer_push_start_file(Lexer* lexer, StaticString* filename)
+int lexer_push_start_file(Lexer* lexer, StaticString* filename)
 {
     if (!is_file(filename))
     {
         fatal_error("cannot find or open file '%s'", filename->ptr);
 
-        return false;
+        return 1;
     }
 
     // We know it is a file here
@@ -66,8 +67,8 @@ bool lexer_push_start_file(Lexer* lexer, StaticString* filename)
             filename->ptr);
 
     lexer->souce_stack = buffered_source_push(lexer->souce_stack, start_source);
-
-    return true;
+    
+    return 0;
 }
 
 static void buffer_add_define_definition(Buffer* buffer, const char* name, 
@@ -228,17 +229,88 @@ void lexer_add_command_line_include(Lexer* lexer, StaticString* filename)
     buffer_add_include(lexer->command_line_include, filename->ptr);
 }
 
-bool lexer_tokenise(Lexer* lexer, TokenList* tokens)
+static void tokenise_identifier(Lexer* lexer)
 {
-    Line line;
-    while (line_read_from_buffered_source(lexer->souce_stack, &line))
+    int curr = '\0';
+    // We are going to do it this way to see if there are any speed
+    // advantages here or if we are just wasting time
+    switch (curr)
     {
-        printf("%s:%u:\n", line.source_real_name, line.real_line_no);
-        printf("%s", line_get_ptr(&line));
-        line_free(&line);
+        case 'a': case 'b': case 'c': case 'd':
+        case 'e': case 'f': case 'g': case 'h':
+        case 'i': case 'j': case 'k': case 'l':
+        case 'm': case 'n': case 'o': case 'p':
+        case 'q': case 'r': case 's': case 't':
+        case 'u': case 'v': case 'w': case 'x':
+        case 'y': case 'z':
+        case 'A': case 'B': case 'C': case 'D':
+        case 'E': case 'F': case 'G': case 'H':
+        case 'I': case 'J': case 'K': case 'L':
+        case 'M': case 'N': case 'O': case 'P':
+        case 'Q': case 'R': case 'S': case 'T':
+        case 'U': case 'V': case 'W': case 'X':
+        case 'Y': case 'Z':
+        case '_':
+
+            break;
+
+        default:
+            panic("not a valid identifier starter");
+            break;
+    }
+}
+
+// for a nice quick skip to end of line
+static void lexer_dispose_line(Lexer* lexer)
+{
+    lexer->has_line = false;
+}
+
+static bool lexer_get_next_line(Lexer* lexer)
+{
+    assert(!lexer->has_line);   
+
+retry:
+    // No source means no lines possible
+    if (!lexer->souce_stack)
+    {
+        return false;
     }
 
+    // if we don't get a line pop top and retry
+    if (!line_read_from_buffered_source(lexer->souce_stack, 
+            &lexer->current_line))
+    {
+        lexer->souce_stack = buffered_source_pop(lexer->souce_stack);
+
+        goto retry;
+    }
+
+    lexer->line_pos = 0;
+
+    // Reset lexer line flags
+    lexer->has_whitespace = false;
+    lexer->is_line_start = true;
+    
+    lexer->is_preproc_line = false;
+    lexer->can_lex_directive_name = false;
+    lexer->can_lex_header_name = false;
+
     return true;
+}
+
+int lexer_tokenise(Lexer* lexer, TokenList* tokens)
+{
+    assert(lexer->souce_stack && "lexer doesn't have a source to lex from");
+
+    while (lexer_get_next_line(lexer))
+    {
+        printf("%s:%u:\n", lexer->current_line.source_real_name, lexer->current_line.real_line_no);
+        printf("%s", line_get_ptr(&lexer->current_line));
+        line_free(&lexer->current_line);
+    }
+
+    return 0;
 }
 
 

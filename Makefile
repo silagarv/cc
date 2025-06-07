@@ -1,5 +1,5 @@
 CC = gcc-12
-CFLAGS = -Wall -Wextra -Wpedantic -std=c99 -g3 -O0 
+CFLAGS = -Wall -Wextra -Wpedantic -std=gnu99 -g3 -O0
 CFLAGS += -Wshadow -Wno-unused-parameter -Wno-unused-function \
 	  -Wno-unused-variable
 CFLAGS += -fanalyzer
@@ -18,6 +18,7 @@ UTIL = src/util/panic.c \
 
 DRIVER = src/driver/diagnostic.c \
 	src/driver/command_line.c \
+	src/driver/translation_unit.c \
 	src/driver/driver.c
 
 PREPROCESSOR = src/preprocessor/files.c \
@@ -26,7 +27,9 @@ PREPROCESSOR = src/preprocessor/files.c \
 	src/preprocessor/token.c \
 	src/preprocessor/lexer.c
 
-SRC = $(UTIL) $(DRIVER) $(PREPROCESSOR)
+PARSE = src/parse/parser.c
+
+SRC = $(UTIL) $(DRIVER) $(PREPROCESSOR) $(PARSE)
 
 cc: $(SRC) src/main.c
 	$(CC) $(CFLAGS) $^ -o $@

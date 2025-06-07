@@ -117,6 +117,20 @@ enum TokenType {
     TOKEN_CHARACTER,
     TOKEN_STRING,
 
+    // Special preprocessing token names
+    // TOKEN_DEFINE,
+    // TOKEN_UNDEF,
+    // TOKEN_INCLUDE,
+    // /* TOKEN_IF, */
+    // TOKEN_IFDEF,
+    // TOKEN_IFNDEF,
+    // /* TOKEN_ELSE, */
+    // TOKEN_ELIF,
+    // TOKEN_ENDIF,
+    // TOKEN_LINE,
+    // TOKEN_ERROR,
+    // TOKEN_PRAGMA,
+    
     TOKEN_HEADER_NAME,
     TOKEN_MACRO_PARAMATER,
     TOKEN_NEWLINE,

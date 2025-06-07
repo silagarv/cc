@@ -49,8 +49,8 @@ void token_free(Token* tok)
 }
 
 const char* token_get_name(Token* tok)
-{   
-    // DO NOT ADD DEFAULT CASE HERE
+{
+    // DO NOT ADD DEFAULT CASE HERE to trigger -Wswitch if anything added
     switch(tok->type)
     {
         case TOKEN_UNKNOWN: return "<unknown-token>";
