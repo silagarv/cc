@@ -30,6 +30,9 @@ struct Lexer {
     IncludeDirectoryList system_paths;
     IncludeDirectoryList after_paths;
 
+    // Special path here which is our ignored paths
+    IncludeDirectoryList ignored_paths;
+
     // Our builtin and command line stuff note that they are done in the order
     // that they appear in here. Also this is essentially just faking putting
     // it before the actual file starts, which I personally quite like
@@ -71,9 +74,10 @@ void lexer_initialise(Lexer* lexer, void* line_map, void* location_map);
 void lexer_finalise(Lexer* lexer);
 void lexer_close(Lexer* lexer);
 
-int lexer_push_start_file(Lexer* lexer, StaticString* filename);
-
-void lexer_add_include_path(Lexer* lexer, StaticString* path);
+void lexer_add_quote_path(Lexer* lexer, StaticString* path);
+void lexer_add_bracket_path(Lexer* lexer, StaticString* path);
+void lexer_add_system_path(Lexer* lexer, StaticString* path);
+void lexer_add_after_path(Lexer* lexer, StaticString* path);
 
 void lexer_add_builtin_macros(Lexer* lexer);
 void lexer_undef_builtin_macros(Lexer* lexer);
@@ -84,6 +88,8 @@ void lexer_add_command_line_undef(Lexer* lexer, StaticString* undef);
 void lexer_add_command_line_include(Lexer* lexer, StaticString* filename);
 
 void lexer_read_macros_from(Lexer* lexer, StaticString* filename);
+
+int lexer_push_start_file(Lexer* lexer, StaticString* filename);
 
 int lexer_tokenise(Lexer* lexer, TokenList* tokens);
 

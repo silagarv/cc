@@ -4,9 +4,11 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <string.h>
 #include <time.h>
 
 #include "util/panic.h"
+#include "util/xmalloc.h"
 #include "util/buffer.h"
 #include "util/static_string.h"
 
@@ -14,61 +16,95 @@
 
 #include "preprocessor/files.h"
 
-void lexer_initialise(Lexer* lexer, void* line_map, void* location_map)
+static void include_directory_list_add_path(IncludeDirectoryList* dirs, 
+        StaticString* path)
 {
-    // TODO: init macro map and other things here
-    lexer->builtin_defines = buffer_new();
-    lexer->command_line_macros = buffer_new();
-    lexer->command_line_include = buffer_new();
+    IncludeDirectory* new_dir = xmalloc(sizeof(IncludeDirectory));
+    static_string_copy(path, &new_dir->path);
+    new_dir->next = NULL;
 
-    lexer_add_builtin_macros(lexer);
-}
-
-void lexer_finalise(Lexer* lexer)
-{
-    // TODO: implement lexer finalisation before tokenising things
-}
-
-void lexer_close(Lexer* lexer)
-{
-    if (lexer->builtin_defines)
+    if (!dirs->start)
     {
-        buffer_free(lexer->builtin_defines);
+        // Set up the directories properly
+        dirs->start = new_dir;
+        dirs->last = new_dir;
     }
-
-    if (lexer->command_line_macros)
+    else
     {
-        buffer_free(lexer->command_line_macros);
-    }
-
-    if (lexer->command_line_include)
-    {
-        buffer_free(lexer->command_line_include);
-    }
-
-    while (lexer->souce_stack)
-    {
-        lexer->souce_stack = buffered_source_pop(lexer->souce_stack);
+        // Simply append to the end
+        dirs->last->next = new_dir;
+        dirs->last = new_dir;
     }
 }
 
-int lexer_push_start_file(Lexer* lexer, StaticString* filename)
+static void include_directory_list_free(IncludeDirectoryList* dirs)
 {
-    if (!is_file(filename))
-    {
-        fatal_error("cannot find or open file '%s'", filename->ptr);
+    IncludeDirectory* dir;
+    for (dir = dirs->start; dir != NULL; )
+    {   
+        // To avoid use after free bugs
+        IncludeDirectory* to_free = dir;
+        dir = dir->next;
 
-        return 1;
+        static_string_free(&to_free->path);
+        free(to_free);
+    }
+}
+
+static void lexer_add_path(IncludeDirectoryList* ignored, 
+        IncludeDirectoryList* dirs, StaticString* path)
+{
+    // Determine which path to append to
+    IncludeDirectoryList* to_append = NULL;
+    if (!is_directory(path))
+    {
+        to_append = ignored;
+    }
+    else 
+    {
+        to_append = dirs;
     }
 
-    // We know it is a file here
-    FILE* file = fopen(filename->ptr, "r");
-    BufferedSource* start_source = buffered_source_from_file(file, 
-            filename->ptr);
+    include_directory_list_add_path(to_append, path);
+}
 
-    lexer->souce_stack = buffered_source_push(lexer->souce_stack, start_source);
-    
-    return 0;
+static void lexer_add_builtin_paths(Lexer* lexer)
+{
+    const char* builtins[] = {
+        "/usr/include"
+    };
+    const size_t num_paths = sizeof(builtins) / sizeof(builtins[0]);
+
+    for (size_t i = 0; i < num_paths; i++)
+    {
+        StaticString path = (StaticString)
+        {
+            .ptr = (char*) builtins[i],
+            .len = strlen(builtins[i])
+        };
+
+        lexer_add_system_path(lexer, &path);
+    }
+}
+
+void lexer_add_quote_path(Lexer* lexer, StaticString* path)
+{
+    lexer_add_path(&lexer->ignored_paths, &lexer->quote_paths, path);
+}
+
+void lexer_add_bracket_path(Lexer* lexer, StaticString* path)
+{
+    lexer_add_path(&lexer->ignored_paths, &lexer->bracket_paths, path);
+}
+
+void lexer_add_system_path(Lexer* lexer, StaticString* path)
+{
+    lexer_add_path(&lexer->ignored_paths, &lexer->system_paths, path);
+}
+
+void lexer_add_after_path(Lexer* lexer, StaticString* path)
+{
+    lexer_add_path(&lexer->ignored_paths, &lexer->after_paths, path);
 }
 
 static void buffer_add_define_definition(Buffer* buffer, const char* name, 
@@ -177,6 +213,7 @@ void lexer_add_builtin_macros(Lexer* lexer)
 void lexer_undef_builtin_macros(Lexer* lexer)
 {
     // Nothing to do here??? since we only define bare minimum standard macros
+    // might need to implement more in the future
 }
 
 void lexer_add_include_path(Lexer* lexer, StaticString* path);
@@ -229,6 +266,90 @@ void lexer_add_command_line_include(Lexer* lexer, StaticString* filename)
     buffer_add_include(lexer->command_line_include, filename->ptr);
 }
 
+// for a nice quick skip to end of line
+static void lexer_dispose_line(Lexer* lexer)
+{
+    lexer->has_line = false;
+}
+
+// TODO: make sure we register the line
+static bool lexer_get_next_line(Lexer* lexer)
+{
+    assert(!lexer->has_line);   
+
+    // Reset lexing position
+    lexer->line_pos = 0;
+
+    // Reset lexer line flags
+    lexer->has_whitespace = false;
+    lexer->is_line_start = true;
+    
+    lexer->is_preproc_line = false;
+    lexer->can_lex_directive_name = false;
+    lexer->can_lex_header_name = false;
+
+retry:
+    // No source means no lines possible
+    if (!lexer->souce_stack)
+    {
+        return false;
+    }
+
+    // if we don't get a line pop top and retry
+    if (!line_read_from_buffered_source(lexer->souce_stack, 
+            &lexer->current_line))
+    {
+        lexer->souce_stack = buffered_source_pop(lexer->souce_stack);
+
+        goto retry;
+    }
+
+    lexer->has_line = true;
+
+    return true;
+}
+
+static int lexer_get_char(Lexer* lexer)
+{
+    if (!lexer->has_line && !lexer_get_next_line(lexer))
+    {
+        return EOF;
+    }
+
+    char c = line_get_char(&lexer->current_line, lexer->line_pos++);
+
+    // If we get a newline we are done with this
+    if (c == '\n')
+    {
+        assert(lexer->line_pos == line_get_length(&lexer->current_line));
+
+        line_free(&lexer->current_line);
+
+        lexer_dispose_line(lexer);
+    }
+
+    return c;
+}
+
+static int lexer_curr_char(Lexer* lexer)
+{
+    assert(lexer->has_line);
+
+    return line_get_char(&lexer->current_line, lexer->line_pos);
+}
+
+static void lexer_unget_char(Lexer* lexer)
+{
+    assert(lexer->has_line);
+
+    if (!lexer->line_pos)
+    {
+        panic("cannot unget char when at 0th position");
+    }
+
+    lexer->line_pos--;
+}
+
 static void tokenise_identifier(Lexer* lexer)
 {
     int curr = '\0';
@@ -236,6 +357,9 @@ static void tokenise_identifier(Lexer* lexer)
     // advantages here or if we are just wasting time
     switch (curr)
     {
+        // goto lex_keyword_fail;
+
+// lex_keyword_fail:
         case 'a': case 'b': case 'c': case 'd':
         case 'e': case 'f': case 'g': case 'h':
         case 'i': case 'j': case 'k': case 'l':
@@ -260,54 +384,86 @@ static void tokenise_identifier(Lexer* lexer)
     }
 }
 
-// for a nice quick skip to end of line
-static void lexer_dispose_line(Lexer* lexer)
+static TokenType lexer_get_next_token(Lexer* lexer, TokenList* tokens);
+
+void lexer_initialise(Lexer* lexer, void* line_map, void* location_map)
 {
-    lexer->has_line = false;
+    // TODO: init macro map and other things here
+    lexer->builtin_defines = buffer_new();
+    lexer->command_line_macros = buffer_new();
+    lexer->command_line_include = buffer_new();
+
+    lexer_add_builtin_paths(lexer);
+
+    lexer_add_builtin_macros(lexer);
 }
 
-static bool lexer_get_next_line(Lexer* lexer)
+void lexer_finalise(Lexer* lexer)
 {
-    assert(!lexer->has_line);   
+    // TODO: implement lexer finalisation before tokenising things
+}
 
-retry:
-    // No source means no lines possible
-    if (!lexer->souce_stack)
+void lexer_close(Lexer* lexer)
+{
+    if (lexer->builtin_defines)
     {
-        return false;
+        buffer_free(lexer->builtin_defines);
     }
 
-    // if we don't get a line pop top and retry
-    if (!line_read_from_buffered_source(lexer->souce_stack, 
-            &lexer->current_line))
+    if (lexer->command_line_macros)
+    {
+        buffer_free(lexer->command_line_macros);
+    }
+
+    if (lexer->command_line_include)
+    {
+        buffer_free(lexer->command_line_include);
+    }
+
+    // Free all of our paths including our ignored paths
+    include_directory_list_free(&lexer->quote_paths);
+    include_directory_list_free(&lexer->bracket_paths);
+    include_directory_list_free(&lexer->system_paths);
+    include_directory_list_free(&lexer->after_paths);
+
+    include_directory_list_free(&lexer->ignored_paths);
+
+    while (lexer->souce_stack)
     {
         lexer->souce_stack = buffered_source_pop(lexer->souce_stack);
+    }
+}
 
-        goto retry;
+int lexer_push_start_file(Lexer* lexer, StaticString* filename)
+{
+    if (!is_file(filename))
+    {
+        fatal_error("cannot find or open file '%s'", filename->ptr);
+
+        return 1;
     }
 
-    lexer->line_pos = 0;
+    // We know it is a file here
+    FILE* file = fopen(filename->ptr, "r");
+    BufferedSource* start_source = buffered_source_from_file(file, 
+            filename->ptr);
 
-    // Reset lexer line flags
-    lexer->has_whitespace = false;
-    lexer->is_line_start = true;
+    lexer->souce_stack = buffered_source_push(lexer->souce_stack, start_source);
     
-    lexer->is_preproc_line = false;
-    lexer->can_lex_directive_name = false;
-    lexer->can_lex_header_name = false;
-
-    return true;
+    return 0;
 }
 
 int lexer_tokenise(Lexer* lexer, TokenList* tokens)
 {
     assert(lexer->souce_stack && "lexer doesn't have a source to lex from");
 
-    while (lexer_get_next_line(lexer))
+    int c;
+    while (c = lexer_get_char(lexer), c != EOF)
     {
-        printf("%s:%u:\n", lexer->current_line.source_real_name, lexer->current_line.real_line_no);
-        printf("%s", line_get_ptr(&lexer->current_line));
-        line_free(&lexer->current_line);
+        // printf("%c", c);
+        // printf("%s:%u:\n", lexer->current_line.source_real_name, lexer->current_line.real_line_no);
+        // printf("%s", line_get_ptr(&lexer->current_line));
+        // line_free(&lexer->current_line);
     }
 
     return 0;

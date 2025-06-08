@@ -95,7 +95,13 @@ static const char* diagnostic_kind_to_colour(DiagnosticKind kind)
     }
 }
 
-static void diagnostic_internal(DiagnosticKind kind, char* fmt, va_list args)
+static void diagnostic_finish(void)
+{
+    fprintf(stderr, "\n");
+}
+
+static void diagnostic_internal(DiagnosticKind kind, const char* fmt, 
+        va_list args)
 {
     fprintf(stderr, "%s%s%s:%s%s ",
             colours.highlight,
@@ -105,47 +111,57 @@ static void diagnostic_internal(DiagnosticKind kind, char* fmt, va_list args)
             colours.reset_all
         );
     vfprintf(stderr, fmt, args);
-    fprintf(stderr, "\n\n");
+    fprintf(stderr, "\n");
 }
 
-void fatal_error(char* fmt, ...)
+void fatal_error(const char* fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
     diagnostic_internal(DIAGNOSTIC_FATAL, fmt, args);
     va_end(args);
+
+    diagnostic_finish();
 }
 
-void error(char* fmt, ...)
+void error(const char* fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
     diagnostic_internal(DIAGNOSTIC_ERROR, fmt, args);
     va_end(args);
+
+    diagnostic_finish();
 }
 
-void warning(char* fmt, ...)
+void warning(const char* fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
     diagnostic_internal(DIAGNOSTIC_WARNING, fmt, args);
     va_end(args);
+
+    diagnostic_finish();
 }
 
-void note(char* fmt, ...)
+void note(const char* fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
     diagnostic_internal(DIAGNOSTIC_NOTE, fmt, args);
     va_end(args);
+
+    diagnostic_finish();
 }
 
-void help(char* fmt, ...)
+void help(const char* fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
     diagnostic_internal(DIAGNOSTIC_HELP, fmt, args);
     va_end(args);
+
+    diagnostic_finish();
 }
 
 // void print_error_line(Line* line, char* fmt, ...)

@@ -160,6 +160,8 @@ typedef struct TokenList TokenList;
 void token_freshen_up(Token* tok);
 void token_free(Token* tok);
 
+const char* token_type_get_name(TokenType type);
+
 const char* token_get_name(Token* tok);
 const char* token_get_string(Token* tok);
 

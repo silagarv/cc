@@ -48,10 +48,10 @@ void token_free(Token* tok)
     // otherwise there is nothing else to do since tok itself is stored elsewhre
 }
 
-const char* token_get_name(Token* tok)
+const char* token_type_get_name(TokenType type)
 {
     // DO NOT ADD DEFAULT CASE HERE to trigger -Wswitch if anything added
-    switch(tok->type)
+    switch(type)
     {
         case TOKEN_UNKNOWN: return "<unknown-token>";
         case TOKEN_EOF: return "<end-of-file>";
@@ -157,6 +157,11 @@ const char* token_get_name(Token* tok)
 
     panic("unable to get token type in token_get_name");
     return ""; // quiet -fanalyzer warning since it must be non-null
+}
+
+const char* token_get_name(Token* tok)
+{
+    return token_type_get_name(tok->type);
 }
 const char* token_get_string(Token* tok)
 {   
