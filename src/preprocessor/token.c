@@ -143,9 +143,9 @@ const char* token_type_get_name(TokenType type)
         case TOKEN_VOID: return "void";
         case TOKEN_VOLATILE: return "volatile";
         case TOKEN_WHILE: return "while";
-        case TOKEN_BOOL: return "_Bool";
-        case TOKEN_COMPLEX: return "_Complex";
-        case TOKEN_IMAGINARY: return "_Imaginary";
+        case TOKEN__BOOL: return "_Bool";
+        case TOKEN__COMPLEX: return "_Complex";
+        case TOKEN__IMAGINARY: return "_Imaginary";
         case TOKEN_IDENTIFIER: return "<identifier>";
         case TOKEN_NUMBER: return "<preprocessing-number>";
         case TOKEN_CHARACTER: return "<character-constant>";

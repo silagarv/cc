@@ -107,9 +107,9 @@ enum TokenType {
     TOKEN_VOID,
     TOKEN_VOLATILE,
     TOKEN_WHILE,
-    TOKEN_BOOL,
-    TOKEN_COMPLEX,
-    TOKEN_IMAGINARY,
+    TOKEN__BOOL,
+    TOKEN__COMPLEX,
+    TOKEN__IMAGINARY,
 
     // Special tokens begin here
     TOKEN_IDENTIFIER,
