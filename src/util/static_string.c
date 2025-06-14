@@ -118,7 +118,11 @@ void static_string_list_free(StaticStringList* list)
     {
         static_string_free(&list->strings[i]);
     }
-    free(list->strings);
+
+    if (list->strings)
+    {
+        free(list->strings);
+    }
 }
 
 size_t static_string_list_length(StaticStringList* list)

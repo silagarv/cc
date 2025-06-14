@@ -9,7 +9,7 @@
 #include "util/xmalloc.h"
 #include "util/buffer.h"
 
-#define SOURCE_BUFFER_SIZE (4096)
+#define SOURCE_BUFFER_SIZE (4096 * 4)
 
 BufferedSource* buffered_source_from_file(FILE* fp, char* start_name)
 {

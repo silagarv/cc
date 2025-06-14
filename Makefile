@@ -1,5 +1,5 @@
 CC = gcc-12
-CFLAGS = -Wall -Wextra -Wpedantic -std=gnu99 -g3 -O0
+CFLAGS = -Wall -Wextra -Wpedantic -std=c99 -g3 -O0
 CFLAGS += -Wshadow -Wno-unused-parameter -Wno-unused-function \
 	  -Wno-unused-variable
 CFLAGS += -fanalyzer
@@ -17,6 +17,7 @@ UTIL = src/util/panic.c \
 	src/util/static_string.c
 
 DRIVER = src/driver/diagnostic.c \
+	src/driver/options.c \
 	src/driver/command_line.c \
 	src/driver/translation_unit.c \
 	src/driver/driver.c

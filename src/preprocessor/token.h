@@ -180,4 +180,9 @@ bool token_list_string_cat(TokenList* list, Token* dest);
 
 // Perhaps some stuff here for concatenations and other things
 
+void token_list_initialise(TokenList* tokens);
+void token_list_free(TokenList* tokens);
+
+Token* token_list_get_next(TokenList* tokens);
+
 #endif /* TOKEN_H */
