@@ -35,12 +35,12 @@ void* xcalloc(size_t nmenb, size_t size)
 
 void* xrealloc(void* ptr, size_t size)
 {
-    ptr = realloc(ptr, size);
+    void* ptr_new = realloc(ptr, size);
     
-    if (!ptr) 
+    if (!ptr_new) 
     {
         xmem_error();
     }
 
-    return ptr;
+    return ptr_new;
 }

@@ -1,5 +1,7 @@
 #include "files.h"
 
+#include "util/panic.h"
+
 #include <sys/stat.h>
 
 bool is_directory(StaticString* maybe_dir)
@@ -41,5 +43,12 @@ FILE* open_file(StaticString* filename)
         return NULL;
     }
 
-    return fopen(filename->ptr, "r");
+    FILE* file = fopen(filename->ptr, "r");
+
+    if (!file)
+    {
+        panic("we though it was a file but fopen fails");
+    }
+
+    return file;
 }

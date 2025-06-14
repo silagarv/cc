@@ -33,6 +33,16 @@ void static_string_init_len(StaticString* dest, char* val, size_t len)
     dest->len = len;
 }
 
+void static_string_init_char(StaticString* dest, char val)
+{
+    char* buffer = xmalloc(sizeof(char) * 2);
+    buffer[0] = val;
+    buffer[1] = '\0';
+
+    dest->ptr = buffer;
+    dest->len = 1;
+}
+
 void static_string_copy(const StaticString* src, StaticString* dest)
 {
     // Lazy but should work

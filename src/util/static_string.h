@@ -22,6 +22,7 @@ typedef struct StaticStringList StaticStringList;
 void static_string_init(StaticString* dest, char* val);
 void static_string_init_copy(StaticString* dest, const char* val);
 void static_string_init_len(StaticString* dest, char* val, size_t len);
+void static_string_init_char(StaticString* dest, char val);
 
 void static_string_free(StaticString* str);
 
