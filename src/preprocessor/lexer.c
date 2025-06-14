@@ -37,6 +37,12 @@ static void include_directory_list_add_path(IncludeDirectoryList* dirs,
     }
 }
 
+static void include_directory_list_append(IncludeDirectoryList* start_paths, 
+        IncludeDirectoryList* end_paths)
+{
+    panic("unimplemented");
+}
+
 static void include_directory_list_free(IncludeDirectoryList* dirs)
 {
     IncludeDirectory* dir;
@@ -133,6 +139,8 @@ static void buffer_add_include(Buffer* buffer, const char* filename)
 // returns false if failed to get...
 static void get_date_macro(StaticString* str)
 {
+    // TODO: make date macro into a string constant not just some nummbers
+
     static const char months[12][3] =
     {
         "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -165,6 +173,8 @@ static void get_date_macro(StaticString* str)
 
 static void get_time_macro(StaticString* str)
 {
+    // TODO: fix so that time macro has \"??:??:??\" in it
+
     const time_t current_time = time(NULL);
 
     // if we failed to get the time
@@ -215,8 +225,6 @@ void lexer_undef_builtin_macros(Lexer* lexer)
     // Nothing to do here??? since we only define bare minimum standard macros
     // might need to implement more in the future
 }
-
-void lexer_add_include_path(Lexer* lexer, StaticString* path);
 
 void lexer_add_command_line_macro(Lexer* lexer, StaticString* definition)
 {
@@ -326,6 +334,8 @@ static int lexer_get_char(Lexer* lexer)
         line_free(&lexer->current_line);
 
         lexer_dispose_line(lexer);
+
+        lexer_get_next_line(lexer);
     }
 
     return c;
@@ -333,9 +343,88 @@ static int lexer_get_char(Lexer* lexer)
 
 static int lexer_curr_char(Lexer* lexer)
 {
-    assert(lexer->has_line);
+    if (!lexer->has_line)
+    {
+        return EOF;
+    }
 
     return line_get_char(&lexer->current_line, lexer->line_pos);
+}
+
+static bool is_whitespace(int c)
+{
+    switch (c)
+    {
+        case ' ':
+        case '\t':
+        case '\v':
+        case '\f':
+        case '\r':
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+static bool lexer_skip_white(Lexer* lexer)
+{
+    if (!is_whitespace(lexer_curr_char(lexer)))
+    {
+        return false;
+    }
+
+    // int c;
+    // while ((c = lexer_curr_char(lexer)) != EOF && is_whitespace(c))
+    // {
+    //     (void) lexer_get_char(lexer);
+    // }
+
+    while (true)
+    {
+        int c = lexer_curr_char(lexer);
+
+        if (c == EOF) 
+        {
+            break;
+        }
+
+        if (is_whitespace(c))
+        {
+            (void) lexer_get_char(lexer);
+
+            continue;
+        }
+        
+    }
+
+    return true;
+}
+
+static void lexer_skip_line_comment(Lexer* lexer)
+{
+    line_free(&lexer->current_line);
+
+    lexer_dispose_line(lexer);
+
+    lexer_get_next_line(lexer);
+}
+
+static void lexer_skip_block_comment(Lexer* lexer)
+{
+    assert(lexer_curr_char(lexer) == '*');
+
+    int curr;
+    while (true)
+    {
+        curr = lexer_get_char(lexer);
+        if (curr == '*' && lexer_curr_char(lexer) == '/')
+        {
+            lexer_get_char(lexer);
+
+            break;
+        }
+    }
 }
 
 static void lexer_unget_char(Lexer* lexer)
@@ -350,43 +439,69 @@ static void lexer_unget_char(Lexer* lexer)
     lexer->line_pos--;
 }
 
-static void tokenise_identifier(Lexer* lexer)
+static void tokenise_identifier(Lexer* lexer, Token* token)
 {
-    int curr = '\0';
-    // We are going to do it this way to see if there are any speed
-    // advantages here or if we are just wasting time
-    switch (curr)
-    {
-        // goto lex_keyword_fail;
 
-// lex_keyword_fail:
-        case 'a': case 'b': case 'c': case 'd':
-        case 'e': case 'f': case 'g': case 'h':
-        case 'i': case 'j': case 'k': case 'l':
-        case 'm': case 'n': case 'o': case 'p':
-        case 'q': case 'r': case 's': case 't':
-        case 'u': case 'v': case 'w': case 'x':
-        case 'y': case 'z':
-        case 'A': case 'B': case 'C': case 'D':
-        case 'E': case 'F': case 'G': case 'H':
-        case 'I': case 'J': case 'K': case 'L':
-        case 'M': case 'N': case 'O': case 'P':
-        case 'Q': case 'R': case 'S': case 'T':
-        case 'U': case 'V': case 'W': case 'X':
-        case 'Y': case 'Z':
-        case '_':
-
-            break;
-
-        default:
-            panic("not a valid identifier starter");
-            break;
-    }
 }
 
-static TokenType lexer_get_next_token(Lexer* lexer, TokenList* tokens);
+static void tokenise_number(Lexer* lexer, Token* token)
+{
 
-void lexer_initialise(Lexer* lexer, void* line_map, void* location_map)
+}
+
+static void tokenise_unknown(Lexer* lexer, Token* token, int c)
+{
+
+}
+
+#define SINGLE_CHAR(ch, tt) do \
+    { \
+        assert(ch == c); \
+        token->type = tt; \
+    } while (0)
+
+static TokenType lexer_get_next_token(Lexer* lexer, TokenList* tokens)
+{
+    Token* token = token_list_get_next(tokens);
+
+// retry:;
+    const bool has_whitespace = lexer_skip_white(lexer);
+
+    int c = lexer_get_char(lexer);
+    switch (c)
+    {
+
+
+        // All single character 
+        case '[': SINGLE_CHAR('[', TOKEN_LBRACKET); break;
+        case ']': SINGLE_CHAR(']', TOKEN_RBRACKET); break;
+        case '(': SINGLE_CHAR('(', TOKEN_LPAREN); break;
+        case ')': SINGLE_CHAR(')', TOKEN_RPAREN); break;
+        case '{': SINGLE_CHAR('{', TOKEN_LCURLY); break;
+        case '}': SINGLE_CHAR('}', TOKEN_RCURLY); break;
+        case '?': SINGLE_CHAR('?', TOKEN_QUESTION); break;
+        case ';': SINGLE_CHAR(';', TOKEN_SEMI); break;
+        case ',': SINGLE_CHAR(',', TOKEN_COMMA); break;
+        case '~': SINGLE_CHAR('~', TOKEN_TILDE); break;
+
+        case '\n': SINGLE_CHAR('\n', TOKEN_NEWLINE); break;
+            
+        case EOF:
+            token->type = TOKEN_EOF;
+            break;
+        
+        // token_unknown:
+        default:
+            static_string_init_char(&token->opt_value, c);
+            token->type = TOKEN_UNKNOWN;
+            break;
+    }
+
+    return token->type;
+}
+
+void lexer_initialise(Lexer* lexer, Options* opts, void* line_map, 
+        void* location_map)
 {
     // TODO: init macro map and other things here
     lexer->builtin_defines = buffer_new();
@@ -396,11 +511,8 @@ void lexer_initialise(Lexer* lexer, void* line_map, void* location_map)
     lexer_add_builtin_paths(lexer);
 
     lexer_add_builtin_macros(lexer);
-}
 
-void lexer_finalise(Lexer* lexer)
-{
-    // TODO: implement lexer finalisation before tokenising things
+    // TODO: add include path appending to finalise them for actually lexing
 }
 
 void lexer_close(Lexer* lexer)
@@ -421,6 +533,8 @@ void lexer_close(Lexer* lexer)
     }
 
     // Free all of our paths including our ignored paths
+
+    //TODO: will need to modify below once appending occurs
     include_directory_list_free(&lexer->quote_paths);
     include_directory_list_free(&lexer->bracket_paths);
     include_directory_list_free(&lexer->system_paths);
@@ -436,20 +550,21 @@ void lexer_close(Lexer* lexer)
 
 int lexer_push_start_file(Lexer* lexer, StaticString* filename)
 {
-    if (!is_file(filename))
+    FILE* file = open_file(filename);
+    if (!file)
     {
         fatal_error("cannot find or open file '%s'", filename->ptr);
 
         return 1;
     }
 
-    // We know it is a file here
-    FILE* file = fopen(filename->ptr, "r");
     BufferedSource* start_source = buffered_source_from_file(file, 
-            filename->ptr);
+            filename);
 
     lexer->souce_stack = buffered_source_push(lexer->souce_stack, start_source);
     
+    lexer_get_next_line(lexer);
+
     return 0;
 }
 
@@ -457,14 +572,20 @@ int lexer_tokenise(Lexer* lexer, TokenList* tokens)
 {
     assert(lexer->souce_stack && "lexer doesn't have a source to lex from");
 
-    int c;
-    while (c = lexer_get_char(lexer), c != EOF)
+    while (lexer_curr_char(lexer) != EOF)
     {
-        // printf("%c", c);
-        // printf("%s:%u:\n", lexer->current_line.source_real_name, lexer->current_line.real_line_no);
-        // printf("%s", line_get_ptr(&lexer->current_line));
-        // line_free(&lexer->current_line);
+        printf("%c", lexer_curr_char(lexer));
+
+        lexer_get_char(lexer);
     }
+
+    // while (lexer_get_next_token(lexer, tokens) != TOKEN_EOF)
+    // {
+    //     Token token = tokens->tokens[tokens->used - 1];
+
+    //     printf("%s\n", token_get_name(&token));
+    //     printf("%s\n", token_get_string(&token));
+    // }
 
     return 0;
 }

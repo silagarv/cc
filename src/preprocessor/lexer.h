@@ -6,6 +6,8 @@
 
 #include "util/static_string.h"
 
+#include "driver/options.h"
+
 #include "preprocessor/buffered_source.h"
 #include "preprocessor/line.h"
 #include "preprocessor/token.h"
@@ -70,8 +72,8 @@ struct Lexer {
 };
 typedef struct Lexer Lexer;
 
-void lexer_initialise(Lexer* lexer, void* line_map, void* location_map);
-void lexer_finalise(Lexer* lexer);
+void lexer_initialise(Lexer* lexer, Options* opts, void* line_map, 
+        void* location_map);
 void lexer_close(Lexer* lexer);
 
 void lexer_add_quote_path(Lexer* lexer, StaticString* path);

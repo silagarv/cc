@@ -27,8 +27,8 @@ static void line_get_fresh(Line* line, BufferedSource* source)
     {
         .id = LINEID_MAX,
 
-        .source_name = source->current_name,
-        .source_real_name = source->name,
+        // .source_name = source->current_name,
+        // .source_real_name = source->name,
 
         .line_no = source->current_line_no,
         .real_line_no = source->line_no,
@@ -39,6 +39,9 @@ static void line_get_fresh(Line* line, BufferedSource* source)
         .backslash_newline = false,
         .ending_newline = false
     };
+
+    static_string_copy(&source->current_name, &line->source_name);
+    static_string_copy(&source->name, &line->source_real_name);
 }
 
 // Function to recover on the incorrect characrers again returning true
@@ -221,6 +224,9 @@ bool line_read_from_buffered_source(BufferedSource* source, Line* line)
 
 void line_free(Line* line)
 {
+    static_string_free(&line->source_name);
+    static_string_free(&line->source_real_name);
+
     buffer_free(line->buffer);
 }
 

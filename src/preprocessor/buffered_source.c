@@ -11,7 +11,7 @@
 
 #define SOURCE_BUFFER_SIZE (4096 * 4)
 
-BufferedSource* buffered_source_from_file(FILE* fp, char* start_name)
+BufferedSource* buffered_source_from_file(FILE* fp, StaticString* start_name)
 {
     BufferedSource* source = xmalloc(sizeof(BufferedSource));
     *source = (BufferedSource) 
@@ -21,19 +21,24 @@ BufferedSource* buffered_source_from_file(FILE* fp, char* start_name)
         .buffer = buffer_new_size(SOURCE_BUFFER_SIZE),
         .buffer_pos = 0,
 
-        .name = start_name,
-        .current_name = start_name,
+        // .name = start_name,
+        // .current_name = start_name,
         
+        .type = BUFFERED_SOURCE_FILE,
+
         .line_no = 1,
         .current_line_no = 1,
         
         .prev = NULL
     };
 
+    static_string_copy(start_name, &source->name);
+    static_string_copy(start_name, &source->current_name);
+
     return source;
 }
 
-BufferedSource* buffered_source_from_buffer(Buffer* buffer, char* start_name)
+BufferedSource* buffered_source_from_buffer(Buffer* buffer, StaticString* start_name)
 {
     BufferedSource* source = xmalloc(sizeof(BufferedSource));
     *source = (BufferedSource) 
@@ -43,8 +48,10 @@ BufferedSource* buffered_source_from_buffer(Buffer* buffer, char* start_name)
         .buffer = buffer,
         .buffer_pos = 0,
 
-        .name = start_name,
-        .current_name = start_name,
+        // .name = start_name,
+        // .current_name = start_name,
+
+        .type = BUFFERED_SOURCE_BUFFER,
         
         .line_no = 1,
         .current_line_no = 1,
@@ -52,18 +59,26 @@ BufferedSource* buffered_source_from_buffer(Buffer* buffer, char* start_name)
         .prev = NULL
     };
 
+    static_string_copy(start_name, &source->name);
+    static_string_copy(start_name, &source->current_name);
+
     return source;
 }
 
 void buffered_source_free(BufferedSource* source)
 {
     // Can only fclose an actual file...
-    if (source->fp)
+
+    if (source->type == BUFFERED_SOURCE_FILE)
     {
         fclose(source->fp);
     }
 
     buffer_free(source->buffer);
+
+    static_string_free(&source->name);
+    static_string_free(&source->current_name);
+
     free(source);
 }
 
@@ -72,9 +87,9 @@ void buffered_source_set_line_no(BufferedSource* source, uint32_t new_no)
     source->current_line_no = new_no;
 }
 
-void buffered_source_set_name(BufferedSource* source, char* new_name)
+void buffered_source_set_name(BufferedSource* source, StaticString* new_name)
 {
-    source->current_name = new_name;
+    static_string_copy(new_name, &source->current_name);
 }
 
 static bool buffered_source_is_eob(BufferedSource* source)

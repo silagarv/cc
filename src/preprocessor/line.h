@@ -11,9 +11,9 @@ typedef uint32_t LineID;
 
 struct Line
 {
-    // non-owned filenames
-    char* source_name;
-    char* source_real_name;
+    // owned-filenames here
+    StaticString source_name;
+    StaticString source_real_name;
 
     uint32_t line_no;
     uint32_t real_line_no;
