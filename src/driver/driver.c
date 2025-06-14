@@ -14,42 +14,22 @@ int compiler_init(void)
     return 0; // In the future maybe we might have stuff that fails?
 }
 
-int compile_translation_unit(void)
-{
-    return 0;
-}
-
-int compiler_main(int argc, char** argv)
+static int compile_translation_unit(Options* options)
 {
     int ret_val = 0;
 
-    if (compiler_init())
-    {
-        // Currently dead code
-
-        ret_val = 1;
-
-        goto initisation_fail;
-    }
-
-    Options options = {0};
-    if (command_line_parse(&options, argc, argv))
-    {
-        ret_val = 1;
-
-        goto bad_options;
-    }
-
     Lexer lexer = {0};
-    TokenList tokens = {0};
-    lexer_initialise(&lexer, NULL, NULL);
+    lexer_initialise(&lexer, options, NULL, NULL);
 
-    if (lexer_push_start_file(&lexer, &options.file))
+    if (lexer_push_start_file(&lexer, &options->starting_file))
     {
         ret_val = 1;
 
         goto bad_file;
     }
+
+    TokenList tokens = {0};
+    token_list_initialise(&tokens);
 
     if (lexer_tokenise(&lexer, &tokens))
     {
@@ -59,11 +39,43 @@ int compiler_main(int argc, char** argv)
     }
 
 bad_tokenisation:
+    token_list_free(&tokens);
 bad_file:
     lexer_close(&lexer);
-    static_string_free(&options.file);
+
+    return ret_val;
+}
+
+int compiler_main(int argc, char** argv)
+{
+    int ret_val = 0;
+
+    if (compiler_init())
+    {
+        ret_val = 1;
+
+        goto initisation_fail;
+    }
+
+    Options options = {0};
+    options_initialise(&options);
+    if (command_line_parse(&options, argc, argv))
+    {
+        ret_val = 1;
+
+        goto bad_options;
+    }
+
+    if (compile_translation_unit(&options))
+    {
+        ret_val = 1;
+
+        goto bad_translation_unit;
+    }
+
+bad_translation_unit:
 bad_options:
-    // Nothing extra for bad options
+    options_free(&options);
 initisation_fail:
     return ret_val;
 }

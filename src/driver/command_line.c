@@ -7,7 +7,7 @@
 #include "driver/options.h"
 #include "driver/diagnostic.h"
 
-bool is_argument(const char* maybe_arg)
+static bool is_argument(const char* maybe_arg)
 {
     // Check we didn't get "-" for stdin to be used in the future
     if (maybe_arg[0] == '-' && maybe_arg[1] != '\0')
@@ -18,20 +18,25 @@ bool is_argument(const char* maybe_arg)
     return false;
 }
 
-bool is_argument_equal(const char* maybe_arg, const char* desired)
+static bool is_argument_prefix(const char* maybe_arg, const char* prefix)
+{
+    return (!strncmp(maybe_arg, prefix, strlen(prefix)));
+}
+
+static bool is_argument_equal(const char* maybe_arg, const char* desired)
 {
     if (!is_argument(maybe_arg))
     {
         return false;
     }
 
-    return (strcmp(maybe_arg + 1, desired) == 0);
+    return (!strcmp(maybe_arg + 1, desired));
 }
 
-static bool parse_preprocessor_args(Options* options, int* argc, char** argv)
-{
-    return false;
-}
+// static bool parse_preprocessor_args(Options* options, int* argc, char** argv)
+// {
+//     return false;
+// }
 
 int command_line_parse(Options* options, int argc, char** argv)
 {
@@ -44,14 +49,15 @@ int command_line_parse(Options* options, int argc, char** argv)
         return 1;
     }
 
-    static_string_init_copy(&options->file, argv[1]);
+    static_string_init_copy(&options->starting_file, argv[1]);
 
     bool triggered_warning = false;
     for (int arg = 2; arg < argc; arg++)
     {
         if (is_argument_equal(argv[arg], "fno-line-notes"))
         {
-            note("yat");
+            note("no-line-notes");
+            continue;
         }
 
         warning("only one input file supported; ignoring file '%s'", argv[arg]);
