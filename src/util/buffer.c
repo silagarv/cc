@@ -53,20 +53,20 @@ Buffer* buffer_from_cstr(const char* string)
     return buffer;
 }
 
-size_t buffer_get_len(Buffer* buff)
-{
-    return buff->len;
-}
+// size_t buffer_get_len(Buffer* buff)
+// {
+//     return buff->len;
+// }
 
-size_t buffer_get_cap(Buffer* buff)
-{
-    return buff->cap;
-}
+// size_t buffer_get_cap(Buffer* buff)
+// {
+//     return buff->cap;
+// }
 
-char* buffer_get_ptr(Buffer* buff)
-{
-    return buff->buffer;
-}
+// char* buffer_get_ptr(Buffer* buff)
+// {
+//     return buff->buffer;
+// }
 
 static bool buffer_is_equal_internal(const char* str1, const char* str2, 
         size_t len)

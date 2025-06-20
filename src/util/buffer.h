@@ -22,9 +22,9 @@ void buffer_free_ptr_only(Buffer* buff);
 
 Buffer* buffer_from_cstr(const char* string);
 
-size_t buffer_get_len(Buffer* buff);
-size_t buffer_get_cap(Buffer* buff);
-char* buffer_get_ptr(Buffer* buff);
+#define buffer_get_len(buff) (buff->len)
+#define buffer_get_cap(buff) (buff->cap)
+#define buffer_get_ptr(buff) (buff->buffer)
 
 bool buffer_is_equal(Buffer* buff1, Buffer* buff2);
 bool buffer_equals_str(Buffer* buff, const char* str);
