@@ -31,12 +31,12 @@ UTIL = src/util/panic.c \
 # 	src/preprocessor/token.c \
 # 	src/preprocessor/lexer.c
 
-PREPROCESSOR = src/preprocessor/source_stream.c \
-	src/preprocessor/token.c \
+LEX = src/lex/source_stream.c \
+	src/lex/token.c \
 
 # PARSE = src/parse/parser.c
 
-SRC = $(UTIL) $(FILES) $(DRIVER) $(PREPROCESSOR) $(PARSE)
+SRC = $(UTIL) $(LEX)
 
 cc: $(SRC) src/main.c
 	$(CC) $(CFLAGS) $^ -o $@

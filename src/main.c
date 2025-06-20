@@ -1,7 +1,7 @@
 // #include "driver/driver.h"
 
-#include "preprocessor/source_line.h"
-#include "preprocessor/source_stream.h"
+#include "lex/source_line.h"
+#include "lex/source_stream.h"
 #include "util/xmalloc.h"
 
 #include <string.h>
