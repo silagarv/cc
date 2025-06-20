@@ -6,8 +6,6 @@
 
 #include "util/static_string.h"
 
-#include "preprocessor/location.h"
-
 // Our token types here
 // Note that we use the pp definitions of tokens mainly which are then converted
 // on demand by the parser. E.g. if its a number it gets converted, and properly
@@ -140,7 +138,7 @@ typedef enum TokenType TokenType;
 // TODO: maybe turn opt value into a pointer if we want to save space???
 struct Token {
     TokenType type; // the type of token
-    Location loc; // location id (which includes alot more info)
+    // Location loc; // location id (which includes alot more info)
 
     StaticString opt_value; // optional value for specific tokens if needed
 
@@ -150,12 +148,20 @@ struct Token {
 };
 typedef struct Token Token;
 
-struct TokenList {
+struct TokenStream {
     Token* tokens;
     size_t used;
     size_t allocated;
+
+    size_t current_token;
 };
-typedef struct TokenList TokenList;
+typedef struct TokenStream TokenStream;
+
+// Basically a view into the tokens formed by a line
+typedef struct TokenLine {
+    Token* start;
+    Token* end;
+} TokenLine;
 
 void token_freshen_up(Token* tok);
 void token_free(Token* tok);
@@ -173,16 +179,7 @@ bool token_equal_token(Token* tok1, Token* tok2);
 bool token_concatenate(Token* tok1, Token* tok2, Token* dest);
 
 bool token_stringize(Token* src, Token* dest);
-bool token_list_stringize(TokenList* token, Token* dest);
 
 bool token_string_cat(Token* tok1, Token* tok2, Token* dest);
-bool token_list_string_cat(TokenList* list, Token* dest);
-
-// Perhaps some stuff here for concatenations and other things
-
-void token_list_initialise(TokenList* tokens);
-void token_list_free(TokenList* tokens);
-
-Token* token_list_get_next(TokenList* tokens);
 
 #endif /* TOKEN_H */

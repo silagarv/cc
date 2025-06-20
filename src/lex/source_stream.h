@@ -7,7 +7,7 @@
 
 #include "util/buffer.h"
 
-#include "preprocessor/source_line.h"
+#include "lex/source_line.h"
 
 typedef struct SourceStream {
     char* fileguts;

@@ -34,7 +34,7 @@ UTIL = src/util/panic.c \
 PREPROCESSOR = src/preprocessor/source_stream.c \
 	src/preprocessor/token.c \
 
-PARSE = src/parse/parser.c
+# PARSE = src/parse/parser.c
 
 SRC = $(UTIL) $(FILES) $(DRIVER) $(PREPROCESSOR) $(PARSE)
 

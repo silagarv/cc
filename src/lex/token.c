@@ -11,12 +11,11 @@
 #include "util/xmalloc.h"
 #include "util/static_string.h"
 
-#include "preprocessor/location.h"
+// #include "preprocessor/location.h"
 
 void token_freshen_up(Token* tok)
 {
     *tok = (Token) {0};
-    tok->loc = LOCATION_INVALID;
     tok->type = TOKEN_UNKNOWN;
 }
 
@@ -245,44 +244,5 @@ static bool can_tokens_concatenate(Token* tok1, Token* tok2);
 bool token_concatenate(Token* tok1, Token* tok2, Token* dest);
 
 bool token_stringize(Token* src, Token* dest);
-bool token_list_stringize(TokenList* token, Token* dest);
 
 bool token_string_cat(Token* tok1, Token* tok2, Token* dest);
-bool token_list_string_cat(TokenList* list, Token* dest);
-
-void token_list_initialise(TokenList* tokens)
-{
-    tokens->allocated = 1;
-    tokens->used = 0;
-    tokens->tokens = xmalloc(sizeof(Token));
-}
-
-void token_list_free(TokenList* tokens)
-{
-    for (size_t i = 0; i < tokens->used; i++)
-    {
-        token_free(&tokens->tokens[i]);
-    }
-
-    free(tokens->tokens);
-}
-
-static void token_list_expand(TokenList* tokens)
-{
-    tokens->allocated *= 2;
-    tokens->tokens = xrealloc(tokens->tokens, sizeof(Token) * tokens->allocated);
-}
-
-Token* token_list_get_next(TokenList* tokens)
-{
-    if (tokens->used == tokens->allocated)
-    {
-        token_list_expand(tokens);
-    }
-
-    Token* next = &tokens->tokens[tokens->used];
-
-    tokens->used++;
-
-    return next;
-}

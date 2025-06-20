@@ -11,7 +11,7 @@
 #include "util/xmalloc.h"
 #include "util/buffer.h"
 
-#include "preprocessor/source_line.h"
+#include "lex/source_line.h"
 
 // TODO: possible thing to do in the future is to change this code to
 // simply alter the source stream itself. i.e. instead of making a buffer
