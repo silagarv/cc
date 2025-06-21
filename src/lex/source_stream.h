@@ -16,8 +16,7 @@ typedef struct SourceStream {
 } SourceStream;
 
 SourceStream source_stream(char* fileguts, size_t len);
-
-void source_stream_free(SourceStream* stream);
+void source_stream_close(SourceStream* stream);
 
 #define source_stream_at_eof(stream) ((stream)->pos >= (stream)->end)
 SourceLine source_stream_read_line(SourceStream* stream);

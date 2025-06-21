@@ -9,7 +9,7 @@
 
 #include "util/panic.h"
 #include "util/xmalloc.h"
-#include "util/static_string.h"
+#include "util/str.h"
 
 // #include "preprocessor/location.h"
 
@@ -42,9 +42,9 @@ void token_free(Token* tok)
 {
     if (token_has_opt_value(tok))
     {
-        static_string_free(&tok->opt_value);
+        string_free(&tok->opt_value);
     }
-    
+
     // otherwise there is nothing else to do since tok itself is stored elsewhre
 }
 
@@ -180,7 +180,7 @@ const char* token_get_string(Token* tok)
         return token_get_name(tok);
     }
 
-    return static_string_get_ptr(&tok->opt_value);
+    return string_get_ptr(&tok->opt_value);
 }
 
 size_t token_get_length(Token* tok)

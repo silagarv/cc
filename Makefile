@@ -15,7 +15,6 @@ CFLAGS += $(IFLAGS)
 UTIL = src/util/panic.c \
 	src/util/xmalloc.c \
 	src/util/buffer.c \
-	src/util/static_string.c \
 	src/util/str.c \
 	#src/util/map.c
 
@@ -31,12 +30,14 @@ UTIL = src/util/panic.c \
 # 	src/preprocessor/token.c \
 # 	src/preprocessor/lexer.c
 
+FILES = src/files/file_entry.c
+
 LEX = src/lex/source_stream.c \
 	src/lex/token.c \
 
 # PARSE = src/parse/parser.c
 
-SRC = $(UTIL) $(LEX)
+SRC = $(UTIL) $(FILES) $(LEX)
 
 cc: $(SRC) src/main.c
 	$(CC) $(CFLAGS) $^ -o $@

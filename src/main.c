@@ -11,12 +11,12 @@
 int main(int argc, char** argv)
 {
     char test_pgm[] = 
-        "#include <stdio.h>\n"
-        "\n"
         "int printf(const char*, ...);\n"
         "\n"
         "int main(int argc, char** argv)\n"
         "{\n"
+        "   printf(\"Hello, World!\");\n"
+        "\n"
         "   return 69;\n"
         "}\n";
 
@@ -24,7 +24,7 @@ int main(int argc, char** argv)
     char* alloced = xmalloc(sizeof(char) * len);
     memcpy(alloced, test_pgm, len);
 
-    SourceStream ss = source_stream(test_pgm, len);
+    SourceStream ss = source_stream(alloced, len);
 
     while (!source_stream_at_eof(&ss))
     {
@@ -34,5 +34,5 @@ int main(int argc, char** argv)
         free(line.string.ptr);
     }
 
-    free(alloced);
+    source_stream_close(&ss);
 }

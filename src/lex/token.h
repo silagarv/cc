@@ -4,13 +4,15 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-#include "util/static_string.h"
+#include "util/str.h"
+
+#include "lex/location.h"
 
 // Our token types here
 // Note that we use the pp definitions of tokens mainly which are then converted
 // on demand by the parser. E.g. if its a number it gets converted, and properly
 // checked there, and e.g. string literals are concatenated by parser
-enum TokenType {
+typedef enum TokenType {
     TOKEN_UNKNOWN = -1,
     TOKEN_EOF,
 
@@ -132,36 +134,35 @@ enum TokenType {
     TOKEN_HEADER_NAME,
     TOKEN_MACRO_PARAMATER,
     TOKEN_NEWLINE,
-};
-typedef enum TokenType TokenType;
+} TokenType;
+
+typedef enum TokenFlags {
+    TOKEN_FLAG_LEADING_SPACE = 0x01,
+    TOKEN_FLAG_DISABLE_EXPAND = 0x02,
+} TokenFlags;
 
 // TODO: maybe turn opt value into a pointer if we want to save space???
-struct Token {
-    TokenType type; // the type of token
-    // Location loc; // location id (which includes alot more info)
+typedef struct Token {
+    TokenType type;
+    Location loc;
 
-    StaticString opt_value; // optional value for specific tokens if needed
+    String opt_value;
+    
+    TokenFlags flags;
+} Token;
 
-    // Some flags for the token
-    bool is_space_before; // was space before token
-    bool is_expansion_forbidden; // are we allowed to expand token?
-};
-typedef struct Token Token;
-
-struct TokenStream {
+typedef struct TokenList {
     Token* tokens;
     size_t used;
     size_t allocated;
+} TokenList;
+
+typedef struct TokenStream {
+    Token* tokens;
+    size_t count;
 
     size_t current_token;
-};
-typedef struct TokenStream TokenStream;
-
-// Basically a view into the tokens formed by a line
-typedef struct TokenLine {
-    Token* start;
-    Token* end;
-} TokenLine;
+} TokenStream;
 
 void token_freshen_up(Token* tok);
 void token_free(Token* tok);
@@ -181,5 +182,9 @@ bool token_concatenate(Token* tok1, Token* tok2, Token* dest);
 bool token_stringize(Token* src, Token* dest);
 
 bool token_string_cat(Token* tok1, Token* tok2, Token* dest);
+
+
+
+TokenStream token_list_to_stream(const TokenList* list);
 
 #endif /* TOKEN_H */
