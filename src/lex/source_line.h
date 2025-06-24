@@ -7,14 +7,17 @@
 
 #include "util/str.h"
 
+// A SourceLine struct contains all the information of a line that has undergone
+// stage 3 processing as according to the C99 standard.
+//
+// It is not really directly from the source as it could contain trigraph
+// replacement, newline splicing and other things. So it may not actually
+// directly relate back to the original source.
 struct SourceLine {
-    // the line itself
     String string;
 
-    // for calculating the next line, the number of physical lines it takes up
     uint32_t num_phyical_lines;
 
-    // information about the line
     bool replaced_trigraphs;
     bool backslash_newline;
     bool ending_newline;
