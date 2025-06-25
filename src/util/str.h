@@ -24,8 +24,8 @@ void string_copy(const String* src, String* dest);
 void string_copy_len(const String* src, String* dest, 
         size_t len);
 
-#define string_get_ptr(str) (str)->ptr
-#define string_get_len(str) (str)->len
+#define string_get_ptr(str) ((str)->ptr)
+#define string_get_len(str) ((str)->len)
 
 #define string_get(str, idx) string_get_ptr(str)[idx]
 

@@ -27,8 +27,8 @@ SourceStream source_stream(char* fileguts, size_t len)
 {
     SourceStream stream;
     stream.fileguts = fileguts;
-    stream.end = fileguts + len;
-    stream.pos = fileguts;
+    stream.len = len;
+    stream.pos = 0;
 
     return stream;
 }
@@ -45,7 +45,7 @@ static int source_stream_get_char(SourceStream* stream)
         return EOF;
     }
 
-    return *stream->pos++;
+    return stream->fileguts[stream->pos++];
 }
 
 static bool internal_bad_char_recover(SourceLine* line, SourceStream* source, 
@@ -153,7 +153,7 @@ static bool internal_handle_trigraph(SourceLine* line, SourceStream* stream,
 static SourceLine source_stream_clean_line(SourceStream* stream)
 {
     const size_t buffer_start_size = 20;
-    Buffer* tmp = buffer_new_size(buffer_start_size);
+    Buffer tmp = buffer_new_size(buffer_start_size);
 
     SourceLine line = {0};
 
@@ -163,14 +163,14 @@ static SourceLine source_stream_clean_line(SourceStream* stream)
         switch (curr)
         {
             case '\\':
-                if (internal_handle_backslash(&line, stream, tmp))
+                if (internal_handle_backslash(&line, stream, &tmp))
                 {
                     break;
                 }
                 continue;
             
             case '?':
-                if (internal_handle_trigraph(&line, stream, tmp))
+                if (internal_handle_trigraph(&line, stream, &tmp))
                 {
                     break;
                 }
@@ -180,14 +180,14 @@ static SourceLine source_stream_clean_line(SourceStream* stream)
                 break;
 
             case '\n':
-                buffer_add_char(tmp, '\n');
+                buffer_add_char(&tmp, '\n');
                 
                 line.num_phyical_lines++;
                 line.ending_newline = true;
                 break;
 
             default:
-                buffer_add_char(tmp, curr);
+                buffer_add_char(&tmp, curr);
                 continue;
         }
 
@@ -195,21 +195,22 @@ static SourceLine source_stream_clean_line(SourceStream* stream)
     }
 
     // Since we should never get eof as our only char...
-    assert(buffer_get_len(tmp) != 0);
+    assert(buffer_get_len(&tmp) != 0);
 
     // Do some finishing touched to it...
     if (!line.ending_newline)
     {
         line.num_phyical_lines++;
 
-        buffer_add_char(tmp, '\n');
+        buffer_add_char(&tmp, '\n');
     }
 
-    buffer_make_cstr(tmp);
+    buffer_make_cstr(&tmp);
 
-    line.string = (String) {.ptr = buffer_get_ptr(tmp), .len = buffer_get_len(tmp)};
-
-    buffer_free_ptr_only(tmp);
+    line.string = (String) {
+        .ptr = buffer_get_ptr(&tmp),
+        .len = buffer_get_len(&tmp)
+    };
 
     return line;
 }

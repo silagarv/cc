@@ -14,10 +14,9 @@
 
 #define BUFFER_START_SIZE (40)
 
-Buffer* buffer_new_size(size_t start_cap)
+Buffer buffer_new_size(size_t start_cap)
 {
-    Buffer* buff = xmalloc(sizeof(Buffer));
-    *buff = (Buffer)
+    Buffer buff = (Buffer)
     {
         .buffer = xmalloc(sizeof(char) * start_cap),
         .len = 0,
@@ -27,7 +26,7 @@ Buffer* buffer_new_size(size_t start_cap)
     return buff;
 }
 
-Buffer* buffer_new(void)
+Buffer buffer_new(void)
 {
     return buffer_new_size(BUFFER_START_SIZE);
 }
@@ -35,38 +34,17 @@ Buffer* buffer_new(void)
 void buffer_free(Buffer* buff)
 {
     free(buff->buffer);
-    free(buff);
 }
 
-void buffer_free_ptr_only(Buffer* buff)
-{
-    free(buff);
-}
-
-Buffer* buffer_from_cstr(const char* string)
+Buffer buffer_from_cstr(const char* string)
 {
     const size_t len = strlen(string);
 
-    Buffer* buffer = buffer_new_size(len + 1);
-    sprintf(buffer_get_ptr(buffer), "%s", string);
+    Buffer buffer = buffer_new_size(len + 1);
+    sprintf(buffer_get_ptr(&buffer), "%s", string);
 
     return buffer;
 }
-
-// size_t buffer_get_len(Buffer* buff)
-// {
-//     return buff->len;
-// }
-
-// size_t buffer_get_cap(Buffer* buff)
-// {
-//     return buff->cap;
-// }
-
-// char* buffer_get_ptr(Buffer* buff)
-// {
-//     return buff->buffer;
-// }
 
 static bool buffer_is_equal_internal(const char* str1, const char* str2, 
         size_t len)
@@ -210,12 +188,12 @@ void buffer_printf(Buffer* buff, const char* fmt, ...)
     va_end(ap);
 }
 
-Buffer* buffer_from_format(const char* fmt, ...)
+Buffer buffer_from_format(const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    Buffer* buff = buffer_new();
-    buffer_vprintf(buff, fmt, ap);
+    Buffer buff = buffer_new();
+    buffer_vprintf(&buff, fmt, ap);
     va_end(ap);
     return buff;
 }

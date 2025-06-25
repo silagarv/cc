@@ -1,4 +1,4 @@
-CC = gcc-12
+CC = clang-18
 CFLAGS = -Wall -Wextra -Wpedantic -std=c99 -g3 -O0
 CFLAGS += -Wshadow -Wno-unused-parameter -Wno-unused-function \
 	  -Wno-unused-variable
@@ -34,6 +34,7 @@ FILES = src/files/file_entry.c
 
 LEX = src/lex/source_stream.c \
 	src/lex/token.c \
+	src/lex/token_lexer.c
 
 # PARSE = src/parse/parser.c
 

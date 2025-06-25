@@ -89,8 +89,6 @@ String string_from_buffer(Buffer* buff)
     char* ptr = buffer_get_ptr(buff);
     size_t len = buffer_get_len(buff);
 
-    buffer_free_ptr_only(buff);
-
     return (String) {.ptr = ptr, .len = len};
 }
 
