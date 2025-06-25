@@ -9,12 +9,6 @@
 
 #include "lex/source_line.h"
 
-typedef enum SourceStreamType {
-    SOURCE_STREAM_FILE,
-    SOURCE_STREAM_BUFFER,
-    SOURCE_STREAM_SCRATCH_BUFFER
-} SourceStreamType;
-
 typedef struct SourceStream {
     char* fileguts;
     size_t len;
@@ -22,6 +16,7 @@ typedef struct SourceStream {
 } SourceStream;
 
 SourceStream source_stream(char* fileguts, size_t len);
+SourceStream source_stream_from_buffer(Buffer* buff);
 void source_stream_close(SourceStream* stream);
 
 #define source_stream_at_eof(stream) ((stream)->pos >= (stream)->len)

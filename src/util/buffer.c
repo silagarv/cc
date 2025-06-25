@@ -41,7 +41,9 @@ Buffer buffer_from_cstr(const char* string)
     const size_t len = strlen(string);
 
     Buffer buffer = buffer_new_size(len + 1);
-    sprintf(buffer_get_ptr(&buffer), "%s", string);
+    memcpy(buffer_get_ptr(&buffer), string, len);
+    buffer_get_ptr(&buffer)[len] = '\0';
+    buffer.len = len;
 
     return buffer;
 }

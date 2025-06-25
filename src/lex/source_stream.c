@@ -33,6 +33,16 @@ SourceStream source_stream(char* fileguts, size_t len)
     return stream;
 }
 
+SourceStream source_stream_from_buffer(Buffer* buff)
+{
+    SourceStream stream;
+    stream.fileguts = buffer_get_ptr(buff);
+    stream.len = buffer_get_len(buff);
+    stream.pos = 0;
+
+    return stream;
+}
+
 void source_stream_close(SourceStream* stream)
 {
     free(stream->fileguts);
