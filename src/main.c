@@ -13,6 +13,10 @@
 
 #include "lex/location_map.h"
 
+// char test_pgm[] = {
+//         #embed "../sqlite-autoconf-3490100/sqlite3.c"
+// };
+
 int main(int argc, char** argv)
 {
     char test_pgm[] = 
@@ -20,50 +24,48 @@ int main(int argc, char** argv)
         "\n"
         "int main(int argc, char** argv)\n"
         "{\n"
-        "   puts(\"Hello, World!\");\n"
+        "    puts(\"Hello, World!\");\n"
         "\n"
-        "   return 69;\n"
+        "    return 69;\n"
         "}\n";
 
-    Filepath path = FILEPATH_STATIC_INIT("<builtin>");
+    Filepath path = FILEPATH_STATIC_INIT("test_pgm.c");
 
     Buffer buff = buffer_from_cstr(test_pgm);
     SourceStream ss = source_stream_from_buffer(&buff);
 
-    LineInfo prev_info = (LineInfo)
-    {
-        .start_location = 0,
-        .end_location = 0,
+    LineRun fake_run;
+    fake_run.reason = LINE_RUN_ENTER,
+    fake_run.filename = path;
+    fake_run.starting_line = 1;
+    fake_run.start_location = 0;
+    fake_run.highest_location = 0;
+    fake_run.finalised = false;
 
-        .line = {0},
+    fake_run.lines = NULL;
+    fake_run.used = 0;
+    fake_run.allocated = 0;
 
-        .current_name = &path,
-        .current_line = 0,
-    };
+    fake_run.renamer = NULL;
+    fake_run.parent = NULL;
+    fake_run.map = NULL;
 
     while (!source_stream_at_eof(&ss))
     {
         SourceLine line = source_stream_read_line(&ss);
         
-        LineInfo info = (LineInfo)
-        {
-            .start_location = prev_info.end_location,
-            .end_location = prev_info.end_location + line.string.len,
+        Location loc = line_run_add_line(&fake_run, line);
+        LineInfo* highest = &fake_run.lines[fake_run.used - 1];
 
-            .line =  line,
-
-            .current_name = prev_info.current_name,
-            .current_line = prev_info.current_line + line.num_phyical_lines
-        };
-
-        printf("<%s:%u>\n", info.current_name->path, info.current_line);
-        printf("<%u:%u>\n", info.start_location, info.end_location);
-        printf("%s\n", line.string.ptr);
-
-        prev_info = info;
-
-        // free(line.string.ptr);
+        printf("<%s:%u>\n", highest->current_name->path, highest->current_line);
+        printf("<%u:%u>\n", highest->start_location, highest->end_location);
+        printf("%s\n", highest->line.string.ptr);
     }
+
+    // ResolvedLocation loc = line_run_resolve_location(&fake_run, 1234143);
+    // printf("%s:%u:%u\n", loc.name->path, loc.line, loc.col);
+
+    line_run_free(&fake_run);
 
     source_stream_close(&ss);
 }

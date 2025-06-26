@@ -33,6 +33,7 @@ UTIL = src/util/panic.c \
 FILES = src/files/file_entry.c
 
 LEX = src/lex/source_stream.c \
+	src/lex/location_map.c \
 	src/lex/token.c \
 	src/lex/token_lexer.c
 

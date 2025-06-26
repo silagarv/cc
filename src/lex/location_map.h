@@ -9,6 +9,11 @@
 #include "lex/location.h"
 #include "lex/source_line.h"
 
+// TODO: could we change the LineInfo to store a pointer to a sourceline and 
+// then store the line else where to prevent relexing or reopening of files?
+// TODO: we could also possibly intern filenames or at least try to minimize
+// duplicated as the structure is very bloated by them...
+
 // This is inspired by a combinations of gcc's CPPLIB linemaps and Clangs
 // SourceLocation system. Thank you!
 
@@ -22,7 +27,7 @@
 // 
 // This struct should be immutable and and only written to once (upon 
 // construction). Additionally, it should be part of a line run for easy access
-// to all of the details of it specifically for binary searching to get the
+// to all of the details of it specifically for     binary searching to get the
 // location nice and quickly
 typedef struct LineInfo {
     Location start_location; // the location we start at
@@ -104,8 +109,18 @@ LineRun* line_map_enter(LineMap* map, Filepath* path, uint32_t start_line);
 LineRun* line_map_leave(LineMap* map);
 LineRun* line_map_line(LineMap* map, Filepath* new_name, uint32_t new_line);
 
+// Add a line to a line run and return the base location given for that 
+// particular line.
 Location line_run_add_line(LineRun* run, SourceLine line);
 
+// Finalise a line run making it not able to ever be added to again
 void line_run_finalise(LineRun* run);
+
+// Free a line run and all of the memory asociated with it
+void line_run_free(LineRun* run);
+
+// Resolve a location from a line run. It must contain said location, otherwise
+// a panic will be run
+ResolvedLocation line_run_resolve_location(LineRun* run, Location loc);
 
 #endif /* LOCATION_MAP_H */
