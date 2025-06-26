@@ -2,6 +2,7 @@ CC = clang-19
 CFLAGS = -Wall -Wextra -Wpedantic -std=c99 -g3 -O0
 CFLAGS += -Wshadow -Wno-unused-parameter -Wno-unused-function \
 	  -Wno-unused-variable
+CFLAGS += -x c
 # CFLAGS += -fanalyzer
 # CFLAGS += -flto
 
@@ -23,12 +24,6 @@ UTIL = src/util/panic.c \
 	src/driver/command_line.c \
 	src/driver/translation_unit.c \
 	src/driver/driver.c
-
-# PREPROCESSOR = src/preprocessor/files.c \
-# 	src/preprocessor/buffered_source.c \
-# 	src/preprocessor/line.c \
-# 	src/preprocessor/token.c \
-# 	src/preprocessor/lexer.c
 
 FILES = src/files/file_entry.c
 

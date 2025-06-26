@@ -7,6 +7,11 @@
 
 typedef uint32_t Location;
 
+typedef struct ResolvedLineLocation {
+    Filepath* path;
+    uint32_t line;
+} ResolvedLineLocation;
+
 typedef struct ResolvedLocation {
     Filepath* name;
     uint32_t line;

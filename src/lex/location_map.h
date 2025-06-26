@@ -1,6 +1,7 @@
 #ifndef LOCATION_MAP_H
 #define LOCATION_MAP_H
 
+#include <bits/types/FILE.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -12,7 +13,9 @@
 // TODO: could we change the LineInfo to store a pointer to a sourceline and 
 // then store the line else where to prevent relexing or reopening of files?
 // TODO: we could also possibly intern filenames or at least try to minimize
-// duplicated as the structure is very bloated by them...
+// duplicated as the structure is very bloated by them... If this happend 
+// then when we realloc a LineRun in the big map then the ptr to the filename
+// won't then become invalid. (But we could just heap allocate that anyways)...
 
 // This is inspired by a combinations of gcc's CPPLIB linemaps and Clangs
 // SourceLocation system. Thank you!
@@ -34,8 +37,8 @@ typedef struct LineInfo {
     Location end_location; // the location we end at
 
     SourceLine line; // The statically allocated line we got
-
-    Filepath* current_name; // The current filename for this line (not owned)
+    
+    // Cannot have ptr to run's filename as this could be realloced and then invalid
     uint32_t current_line; // The current line number caclulated by the map
 } LineInfo;
 
@@ -67,7 +70,6 @@ typedef enum LineRunReason {
 //
 // if the line run is finalised then we cannot add anymore lines to it
 //
-//
 // TODO: The finer details of the 'renamer' field are still being worked out
 typedef struct LineRun {
     LineRunReason reason; // The reason this line run was created
@@ -84,8 +86,11 @@ typedef struct LineRun {
     size_t used; // number of lines used
     size_t allocated; // number of lines we allocated for
 
-    struct LineRun* renamer; // only non-NULL if the original LineRun got renamed
-    struct LineRun* parent; // The parent (includer) line run
+    bool renamed; // has the linemap been renamed
+    bool has_parent; // do we have a parent
+
+    Location rename; // the location we got renamed at
+    Location parent; // the location of the parent include
 
     struct LineMap* map; // The overall linemap for the linerun
 } LineRun;
@@ -102,13 +107,6 @@ typedef struct LineMap {
 
 // TODO: create some kind of macro map to track macro expansion
 
-LineMap line_map_create(void);
-void line_map_free(LineMap* map);
-
-LineRun* line_map_enter(LineMap* map, Filepath* path, uint32_t start_line);
-LineRun* line_map_leave(LineMap* map);
-LineRun* line_map_line(LineMap* map, Filepath* new_name, uint32_t new_line);
-
 // Add a line to a line run and return the base location given for that 
 // particular line.
 Location line_run_add_line(LineRun* run, SourceLine line);
@@ -119,8 +117,24 @@ void line_run_finalise(LineRun* run);
 // Free a line run and all of the memory asociated with it
 void line_run_free(LineRun* run);
 
-// Resolve a location from a line run. It must contain said location, otherwise
-// a panic will be run
+// Resolve a location from a line run. 
+// 
+// It must contain said location, otherwise panic will be called 
+ResolvedLineLocation line_run_resolve_line_location(LineRun* run, Location loc);
 ResolvedLocation line_run_resolve_location(LineRun* run, Location loc);
+
+// Create and free a line map
+LineMap line_map_create(void);
+void line_map_free(LineMap* map);
+
+// Different methods of creating / dealing with line maps
+LineRun* line_map_start(LineMap* map, Filepath* path);
+LineRun* line_map_enter(LineMap* map, Filepath* path, Location loc);
+LineRun* line_map_leave(LineMap* map);
+LineRun* line_map_line(LineMap* map, Filepath* new_name, uint32_t new_line, Location loc);
+
+// Some methods of looking locations up within the map
+LineRun* line_run_lookup(LineMap* map, Location loc);
+ResolvedLocation line_map_resolve_location(LineMap* map, Location loc);
 
 #endif /* LOCATION_MAP_H */
