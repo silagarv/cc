@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-#include "util/str.h"
+#include "util/str_view.h"
 
 #include "lex/location.h"
 
@@ -115,7 +115,9 @@ typedef enum TokenType {
     TOKEN_IDENTIFIER,
     TOKEN_NUMBER,
     TOKEN_CHARACTER,
+    TOKEN_WIDE_CHARACTER,
     TOKEN_STRING,
+    TOKEN_WIDE_STRING,
 
     // Special preprocessing token names
     // TOKEN_DEFINE,
@@ -144,9 +146,9 @@ typedef enum TokenFlags {
 // TODO: maybe turn opt value into a pointer if we want to save space???
 typedef struct Token {
     TokenType type;
-    Location loc;
+    ResolvedLocation loc;
 
-    String opt_value;
+    StringView opt_value;
     
     TokenFlags flags;
 } Token;
@@ -183,7 +185,10 @@ bool token_stringize(Token* src, Token* dest);
 
 bool token_string_cat(Token* tok1, Token* tok2, Token* dest);
 
+TokenList token_list_allocate(void);
+void token_list_free(TokenList* list);
 
+Token* token_list_next(TokenList* list);
 
 TokenStream token_list_to_stream(const TokenList* list);
 

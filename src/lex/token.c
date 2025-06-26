@@ -15,8 +15,7 @@
 
 void token_freshen_up(Token* tok)
 {
-    *tok = (Token) {0};
-    tok->type = TOKEN_UNKNOWN;
+    *tok = (Token) {.type = TOKEN_UNKNOWN};
 }
 
 static bool token_has_opt_value(Token* tok)
@@ -28,7 +27,9 @@ static bool token_has_opt_value(Token* tok)
         case TOKEN_IDENTIFIER:
         case TOKEN_NUMBER:
         case TOKEN_CHARACTER:
+        case TOKEN_WIDE_CHARACTER:
         case TOKEN_STRING:
+        case TOKEN_WIDE_STRING:
         case TOKEN_HEADER_NAME:
         case TOKEN_MACRO_PARAMATER:
             return true;
@@ -40,12 +41,7 @@ static bool token_has_opt_value(Token* tok)
 
 void token_free(Token* tok)
 {
-    if (token_has_opt_value(tok))
-    {
-        string_free(&tok->opt_value);
-    }
-
-    // otherwise there is nothing else to do since tok itself is stored elsewhre
+    
 }
 
 const char* token_type_get_name(TokenType type)
@@ -149,7 +145,9 @@ const char* token_type_get_name(TokenType type)
         case TOKEN_IDENTIFIER: return "<identifier>";
         case TOKEN_NUMBER: return "<preprocessing-number>";
         case TOKEN_CHARACTER: return "<character-constant>";
-        case TOKEN_STRING: return "<string literal>";
+        case TOKEN_WIDE_CHARACTER: return "<wide-character-constant>";
+        case TOKEN_STRING: return "<string-literal>";
+        case TOKEN_WIDE_STRING: return "<wide-string-literal>";
         case TOKEN_HEADER_NAME: return "<<INTERNAL_HEADER_NAME>>"; 
         case TOKEN_MACRO_PARAMATER: return "<<INTERNAL_MACRO_PARAM>>"; 
         case TOKEN_NEWLINE: return "<newline-token>";
@@ -180,7 +178,7 @@ const char* token_get_string(Token* tok)
         return token_get_name(tok);
     }
 
-    return string_get_ptr(&tok->opt_value);
+    return string_view_get_ptr(&tok->opt_value);
 }
 
 size_t token_get_length(Token* tok)
@@ -246,3 +244,37 @@ bool token_concatenate(Token* tok1, Token* tok2, Token* dest);
 bool token_stringize(Token* src, Token* dest);
 
 bool token_string_cat(Token* tok1, Token* tok2, Token* dest);
+
+TokenList token_list_allocate(void)
+{
+    TokenList tokens;
+
+    tokens.used = 0;
+    tokens.allocated = 1;
+    tokens.tokens = xmalloc(sizeof(Token));
+
+    return tokens;
+}
+
+void token_list_free(TokenList* list)
+{
+    for (size_t i = 0; i < list->used; i++)
+    {
+        Token* tok = &list->tokens[i];
+
+        token_free(tok);
+    }
+
+    free(list->tokens);
+}
+
+Token* token_list_next(TokenList* list)
+{
+    if (list->used == list->allocated)
+    {
+        list->allocated *= 2;
+        list->tokens = xrealloc(list->tokens, sizeof(Token) * list->allocated);
+    }
+
+    return &list->tokens[list->used++];
+}
