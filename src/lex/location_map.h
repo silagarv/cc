@@ -1,7 +1,6 @@
 #ifndef LOCATION_MAP_H
 #define LOCATION_MAP_H
 
-#include <bits/types/FILE.h>
 #include <stdint.h>
 #include <stdbool.h>
 
