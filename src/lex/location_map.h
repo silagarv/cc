@@ -41,8 +41,11 @@
 // 
 // This struct should be immutable and and only written to once (upon 
 // construction). Additionally, it should be part of a line run for easy access
-// to all of the details of it specifically for     binary searching to get the
+// to all of the details of it specifically for binary searching to get the
 // location nice and quickly
+//
+// Additionally we always ensure that [start_location, end_location) is a valid
+// location to access.
 typedef struct LineInfo {
     Location start_location; // the location we start at
     Location end_location; // the location we end at
