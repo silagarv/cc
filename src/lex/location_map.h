@@ -12,6 +12,17 @@
 
 // TODO: could we change the LineInfo to store a pointer to a sourceline and 
 // then store the line else where to prevent relexing or reopening of files?
+
+// also if we have a store and then that realloc's could the SourceLine's become
+// invalid. If so maybe we could get and lex all the lines first for a particular
+// file and then those could be considered finalised and the memory never changed
+// again???
+// If I did the above the process would be to go line by line and lexing each
+// line as I got it until the whole file is done then adding it to that files
+// line store and that, then getting the tokens for each line??? But then I
+// would have to do two things. 1. Leave token position blank 2. make sure the
+// lines and tokens for each line, are aligned with each other.
+
 // TODO: we could also possibly intern filenames or at least try to minimize
 // duplicated as the structure is very bloated by them... If this happend 
 // then when we realloc a LineRun in the big map then the ptr to the filename
@@ -95,6 +106,9 @@ typedef struct LineRun {
     struct LineMap* map; // The overall linemap for the linerun
 } LineRun;
 
+// A structure to hold and represent all of the logical lines within a program.
+// This stores all of our line runs and we use it to physically store all of the
+// source lines as well.
 typedef struct LineMap {
     LineRun* runs;
     size_t used;
@@ -117,9 +131,9 @@ void line_run_finalise(LineRun* run);
 // Free a line run and all of the memory asociated with it
 void line_run_free(LineRun* run);
 
-// Resolve a location from a line run. 
-// 
-// It must contain said location, otherwise panic will be called 
+// Resolve a location or a line location from a line run.
+// The line run must contain said location, otherwise panic will be called and 
+// the program will terminate. (This may be changed in the future) 
 ResolvedLineLocation line_run_resolve_line_location(LineRun* run, Location loc);
 ResolvedLocation line_run_resolve_location(LineRun* run, Location loc);
 
