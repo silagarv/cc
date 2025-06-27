@@ -47,6 +47,13 @@ Location line_run_add_line(LineRun* run, SourceLine line)
         .current_line = new_line_num
     };
 
+    // Check our map is monotonically increasing in count. Should also catch any
+    // overflow (which since Location is unsigned will wrap around) which could
+    // happen if a program is bigger than 2^31 bytes in logical lines i.e. really
+    // big. Way to big to store likely.
+    assert(run->highest_location >= run->map->highest_location &&
+            "The run's highest location isn't bigger than the maps!");
+
     // Don't forget to add the length to the run
     run->highest_location += line.string.len;
     run->map->highest_location = run->highest_location;
@@ -277,7 +284,11 @@ LineRun* line_map_leave(LineMap* map)
     return run;
 }
 
-LineRun* line_map_line(LineMap* map, Filepath* new_name, uint32_t new_line, Location loc);
+LineRun* line_map_line(LineMap* map, Filepath* new_name, uint32_t new_line, Location loc)
+{
+    panic("Unimplemented functionality; line_map_line(...)");
+    return NULL;
+}
 
 LineRun* line_run_lookup(LineMap* map, Location loc)
 {
