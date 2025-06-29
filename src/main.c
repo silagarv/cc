@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "driver/diagnostic.h"
 #include "util/panic.h"
 #include "util/buffer.h"
 #include "util/xmalloc.h"
@@ -21,6 +22,8 @@
 
 int main(int argc, char** argv)
 {
+    diag_init();
+    
     char test_pgm[] =
     // //     // "#include <stdio.h>\n"
     //     // "// Declaration of puts \n"
@@ -85,7 +88,7 @@ int main(int argc, char** argv)
 
     TokenStream stream = token_list_to_stream(&tokens);
 
-    parse_translation_unit(stream);
+    parse_translation_unit(stream, &map);
 
     
 

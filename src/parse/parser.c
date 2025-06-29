@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <assert.h>
 
 #include "util/panic.h"
 #include "util/xmalloc.h"
@@ -13,40 +14,75 @@
 void parser_initialise(Parser* parser, TokenList* tokens);
 void parser_finialise(Parser* parser);
 
-// Actual parsing code below
-
-static TokenType curr_token_type(Parser* parser)
+static bool is_valid_stream_position(TokenStream* stream)
 {
-    return parser->stream.tokens[parser->stream.current_token].type;
+    return (stream->current_token < stream->count);
 }
 
-static Token* curr_token(Parser* parser)
+static TokenType curr_type(TokenStream* stream)
 {
-    return &parser->stream.tokens[parser->stream.current_token];
+    assert(is_valid_stream_position(stream));
+
+    return stream->tokens[stream->current_token].type;
 }
 
-static TokenType peek_token_type(Parser* parser)
+static TokenType next_type(TokenStream* stream)
 {
-    return parser->stream.tokens[parser->stream.current_token + 1].type;
+    assert(is_valid_stream_position(stream));
+
+    return stream->tokens[stream->current_token + 1].type;
 }
 
-static void eat_token(Parser* parser)
+static Token* curr(TokenStream* stream)
 {
-    parser->stream.current_token++;
+    assert(is_valid_stream_position(stream));
+
+    return &stream->tokens[stream->current_token];
 }
 
-static bool is_match_type(Parser* parser, TokenType type)
+static Token* next(TokenStream* stream)
 {
-    return (curr_token_type(parser) == type);
+    assert(is_valid_stream_position(stream));
+
+    return &stream->tokens[stream->current_token + 1];
 }
 
-static bool is_match_types(Parser* parser, const TokenType* types, size_t count)
+static void consume(TokenStream* stream)
 {
-    const TokenType current = curr_token_type(parser);
+    assert(is_valid_stream_position(stream));
+
+    // Make sure we only eat tokens when it is okay to do so, otherwise we might
+    // go over how many we can actually eat
+    if (stream->current_token < stream->count)
+    {
+        stream->current_token++;
+    }
+}
+
+static bool match(TokenStream* stream, TokenType type)
+{
+    if (curr_type(stream) == type)
+    {
+        consume(stream);
+
+        return true;
+    }
+
+    return false;
+}
+
+static bool is_match(TokenStream* stream, TokenType type)
+{
+    return (curr_type(stream) == type);
+}
+
+static bool has_match(TokenStream* stream, const TokenType* types, size_t count)
+{
+    const TokenType current = curr_type(stream);
 
     for (size_t i = 0; i < count; i++)
     {
-        if (is_match_type(parser, types[i]))
+        if (current == types[i])
         {
             return true;
         }
@@ -55,16 +91,36 @@ static bool is_match_types(Parser* parser, const TokenType* types, size_t count)
     return false;
 }
 
-void test(Parser* p)
+void parse_primary_expression(TokenStream* stream, LineMap* map)
 {
-    if (is_match_types(p, (TokenType[]) {TOKEN_COLON, TOKEN_ARROW}, 2))
+    if (is_match(stream, TOKEN_IDENTIFIER))
     {
-        return;
+        match(stream, TOKEN_IDENTIFIER);
+    }
+    else if (false /* constant??? */)
+    {
+        /* idk... */
+    }
+    else if (has_match(stream, (TokenType[]) {TOKEN_STRING, TOKEN_WIDE_STRING}, 2))
+    {
+
+    }
+    else if (is_match(stream, TOKEN_LPAREN))
+    {
+        /* parse_expression(stream, map); */
+    }
+    else
+    {
+        diag_error("Failed to parse primary expression");
     }
 }
 
-
-void parse_translation_unit(TokenStream stream)
+void parse_translation_unit(TokenStream stream, LineMap* map)
 {
+    while (curr_type(&stream) != TOKEN_EOF)
+    {
+        parse_primary_expression(&stream, map);
+    }
+
     return;
 }

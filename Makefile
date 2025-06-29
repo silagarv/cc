@@ -1,7 +1,7 @@
 CC = clang-19
 CFLAGS = -Wall -Wextra -Wpedantic -std=c99 -g3 -O0
 CFLAGS += -Wshadow -Wno-unused-parameter -Wno-unused-function \
-	-Wno-unused-variable
+	-Wno-unused-variable 
 CFLAGS += -x c
 # CFLAGS += -fanalyzer
 # CFLAGS += -flto
@@ -19,8 +19,8 @@ UTIL = src/util/panic.c \
 	src/util/str.c \
 	src/util/str_view.c
 
-#DRIVER = src/driver/diagnostic.c \
-	src/driver/options.c \
+DRIVER = src/driver/diagnostic.c \
+	#src/driver/options.c \
 	src/driver/command_line.c \
 	src/driver/translation_unit.c \
 	src/driver/driver.c
@@ -34,7 +34,7 @@ LEX = src/lex/source_stream.c \
 
 PARSE = src/parse/parser.c
 
-SRC = $(UTIL) $(FILES) $(LEX) $(PARSE)
+SRC = $(UTIL) $(FILES) $(LEX) $(PARSE) $(DRIVER) 
 
 cc: $(SRC) src/main.c
 	$(CC) $(CFLAGS) $^ -o $@

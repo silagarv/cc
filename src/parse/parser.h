@@ -5,6 +5,8 @@
 #include <stdbool.h>
 
 #include "lex/token.h"
+#include "lex/location.h"
+#include "lex/location_map.h"
 
 #include "parse/scope.h"
 
@@ -18,6 +20,6 @@ struct Parser {
 };
 typedef struct Parser Parser;
 
-void parse_translation_unit(TokenStream stream);
+void parse_translation_unit(TokenStream stream, LineMap* map);
 
 #endif /* PARSER_H */

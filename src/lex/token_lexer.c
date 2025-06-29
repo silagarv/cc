@@ -605,6 +605,8 @@ restart:;
                 break;
             }
 
+            /* FALLTHROUGH */
+
         // Identifier cases excluding 'L' since that is used for wide string
         // and character literals in C99
         case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G':
