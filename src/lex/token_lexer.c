@@ -66,7 +66,6 @@ static bool is_horizontal_whitespace(char c)
     }
 }
 
-
 TokenLexer token_lexer_create(SourceStream stream, LineRun* run)
 {
     TokenLexer lexer = (TokenLexer) {
@@ -186,10 +185,15 @@ static Location get_current_location(TokenLexer* lexer)
 
 static void skip_block_comment(TokenLexer* lexer)
 {
-    // TODO: need to check for end of file here
     while (true)
     {
         char c = next_char(lexer);
+
+        // Check if we encounter eof at all
+        if (c == '\0' && at_eof(lexer))
+        {
+            break;
+        }
 
         if (c == '*' && curr_char(lexer) == '/')
         {

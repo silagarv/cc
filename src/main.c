@@ -15,26 +15,25 @@
 #include <stdlib.h>
 
 // char test_pgm[] = {
-//         #embed "/usr/include/stdio.h"
-        // #embed "../sqlite-autoconf-3490100/sqlite3.c"
+//         // #embed "/usr/include/stdio.h"
+        // #embed "sqlite3.c.testing.i"
 // };
 
 int main(int argc, char** argv)
 {
-    char test_pgm[] = 
-        // "#include <stdio.h>\n"
-        // "// Declaration of puts \n"
-        // "\nint puts(const char* str);\n"
-        // "\n"
-        // "/* Test multiline comment\n"
-        // " * the comment that keeps giving */\n"
-        // "\n"
+    char test_pgm[] =
+    // //     // "#include <stdio.h>\n"
+    //     // "// Declaration of puts \n"
+    //     // "\nint puts(const char* str);\n"
+    //     // "\n"
+    //     // "/* Test multiline comment\n"
+    //     // " * the comment that keeps giving */\n"
+        "\n"
         "int main()\n"
         "{\n"
         "    int x = 34;\n"
         "    int y = x + 35;\n"
         "    return y;\n"
-        "    auto int a = 0;\n"
         "}\n";
 
     Filepath path = FILEPATH_STATIC_INIT("test_pgm.c");
@@ -44,54 +43,81 @@ int main(int argc, char** argv)
     
     LineMap map = line_map_create();
     LineRun* run = line_map_start(&map, &path);
-    
     TokenLexer lexer = token_lexer_create(ss, run);
 
-    Token tok;
-    tok.type = TOKEN_UNKNOWN;
+    TokenList tokens = (TokenList)
+    {
+        .tokens = xmalloc(sizeof(Token)),
+        .used = 0,
+        .allocated = 1
+    };
+
     while (true)
     {
-        tok = token_lexer_get_next(&lexer);
-
-        if (tok.type == TOKEN_UNKNOWN)
+        if (tokens.used == tokens.allocated)
         {
-            panic("unknown token");
+            tokens.allocated *= 2;
+            tokens.tokens = xrealloc(tokens.tokens, sizeof(Token) * tokens.allocated);
         }
 
-        if (tok.type == TOKEN_EOF)
+        tokens.tokens[tokens.used++] = token_lexer_get_next(&lexer);
+
+        Token* tok = &tokens.tokens[tokens.used - 1];
+
+        if (tok->type == TOKEN_EOF)
         {
             break;
         }
 
-        // ResolvedLocation loc = line_map_resolve_location(&map, tok.loc);
+        // ResolvedLocation loc = line_map_resolve_location(&map, tok->loc);
         // printf("%s:%u:%u\n", loc.name->path, loc.line, loc.col);
-        printf("%s\n", token_type_get_name(tok.type));
-        // printf("%.*s\n\n", (int) tok.opt_value.len, tok.opt_value.start);
-        // printf("%s\n\n", (tok.start_of_line) ? "start of line" : "not start of line");
+        // printf("%s\n", token_type_get_name(tok->type));
+        // if (token_has_opt_value(tok))
+        // {
+        //     printf("%.*s\n\n", (int) tok->opt_value.len, token_get_string(tok));
+        // }
+        // else
+        // {
+        //     printf("%s\n\n", token_get_name(tok));
+        // }
     }
 
-    token_lexer_close(&lexer);
+
     
-    // line_map_leave(&map);
 
-    // LineRun* run = line_map_start(&map, &path);
 
-    // while (!source_stream_at_eof(&ss))
+    free(tokens.tokens);
+
+    // Token tok;
+    // tok.type = TOKEN_UNKNOWN;
+    // while (true)
     // {
-    //     SourceLine line = source_stream_read_line(&ss);
-    //     Location loc = line_run_add_line(run, line);
-        
-    //     LineInfo* highest = &run->lines[run->used - 1];
+    //     tok = token_lexer_get_next(&lexer);
 
-    //     ResolvedLineLocation lloc = line_run_resolve_line_location(run, loc);
+    //     if (tok.type == TOKEN_UNKNOWN)
+    //     {
+    //         panic("unknown token");
+    //     }
 
-    //     printf("<%s:%u>\n", lloc.path->path, lloc.line);
-    //     printf("<%u:%u>\n", highest->start_location, highest->end_location);
-    //     printf("%s", highest->line.string.ptr);
+    //     if (tok.type == TOKEN_EOF)
+    //     {
+    //         break;
+    //     }
+
+    //     ResolvedLocation loc = line_map_resolve_location(&map, tok.loc);
+    //     printf("%s:%u:%u\n", loc.name->path, loc.line, loc.col);
+    //     printf("%s\n", token_type_get_name(tok.type));
+    //     if (token_has_opt_value(&tok))
+    //     {
+    //         printf("%.*s\n\n", (int) tok.opt_value.len, token_get_string(&tok));
+    //     }
+    //     else
+    //     {
+    //         printf("%s\n\n", token_get_name(&tok));
+    //     }
+    //     // printf("%s\n\n", (tok.start_of_line) ? "start of line" : "not start of line");
     // }
 
-    // source_stream_close(&ss);
-
+    token_lexer_close(&lexer);
     line_map_free(&map);
 }
-    

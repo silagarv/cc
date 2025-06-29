@@ -18,7 +18,7 @@ void token_freshen_up(Token* tok)
     *tok = (Token) {.type = TOKEN_UNKNOWN};
 }
 
-static bool token_has_opt_value(Token* tok)
+bool token_has_opt_value(Token* tok)
 {
     switch (tok->type)
     {

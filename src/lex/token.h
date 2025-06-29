@@ -168,6 +168,7 @@ void token_free(Token* tok);
 
 const char* token_type_get_name(TokenType type);
 
+bool token_has_opt_value(Token* tok);
 const char* token_get_name(Token* tok);
 const char* token_get_string(Token* tok);
 
