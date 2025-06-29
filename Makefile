@@ -17,7 +17,7 @@ UTIL = src/util/panic.c \
 	src/util/xmalloc.c \
 	src/util/buffer.c \
 	src/util/str.c \
-	#src/util/map.c
+	src/util/str_view.c
 
 #DRIVER = src/driver/diagnostic.c \
 	src/driver/options.c \

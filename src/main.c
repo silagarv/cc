@@ -24,21 +24,17 @@ int main(int argc, char** argv)
     char test_pgm[] = 
         // "#include <stdio.h>\n"
         // "// Declaration of puts \n"
-        "\nint puts(const char* str);\n"
-        "\n"
-        "/* Test multiline comment\n"
-        " * the comment that keeps giving */\n"
-        "\n"
-        "int main(int argc, char* argv[])\n"
+        // "\nint puts(const char* str);\n"
+        // "\n"
+        // "/* Test multiline comment\n"
+        // " * the comment that keeps giving */\n"
+        // "\n"
+        "int main()\n"
         "{\n"
         "    int x = 34;\n"
-        "    int y = x + 35\n"
-        "\n"
-        "    puts(\"Hello, World!\\n\");\n"
-        "\n"
-        "    int wide_char = L'c';"
-        "\n"
+        "    int y = x + 35;\n"
         "    return y;\n"
+        "    auto int a = 0;\n"
         "}\n";
 
     Filepath path = FILEPATH_STATIC_INIT("test_pgm.c");
@@ -67,10 +63,10 @@ int main(int argc, char** argv)
             break;
         }
 
-        ResolvedLocation loc = line_map_resolve_location(&map, tok.loc);
-        printf("%s:%u:%u\n", loc.name->path, loc.line, loc.col);
+        // ResolvedLocation loc = line_map_resolve_location(&map, tok.loc);
+        // printf("%s:%u:%u\n", loc.name->path, loc.line, loc.col);
         printf("%s\n", token_type_get_name(tok.type));
-        printf("%.*s\n\n", (int) tok.opt_value.len, tok.opt_value.start);
+        // printf("%.*s\n\n", (int) tok.opt_value.len, tok.opt_value.start);
         // printf("%s\n\n", (tok.start_of_line) ? "start of line" : "not start of line");
     }
 

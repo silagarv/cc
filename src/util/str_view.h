@@ -12,6 +12,8 @@ typedef struct StringView {
 #define string_view_get_ptr(view) ((view)->start)
 #define string_view_get_len(view) ((view)->len)
 
+#define string_view_get(view, idx) (string_view_get_ptr(view))[idx]
+
 StringView string_view(const char* string, size_t len);
 
 bool string_view_equals(StringView* view, const char* string);

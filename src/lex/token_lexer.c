@@ -215,9 +215,10 @@ static void lex_preprocessing_number(TokenLexer* lexer, Token* tok)
 {
     while (true)
     {
-        char c = next_char(lexer);
+        char c = curr_char(lexer);
         if (is_identifier(c) || c == '.')
         {
+            next_char(lexer);
             tok->opt_value.len++;
             if (c == 'e' || c == 'E' || c == 'p' || c == 'P')
             {
@@ -236,6 +237,210 @@ static void lex_preprocessing_number(TokenLexer* lexer, Token* tok)
 
 static uint32_t lex_universal_character(TokenLexer* lexer, Token* tok);
 
+static void determine_identifier_keyword(Token* tok)
+{
+    assert(tok->type == TOKEN_IDENTIFIER);
+    assert(tok->opt_value.len > 0);
+
+    switch (string_view_get(&tok->opt_value, 0))
+    {
+        case 'a':
+            if (string_view_equals(&tok->opt_value, "auto"))
+            {
+                tok->type = TOKEN_AUTO;
+            }
+            break;
+        
+        case 'b':
+            if (string_view_equals(&tok->opt_value, "break"))
+            {
+                tok->type = TOKEN_BREAK;
+            }
+            break;
+
+        case 'c':
+            if (string_view_equals(&tok->opt_value, "char"))
+            {
+                tok->type = TOKEN_CHAR;
+            }
+            else if (string_view_equals(&tok->opt_value, "const"))
+            {
+                tok->type = TOKEN_CONST;
+            }
+            else if (string_view_equals(&tok->opt_value, "continue"))
+            {
+                tok->type = TOKEN_CONTINUE;
+            }
+            break;
+
+        case 'd':
+            if (string_view_equals(&tok->opt_value, "default"))
+            {
+                tok->type = TOKEN_DEFAULT;
+            }
+            else if (string_view_equals(&tok->opt_value, "do"))
+            {
+                tok->type = TOKEN_DO;
+            }
+            else if (string_view_equals(&tok->opt_value, "double"))
+            {
+                tok->type = TOKEN_DOUBLE;
+            }
+            break;
+
+        case 'e':
+            if (string_view_equals(&tok->opt_value, "else"))
+            {
+                tok->type = TOKEN_ELSE;
+            }
+            else if (string_view_equals(&tok->opt_value, "enum"))
+            {
+                tok->type = TOKEN_ENUM;
+            }
+            else if (string_view_equals(&tok->opt_value, "extern"))
+            {
+                tok->type = TOKEN_EXTERN;
+            }
+            break;
+
+        case 'f':
+            if (string_view_equals(&tok->opt_value, "float"))
+            {
+                tok->type = TOKEN_FLOAT;
+            }
+            else if (string_view_equals(&tok->opt_value, "for"))
+            {
+                tok->type = TOKEN_FOR;
+            }
+            break;
+
+        case 'g':
+            if (string_view_equals(&tok->opt_value, "goto"))
+            {
+                tok->type = TOKEN_GOTO;
+            }
+            break;
+
+        case 'i':
+            if (string_view_equals(&tok->opt_value, "if"))
+            {
+                tok->type = TOKEN_IF;
+            }
+            else if (string_view_equals(&tok->opt_value, "inline"))
+            {
+                tok->type = TOKEN_INLINE;
+            }
+            else if (string_view_equals(&tok->opt_value, "int"))
+            {
+                tok->type = TOKEN_INT;
+            }
+            break;
+
+        case 'l':
+            if (string_view_equals(&tok->opt_value, "long"))
+            {
+                tok->type = TOKEN_LONG;
+            }
+            break;
+
+        case 'r':
+            if (string_view_equals(&tok->opt_value, "register"))
+            {
+                tok->type = TOKEN_REGISTER;
+            }
+            else if (string_view_equals(&tok->opt_value, "restrict"))
+            {
+                tok->type = TOKEN_RESTRICT;
+            }
+            else if (string_view_equals(&tok->opt_value, "return"))
+            {
+                tok->type = TOKEN_RETURN;
+            }
+            break;
+
+        case 's':
+            if (string_view_equals(&tok->opt_value, "short"))
+            {
+                tok->type = TOKEN_SHORT;
+            }
+            else if (string_view_equals(&tok->opt_value, "signed"))
+            {
+                tok->type = TOKEN_SIGNED;
+            }
+            else if (string_view_equals(&tok->opt_value, "sizeof"))
+            {
+                tok->type = TOKEN_SIZEOF;
+            }            
+            else if (string_view_equals(&tok->opt_value, "static"))
+            {
+                tok->type = TOKEN_STATIC;
+            }
+            else if (string_view_equals(&tok->opt_value, "struct"))
+            {
+                tok->type = TOKEN_STRUCT;
+            }
+            else if (string_view_equals(&tok->opt_value, "switch"))
+            {
+                tok->type = TOKEN_SWITCH;
+            }
+            break;
+
+        case 't':
+            if (string_view_equals(&tok->opt_value, "typedef"))
+            {
+                tok->type = TOKEN_TYPEDEF;
+            }
+            break;
+
+        case 'u':
+            if (string_view_equals(&tok->opt_value, "union"))
+            {
+                tok->type = TOKEN_UNION;
+            }
+            else if (string_view_equals(&tok->opt_value, "unsigned"))
+            {
+                tok->type = TOKEN_UNSIGNED;
+            }
+            break;
+
+        case 'v':
+            if (string_view_equals(&tok->opt_value, "volatile"))
+            {
+                tok->type = TOKEN_VOLATILE;
+            }
+            else if (string_view_equals(&tok->opt_value, "void"))
+            {
+                tok->type = TOKEN_VOID;
+            }
+            break;
+
+        case 'w':
+            if (string_view_equals(&tok->opt_value, "while"))
+            {
+                tok->type = TOKEN_WHILE;
+            }
+            break;
+
+        case '_':
+            if (string_view_equals(&tok->opt_value, "_Bool"))
+            {
+                tok->type = TOKEN__BOOL;
+            }
+            else if (string_view_equals(&tok->opt_value, "_Complex"))
+            {
+                tok->type = TOKEN__COMPLEX;
+            }
+            else if (string_view_equals(&tok->opt_value, "_Imaginary"))
+            {
+                tok->type = TOKEN__IMAGINARY;
+            }
+            break;
+
+        default:
+            break;
+    }
+}
+
 static void lex_identifier(TokenLexer* lexer, Token* tok)
 {
     // TODO: add ucn bullshit...
@@ -244,6 +449,8 @@ static void lex_identifier(TokenLexer* lexer, Token* tok)
         tok->opt_value.len++;
         next_char(lexer);
     }
+
+    determine_identifier_keyword(tok);
 }
 
 static void lex_string_literal(TokenLexer* lexer, Token* tok)
