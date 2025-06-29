@@ -13,6 +13,10 @@
 
 #include "lex/source_line.h"
 
+// TODO: change there to make sure theres a null terminator on the end and if
+// we see a null character then we check if were at the end. This should fix
+// problems with reading binary / arbitrary files...
+
 // TODO: possible thing to do in the future is to change this code to
 // simply alter the source stream itself. i.e. instead of making a buffer
 // then deleting it everytime, why done we just alter the stream then do a

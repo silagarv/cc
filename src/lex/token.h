@@ -138,19 +138,16 @@ typedef enum TokenType {
     TOKEN_NEWLINE,
 } TokenType;
 
-typedef enum TokenFlags {
-    TOKEN_FLAG_LEADING_SPACE = 0x01,
-    TOKEN_FLAG_DISABLE_EXPAND = 0x02,
-} TokenFlags;
-
 // TODO: maybe turn opt value into a pointer if we want to save space???
 typedef struct Token {
     TokenType type;
-    ResolvedLocation loc;
+    Location loc;
 
     StringView opt_value;
     
-    TokenFlags flags;
+    bool leading_space;
+    bool start_of_line;
+    bool disable_expand;
 } Token;
 
 typedef struct TokenList {
