@@ -1,4 +1,10 @@
-// #include "driver/driver.h"
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+#include "util/panic.h"
+#include "util/buffer.h"
+#include "util/xmalloc.h"
 
 #include "lex/source_line.h"
 #include "lex/source_stream.h"
@@ -6,13 +12,7 @@
 #include "lex/token.h"
 #include "lex/location_map.h"
 
-#include "util/panic.h"
-#include "util/buffer.h"
-#include "util/xmalloc.h"
-
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include "parse/parser.h"
 
 // char test_pgm[] = {
 //         // #embed "/usr/include/stdio.h"
@@ -31,6 +31,7 @@ int main(int argc, char** argv)
         "\n"
         "int main()\n"
         "{\n"
+        "    char str[] = \"Hello, World!\\n\""
         "    int x = 34;\n"
         "    int y = x + 35;\n"
         "    return y;\n"
@@ -82,6 +83,9 @@ int main(int argc, char** argv)
         // }
     }
 
+    TokenStream stream = token_list_to_stream(&tokens);
+
+    parse_translation_unit(stream);
 
     
 

@@ -32,9 +32,9 @@ LEX = src/lex/source_stream.c \
 	src/lex/token.c \
 	src/lex/token_lexer.c
 
-# PARSE = src/parse/parser.c
+PARSE = src/parse/parser.c
 
-SRC = $(UTIL) $(FILES) $(LEX)
+SRC = $(UTIL) $(FILES) $(LEX) $(PARSE)
 
 cc: $(SRC) src/main.c
 	$(CC) $(CFLAGS) $^ -o $@
