@@ -66,6 +66,11 @@ static bool is_horizontal_whitespace(char c)
     }
 }
 
+static bool is_ascii(char c)
+{
+    return ((unsigned char) c <= 127);
+}
+
 TokenLexer token_lexer_create(SourceStream stream, LineRun* run)
 {
     TokenLexer lexer = (TokenLexer) {

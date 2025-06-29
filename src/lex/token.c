@@ -278,3 +278,8 @@ Token* token_list_next(TokenList* list)
 
     return &list->tokens[list->used++];
 }
+
+TokenStream token_list_to_stream(const TokenList* list)
+{
+    return (TokenStream) {.tokens = list->tokens, .count = list->used, .current_token = 0};
+}
