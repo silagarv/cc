@@ -25,7 +25,7 @@ DRIVER = src/driver/diagnostic.c \
 	src/driver/translation_unit.c \
 	src/driver/driver.c
 
-FILES = src/files/file_entry.c
+# FILES = src/files/file_entry.c
 
 LEX = src/lex/source_stream.c \
 	src/lex/location_map.c \

@@ -10,14 +10,33 @@
 #include "driver/diagnostic.h"
 
 #include "lex/token.h"
+#include "lex/location_map.h"
 
-void parser_initialise(Parser* parser, TokenList* tokens);
-void parser_finialise(Parser* parser);
+#include "parse/ast.h"
+
+static const TokenType storage_classes[] = 
+{
+    TOKEN_EXTERN,
+    TOKEN_TYPEDEF,
+    TOKEN_STATIC,
+    TOKEN_AUTO,
+    TOKEN_REGISTER
+};
+
+static const TokenType type_qualifiers[] =
+{
+    TOKEN_CONST,
+    TOKEN_RESTRICT,
+    TOKEN_VOLATILE,
+    TOKEN_INLINE
+};
 
 static bool is_valid_stream_position(TokenStream* stream)
 {
     return (stream->current_token < stream->count);
 }
+
+// Below are basic token matching functions for us to use while parsing
 
 static TokenType curr_type(TokenStream* stream)
 {
@@ -31,6 +50,13 @@ static TokenType next_type(TokenStream* stream)
     assert(is_valid_stream_position(stream));
 
     return stream->tokens[stream->current_token + 1].type;
+}
+
+static TokenType next_next_type(TokenStream* stream)
+{
+    assert(is_valid_stream_position(stream));
+
+    return stream->tokens[stream->current_token + 2].type;
 }
 
 static Token* curr(TokenStream* stream)
@@ -59,8 +85,22 @@ static void consume(TokenStream* stream)
     }
 }
 
-static bool match(TokenStream* stream, TokenType type)
+static void parse_error(Parser* parser, const char* fmt, ...)
 {
+    Token* tok = curr(parser->stream);   
+
+    ResolvedLocation loc = line_map_resolve_location(parser->map, tok->loc);
+    fprintf(stderr, "%s:%u:%u\n", loc.name->path, loc.line, loc.col);
+    va_list args;
+    va_start(args, fmt);
+    diag_verror(fmt, args);
+    va_end(args);
+}
+
+static bool match(Parser* parser, TokenType type)
+{
+    TokenStream* stream = parser->stream;
+
     if (curr_type(stream) == type)
     {
         consume(stream);
@@ -68,17 +108,22 @@ static bool match(TokenStream* stream, TokenType type)
         return true;
     }
 
+    parse_error(parser, "expected '%s' but got '%s'", 
+            token_type_get_name(type), 
+            token_type_get_name(curr_type(stream))
+        );
+
     return false;
 }
 
-static bool is_match(TokenStream* stream, TokenType type)
+static bool is_match(Parser* parser, TokenType type)
 {
-    return (curr_type(stream) == type);
+    return (curr_type(parser->stream) == type);
 }
 
-static bool has_match(TokenStream* stream, const TokenType* types, size_t count)
+static bool has_match(Parser* parser, const TokenType* types, size_t count)
 {
-    const TokenType current = curr_type(stream);
+    const TokenType current = curr_type(parser->stream);
 
     for (size_t i = 0; i < count; i++)
     {
@@ -91,35 +136,50 @@ static bool has_match(TokenStream* stream, const TokenType* types, size_t count)
     return false;
 }
 
-void parse_primary_expression(TokenStream* stream, LineMap* map)
-{
-    if (is_match(stream, TOKEN_IDENTIFIER))
-    {
-        match(stream, TOKEN_IDENTIFIER);
-    }
-    else if (false /* constant??? */)
-    {
-        /* idk... */
-    }
-    else if (has_match(stream, (TokenType[]) {TOKEN_STRING, TOKEN_WIDE_STRING}, 2))
-    {
+// Functions to help with error recovery eventually we will have more 
+// intelligent error recovery functions but this will do for now...
+static void consume_until_and(Parser* parser, TokenType type)
+{   
+    TokenStream* stream = parser->stream;
 
-    }
-    else if (is_match(stream, TOKEN_LPAREN))
+    while (curr_type(stream) != type)
     {
-        /* parse_expression(stream, map); */
+        if (curr_type(stream) == TOKEN_EOF)
+        {
+            return;
+        }
+
+        consume(stream);
     }
-    else
-    {
-        diag_error("Failed to parse primary expression");
-    }
+
+    consume(stream);
 }
 
-void parse_translation_unit(TokenStream stream, LineMap* map)
+// All of our functions for parsing declarations / definitions 
+
+// All of our functions for parsing expressions
+static Expression* parse_primary_expression(Parser* parser);
+
+static Expression* parse_expression(Parser* parser);
+
+// All of our functions for parsing statements
+static Statement* parse_labeled_statement(Parser* parser);
+static Statement* parse_compound_statement(Parser* parser);
+static Statement* parse_expression_statement(Parser* parser);
+static Statement* parse_selection_statement(Parser* parser);
+static Statement* parse_iteration_statement(Parser* parser);
+static Statement* parse_jump_statement(Parser* parser);
+static Statement* parse_statement(Parser* parser);
+
+
+
+void parse_translation_unit(TokenStream* stream, LineMap* map)
 {
-    while (curr_type(&stream) != TOKEN_EOF)
+    Parser parser = {.stream = stream, .map = map};
+
+    while (curr_type(stream) != TOKEN_EOF)
     {
-        parse_primary_expression(&stream, map);
+       consume(stream);
     }
 
     return;

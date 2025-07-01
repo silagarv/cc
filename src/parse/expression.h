@@ -13,7 +13,7 @@ enum ExpressionType {
     EXPRESSION_UNARY,
     EXPRESSION_BINARY,
     EXPRESSION_CONDITIONAL,
-    EXPRESSION_ASSIGNMENT,
+    EXPRESSION_ASSIGNMENT
 };
 typedef enum ExpressionType ExpressionType;
 

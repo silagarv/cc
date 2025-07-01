@@ -8,5 +8,10 @@
 #include "parse/statement.h"
 
 // add some structure for the ast
+typedef struct AST {
+    
+
+    Scope scope;
+} AST;
 
 #endif /* AST_H */

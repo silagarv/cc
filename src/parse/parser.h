@@ -12,14 +12,11 @@
 
 struct Parser {
     // Current tokens and where we are in the list
-    TokenStream stream;
-
-    Scope* scopes;
-    size_t scopes_count;
-    size_t scopes_allocated;
+    TokenStream* stream;
+    LineMap* map;
 };
 typedef struct Parser Parser;
 
-void parse_translation_unit(TokenStream stream, LineMap* map);
+void parse_translation_unit(TokenStream* stream, LineMap* map);
 
 #endif /* PARSER_H */

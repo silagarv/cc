@@ -73,12 +73,12 @@ struct StatmentDefault {
     Statement* statement;
 };
 
-// Compound ... duh
 struct StatmentCompound {
     StatementBase base;
     // Maybe add a block item list opt?
     Statement* statement;
-    // Could also be a declaration
+    size_t used;
+    size_t allocated;
 };
 
 struct StatementExpression {

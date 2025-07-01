@@ -163,3 +163,10 @@ void diag_help(const char* fmt, ...)
 
     finish();
 }
+
+void diag_verror(const char* fmt, va_list args)
+{
+    diag_internal(DIAGNOSTIC_ERROR, fmt, args);
+
+    finish();
+}

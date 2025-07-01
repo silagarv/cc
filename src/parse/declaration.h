@@ -1,10 +1,9 @@
 #ifndef DECLARATION_H
 #define DECLARATION_H
 
-enum DeclarationType {
+typedef enum DeclarationType {
     DECLARATION_ERROR = -1,
-};
-typedef enum DeclarationType DeclarationType;
+} DeclarationType;
 
 typedef union Declaration Declaration;
 

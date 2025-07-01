@@ -9,6 +9,8 @@
 #include "lex/location.h"
 #include "lex/source_line.h"
 
+// TODO: change LineMap to LocationMap??? Would make more sense to be fair
+
 // TODO: could we change the LineInfo to store a pointer to a sourceline and 
 // then store the line else where to prevent relexing or reopening of files?
 
@@ -26,6 +28,9 @@
 // duplicated as the structure is very bloated by them... If this happend 
 // then when we realloc a LineRun in the big map then the ptr to the filename
 // won't then become invalid. (But we could just heap allocate that anyways)...
+
+
+
 
 // This is inspired by a combinations of gcc's CPPLIB linemaps and Clangs
 // SourceLocation system. Thank you!
@@ -122,6 +127,8 @@ typedef struct LineMap {
 } LineMap;
 
 // TODO: create some kind of macro map to track macro expansion
+
+// TODO: add a way to get the line from a line map given a location
 
 // Add a line to a line run and return the base location given for that 
 // particular line.

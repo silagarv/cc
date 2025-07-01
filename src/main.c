@@ -17,7 +17,8 @@
 
 // char test_pgm[] = {
 //         // #embed "/usr/include/stdio.h"
-        // #embed "sqlite3.c.testing.i"
+//         // #embed "sqlite3.c.testing.i"
+//         // #embed "../sqlite-autoconf-3490100/sqlite3.c"
 // };
 
 int main(int argc, char** argv)
@@ -25,20 +26,13 @@ int main(int argc, char** argv)
     diag_init();
     
     char test_pgm[] =
-    // //     // "#include <stdio.h>\n"
-    //     // "// Declaration of puts \n"
-    //     // "\nint puts(const char* str);\n"
-    //     // "\n"
-    //     // "/* Test multiline comment\n"
-    //     // " * the comment that keeps giving */\n"
+        ";\n"
+        "int main();\n"
         "\n"
         "int main()\n"
         "{\n"
-        "    char str[] = \"Hello, World!\\n\""
-        "    int x = 34;\n"
-        "    int y = x + 35;\n"
-        "    return y;\n"
-        "}\n";
+        "    return 69;\n"
+        "};\n";
 
     Filepath path = FILEPATH_STATIC_INIT("test_pgm.c");
 
@@ -87,8 +81,7 @@ int main(int argc, char** argv)
     }
 
     TokenStream stream = token_list_to_stream(&tokens);
-
-    parse_translation_unit(stream, &map);
+    parse_translation_unit(&stream, &map);
 
     
 
