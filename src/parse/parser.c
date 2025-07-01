@@ -6,7 +6,6 @@
 #include <stddef.h>
 #include <string.h>
 
-#include "parse/expression.h"
 #include "util/panic.h"
 #include "util/xmalloc.h"
 
@@ -15,6 +14,8 @@
 #include "lex/token.h"
 #include "lex/location_map.h"
 
+#include "parse/expression.h"
+#include "parse/declaration.h"
 #include "parse/statement.h"
 
 static const TokenType storage_classes[] = 
@@ -207,8 +208,41 @@ static Statement* parse_jump_statement(Parser* parser);
 static Statement* parse_statement(Parser* parser);
 
 // All of our functions for parsing declarations / definitions
-
-
+static Declaration* parse_designation(Parser* parser);
+static Declaration* parse_designator_list(Parser* parser);
+static Declaration* parse_designator(Parser* parser);
+static Declaration* parse_initializer(Parser* parser);
+static Declaration* parse_initializer_list(Parser* parser);
+static Declaration* parse_declarator(Parser* parser);
+static Declaration* parse_init_declarator(Parser* parser);
+static Declaration* parse_init_declarator_list(Parser* parser);
+static Declaration* parse_function_specificer(Parser* parser);
+static Declaration* parse_typedef_name(Parser* parser);
+static Declaration* parse_enumerator_list(Parser* parser);
+static Declaration* parse_enum_specificer(Parser* parser);
+static Declaration* parse_declarator(Parser* parser);
+static Declaration* parse_direct_declarator(Parser* parser);
+static Declaration* parse_direct_abstract_declarator(Parser* parser);
+static Declaration* parse_abstract_declarator(Parser* parser);
+static Declaration* parse_pointer(Parser* parser);
+static Declaration* parse_identifier_list(Parser* parser);
+static Declaration* parse_paramater_declaration(Parser* parser);
+static Declaration* parse_paramater_list(Parser* parser);
+static Declaration* parse_paramater_type_list(Parser* parser);
+static Declaration* parse_type_specificer(Parser* parser);
+static Declaration* parse_type_qualifier(Parser* parser);
+static Declaration* parse_type_qualifier_list(Parser* parser);
+static Declaration* parse_specifier_qualifier_list(Parser* parser);
+static Declaration* parse_struct_declarator(Parser* parser);
+static Declaration* parse_struct_declarator_list(Parser* parser);
+static Declaration* parse_struct_declaration(Parser* parser);
+static Declaration* parse_struct_declaration_list(Parser* parser);
+static Declaration* parse_struct_or_union(Parser* parser);
+static Declaration* parse_struct_or_union_specifier(Parser* parser);
+static Declaration* parse_type_specifier(Parser* parser);
+static Declaration* parse_storage_class_specifier(Parser* parser);
+static Declaration* parse_declaration_specifiers(Parser* parser);
+static Declaration* parse_declaration(Parser* parser);
 
 // The definitions of the functions we will use for pasing
 
@@ -641,6 +675,9 @@ static Expression* parse_assignment_expression(Parser* parser)
      * well need to add in the other actual part but for now we'll just
      * do the top half of this production
      *
+     * also how are we supposed to know the difference before even trying to
+     * parse this shit... wtf do I do here????
+     * 
      * unary-expression assignment-operator assignment-expression
      */
 

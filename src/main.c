@@ -28,7 +28,7 @@ int main(int argc, char** argv)
     char test_pgm[] =
         "test[32][46];\n"
         "function_call();\n"
-        "nest.the->mf.structs[32](abc, a, 2, 9, 10 == 11 ? 1 : 0);\n";
+        "nest.the->mf.structs[32](*abc, a, 2, 9, 10 == 11 ? 1 : 0);\n";
         // "int main();\n"
         // "\n"
         // "int main()\n"
