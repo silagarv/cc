@@ -138,7 +138,7 @@ struct StatmentReturn {
 
 union Statement {
     // Base statement for getting type and such
-    StatementBase stmt;
+    StatementBase base;
 
     // Labelled statements
     StatmentLabel label_stmt;

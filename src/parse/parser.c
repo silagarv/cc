@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <assert.h>
+#include <stddef.h>
 
 #include "util/panic.h"
 #include "util/xmalloc.h"
@@ -12,7 +13,7 @@
 #include "lex/token.h"
 #include "lex/location_map.h"
 
-#include "parse/ast.h"
+#include "parse/statement.h"
 
 static const TokenType storage_classes[] = 
 {
@@ -30,6 +31,14 @@ static const TokenType type_qualifiers[] =
     TOKEN_VOLATILE,
     TOKEN_INLINE
 };
+
+static const TokenType statement_start_set[] = 
+{
+    TOKEN_FOR
+};
+
+static const size_t statement_start_set_size = 
+        sizeof(statement_start_set) / sizeof(statement_start_set[0]);
 
 static bool is_valid_stream_position(TokenStream* stream)
 {
@@ -172,15 +181,57 @@ static Statement* parse_jump_statement(Parser* parser);
 static Statement* parse_statement(Parser* parser);
 
 
-
 void parse_translation_unit(TokenStream* stream, LineMap* map)
 {
     Parser parser = {.stream = stream, .map = map};
 
     while (curr_type(stream) != TOKEN_EOF)
     {
+
+
        consume(stream);
     }
 
     return;
 }
+
+// Create a statement struct to be used
+static Statement* statement_create(Parser* parser, StatementType type)
+{
+    Statement* statement = xmalloc(sizeof(Statement));
+    statement->base = (StatementBase)
+    {
+        .loc = curr(parser->stream)->loc,
+        .type = type
+    };
+
+    return statement;
+}
+
+static Statement *parse_labeled_statement(Parser *parser);
+static Statement *parse_compound_statement(Parser *parser);
+static Statement *parse_expression_statement(Parser *parser);
+static Statement *parse_selection_statement(Parser *parser);
+static Statement *parse_iteration_statement(Parser *parser);
+static Statement *parse_jump_statement(Parser *parser);
+
+static Statement* parse_statment(Parser* parser)
+{
+    assert(has_match(parser, statement_start_set, statement_start_set_size));
+
+    switch (curr_type(parser->stream))
+    {
+
+
+        default:
+            panic("current token cannot start a statement");
+            break;
+    }
+
+    return NULL;
+}
+
+
+
+
+
