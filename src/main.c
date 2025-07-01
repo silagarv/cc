@@ -26,9 +26,12 @@ int main(int argc, char** argv)
     diag_init();
     
     char test_pgm[] =
-        "test[32][46];\n"
-        "function_call();\n"
-        "nest.the->mf.structs[32](*abc, a, 2, 9, 10 == 11 ? 1 : 0);\n";
+        // "test[32][46];\n"
+        // "function_call();\n"
+        // "nest.the->mf.structs[32](*abc, a, 2, 9, 10 == 11 ? 1 : 0);\n";
+        "switch (123 + 10) abc: break;\n"
+        "goto abc; {{{{{{{goto _;}}}}}}}\n"
+        "for (a != 0; a != 10; a++) { a + 30; }\n";
         // "int main();\n"
         // "\n"
         // "int main()\n"

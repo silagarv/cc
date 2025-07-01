@@ -271,8 +271,7 @@ void parse_translation_unit(TokenStream* stream, LineMap* map)
 
     while (curr_type(stream) != TOKEN_EOF)
     {
-        parse_expression(&parser);
-        match(&parser, TOKEN_SEMI);
+        parse_statement(&parser);
     }
 
     return;
@@ -704,8 +703,237 @@ static Expression* parse_expression(Parser* parser)
     return NULL;
 }
 
+// For parsing statements
 
+static Statement* parse_labeled_statement(Parser* parser)
+{
+    switch (curr_type(parser->stream)) 
+    {
+        case TOKEN_IDENTIFIER:
+            match(parser, TOKEN_IDENTIFIER);
+            match(parser, TOKEN_COLON);
+            parse_statement(parser);
+            break;
 
+        case TOKEN_CASE:
+            match(parser, TOKEN_CASE);
+            match(parser, TOKEN_COLON);
+            parse_statement(parser);
+            break;
+
+        case TOKEN_DEFAULT:
+            match(parser, TOKEN_DEFAULT);
+            match(parser, TOKEN_COLON);
+            parse_statement(parser);
+            break;
+        
+        default:
+            panic("bad labelled statement");
+            break;
+    }
+
+    return NULL;
+}
+static Statement* parse_compound_statement(Parser* parser)
+{
+    match(parser, TOKEN_LCURLY);
+
+    // TODO: can either be a declarations or a statement
+    // TODO: so we will need some way to easily differentiate between the two
+    // TODO: idk maybe statement start set or declarations start set
+
+    // for now we will just parse a statement
+    parse_statement(parser);
+
+    match(parser, TOKEN_RCURLY);
+
+    return NULL;
+}
+
+static Statement* parse_expression_statement(Parser* parser)
+{
+    // Need some way to check if we can start and expression
+    // like idk might need some kind of expression start set
+    parse_expression(parser);
+
+    match(parser, TOKEN_SEMI);
+
+    return NULL;
+}
+static Statement* parse_selection_statement(Parser* parser)
+{
+    switch (curr_type(parser->stream))
+    {
+        case TOKEN_IF:
+            match(parser, TOKEN_IF);
+            match(parser, TOKEN_LPAREN);
+            parse_expression(parser);
+            match(parser, TOKEN_RPAREN);
+            parse_statement(parser);
+            // This will take care of matching the else to the closest if...
+            if (is_match(parser, TOKEN_ELSE))
+            {
+                match(parser, TOKEN_ELSE);
+                parse_statement(parser);
+            }
+            break;
+
+        case TOKEN_SWITCH:
+            match(parser, TOKEN_SWITCH);
+            match(parser, TOKEN_LPAREN);
+            parse_expression(parser);
+            match(parser, TOKEN_RPAREN);
+            parse_statement(parser);
+            break;
+
+        default:
+            panic("bad selection statement start");
+            break;
+    }
+
+    return NULL;
+}
+static Statement* parse_iteration_statement(Parser* parser)
+{
+    switch (curr_type(parser->stream))
+    {
+        case TOKEN_WHILE:
+            match(parser, TOKEN_WHILE);
+            match(parser, TOKEN_LPAREN);
+            parse_expression(parser);
+            match(parser, TOKEN_RPAREN);
+            parse_statement(parser);
+            break;
+
+        case TOKEN_DO:
+            match(parser, TOKEN_DO);
+            parse_statement(parser);
+            match(parser, TOKEN_WHILE);
+            match(parser, TOKEN_LPAREN);
+            parse_expression(parser);
+            match(parser, TOKEN_RPAREN);
+            match(parser, TOKEN_SEMI);
+            break;
+
+        case TOKEN_FOR:
+            match(parser, TOKEN_FOR);
+            match(parser, TOKEN_LPAREN);
+
+            // TODO: for now we will assume that we have 3 expressions just
+            // TODO: because I can but this will need to be redone later
+
+            // TODO: additionally like below some distinction of declaration
+            // vs expression start is needed
+
+            parse_expression(parser);
+            match(parser, TOKEN_SEMI);
+            parse_expression(parser);
+            match(parser, TOKEN_SEMI);
+            parse_expression(parser);
+
+            match(parser, TOKEN_RPAREN);
+
+            parse_statement(parser);
+            break;
+
+        default:
+            panic("bad iteration statement value");
+            break;
+    }
+
+    return NULL;
+}
+static Statement* parse_jump_statement(Parser* parser)
+{
+    switch (curr_type(parser->stream))
+    {
+        case TOKEN_GOTO:
+            match(parser, TOKEN_GOTO);
+            match(parser, TOKEN_IDENTIFIER);
+            match(parser, TOKEN_SEMI);
+            break;
+
+        case TOKEN_CONTINUE:
+            match(parser, TOKEN_CONTINUE);
+            match(parser, TOKEN_SEMI);
+            break;
+
+        case TOKEN_BREAK:
+            match(parser, TOKEN_BREAK);
+            match(parser, TOKEN_SEMI);
+            break;
+
+        case TOKEN_RETURN:
+            match(parser, TOKEN_RETURN);
+            // TODO: this is hacky way of doing this would be much cleaner
+            // TODO: to check if we're about to start an expression instead
+            if (is_match(parser, TOKEN_SEMI))
+            {
+                // DO NOTHING
+            }
+            else
+            {
+                parse_expression(parser);
+            }
+            match(parser, TOKEN_SEMI);
+            break;
+
+        default:
+            panic("bad jump statement token");
+            break;
+    }
+
+    return NULL;
+}
+static Statement* parse_statement(Parser* parser)
+{
+    switch(curr_type(parser->stream))
+    {
+        case TOKEN_IDENTIFIER:
+            if (next_type(parser->stream) != TOKEN_COLON)
+            {
+                goto case_expression_statement;
+            }
+        case TOKEN_CASE:
+        case TOKEN_DEFAULT:
+            parse_labeled_statement(parser);
+            break;
+
+        case TOKEN_LCURLY:
+            parse_compound_statement(parser);
+            break;
+
+        // TODO: use some like expression start set or something...
+        case TOKEN_SEMI:
+case_expression_statement:
+            parse_expression_statement(parser);
+            break;
+
+        case TOKEN_IF:
+        case TOKEN_SWITCH:
+            parse_selection_statement(parser);
+            break;
+
+        case TOKEN_WHILE:
+        case TOKEN_DO:
+        case TOKEN_FOR:
+            parse_iteration_statement(parser);
+            break;
+
+        case TOKEN_GOTO:
+        case TOKEN_CONTINUE:
+        case TOKEN_BREAK:
+        case TOKEN_RETURN:
+            parse_jump_statement(parser);
+            break;
+
+        default:
+            panic("bad statement start");
+            break;
+    }
+
+    return NULL;
+}
 
 
 
