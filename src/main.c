@@ -26,13 +26,13 @@ int main(int argc, char** argv)
     diag_init();
     
     char test_pgm[] =
-        ";\n"
-        "int main();\n"
-        "\n"
-        "int main()\n"
-        "{\n"
-        "    return 69;\n"
-        "};\n";
+        "32 * 25 / *&*&*&*&*32 + 14 * x; 10 + 15 * &20 - sizeof 19;\n";
+        // "int main();\n"
+        // "\n"
+        // "int main()\n"
+        // "{\n"
+        // "    return 69;\n"
+        // "};\n";
 
     Filepath path = FILEPATH_STATIC_INIT("test_pgm.c");
 
