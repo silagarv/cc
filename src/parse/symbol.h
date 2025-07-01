@@ -5,17 +5,22 @@
 
 #include "util/str.h"
 
-struct Symbol {
-    String name;
-    // Some symbol stuff here
-};
-typedef struct Symbol Symbol;
+#include "parse/type.h"
 
-struct SymbolTable {
+typedef struct Symbol {
+    String name;
+    Type type;
+    // Some symbol stuff here
+} Symbol;
+
+typedef struct SymbolTable {
     Symbol* symbols;
     size_t count;
     size_t cap;
-};
-typedef struct SymbolTable SymbolTable;
+
+    struct SymbolTable* prev;
+} SymbolTable;
+
+SymbolTable* symbol_table_new(SymbolTable* prev);
 
 #endif /* SYMBOL_H */

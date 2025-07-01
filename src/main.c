@@ -26,7 +26,9 @@ int main(int argc, char** argv)
     diag_init();
     
     char test_pgm[] =
-        "32 * 25 / *&*&*&*&*32 + 14 * x; 10 + 15 * &20 - sizeof 19;\n";
+        "test[32][46];\n"
+        "function_call();\n"
+        "nest.the->mf.structs[32](abc, a, 2, 9, 10 == 11 ? 1 : 0);\n";
         // "int main();\n"
         // "\n"
         // "int main()\n"
@@ -66,57 +68,11 @@ int main(int argc, char** argv)
         {
             break;
         }
-
-        // ResolvedLocation loc = line_map_resolve_location(&map, tok->loc);
-        // printf("%s:%u:%u\n", loc.name->path, loc.line, loc.col);
-        // printf("%s\n", token_type_get_name(tok->type));
-        // if (token_has_opt_value(tok))
-        // {
-        //     printf("%.*s\n\n", (int) tok->opt_value.len, token_get_string(tok));
-        // }
-        // else
-        // {
-        //     printf("%s\n\n", token_get_name(tok));
-        // }
     }
 
     TokenStream stream = token_list_to_stream(&tokens);
     parse_translation_unit(&stream, &map);
-
-    
-
-
     free(tokens.tokens);
-
-    // Token tok;
-    // tok.type = TOKEN_UNKNOWN;
-    // while (true)
-    // {
-    //     tok = token_lexer_get_next(&lexer);
-
-    //     if (tok.type == TOKEN_UNKNOWN)
-    //     {
-    //         panic("unknown token");
-    //     }
-
-    //     if (tok.type == TOKEN_EOF)
-    //     {
-    //         break;
-    //     }
-
-    //     ResolvedLocation loc = line_map_resolve_location(&map, tok.loc);
-    //     printf("%s:%u:%u\n", loc.name->path, loc.line, loc.col);
-    //     printf("%s\n", token_type_get_name(tok.type));
-    //     if (token_has_opt_value(&tok))
-    //     {
-    //         printf("%.*s\n\n", (int) tok.opt_value.len, token_get_string(&tok));
-    //     }
-    //     else
-    //     {
-    //         printf("%s\n\n", token_get_name(&tok));
-    //     }
-    //     // printf("%s\n\n", (tok.start_of_line) ? "start of line" : "not start of line");
-    // }
 
     token_lexer_close(&lexer);
     line_map_free(&map);

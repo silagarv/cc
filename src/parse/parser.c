@@ -293,18 +293,69 @@ static Expression* parse_primary_expression(Parser* parser)
 static Expression* parse_postfix_expression(Parser* parser)
 {
     /* for now we will ignore the typename followed by initialiser list */
-
+    /* ( type-name ) { initializer-list } */
     /* in fact for now we will just parse a primary expression as this would 
      * be quite a bit of effort to implement at the moment
      */
-    
+
     parse_primary_expression(parser);
+    while (has_match(parser, (TokenType[]) {TOKEN_LBRACKET, TOKEN_LPAREN,
+            TOKEN_DOT, TOKEN_ARROW, TOKEN_PLUS_PLUS, TOKEN_MINUS_MINUS}, 6))
+    {
+        switch (curr_type(parser->stream))
+        {
+            case TOKEN_LBRACKET:
+                match(parser, TOKEN_LBRACKET);
+                parse_expression(parser);
+                match(parser, TOKEN_RBRACKET);
+                break;
+
+            case TOKEN_LPAREN:
+                match(parser, TOKEN_LPAREN);
+                if (curr_type(parser->stream) != TOKEN_RPAREN)
+                {
+                    parse_argument_expression_list(parser);
+                }
+                match(parser, TOKEN_RPAREN);
+                break;
+
+            case TOKEN_DOT:
+                match(parser, TOKEN_DOT);
+                match(parser, TOKEN_IDENTIFIER);
+                break;
+
+            case TOKEN_ARROW:
+                match(parser, TOKEN_ARROW);
+                match(parser, TOKEN_IDENTIFIER);
+                break;
+
+            case TOKEN_PLUS_PLUS:
+                match(parser, TOKEN_PLUS_PLUS);
+                break;
+
+            case TOKEN_MINUS_MINUS:
+                match(parser, TOKEN_MINUS_MINUS);
+                break;
+
+            default:
+                panic("unreachable");
+                break;
+        }
+    }
 
     return NULL;
 }
 
 static Expression* parse_argument_expression_list(Parser* parser)
 {
+    parse_assignment_expression(parser);
+
+    while (is_match(parser, TOKEN_COMMA))
+    {
+        match(parser, TOKEN_COMMA);
+        parse_assignment_expression(parser);
+    }
+
     return NULL;
 }
 

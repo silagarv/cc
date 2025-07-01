@@ -22,10 +22,14 @@ typedef struct TypeStruct {
     size_t num_members;
 } TypeStruct;
 
-struct TypeBase {
+typedef struct TypeBase {
     TypeType type;
     bool is_builtin;
     bool is_implicitly_created; /* was this created implicitly (int) */
-};
+} TypeBase;
+
+typedef struct Type {
+    TypeBase base;
+} Type;
 
 #endif /* TYPE_H */
