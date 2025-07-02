@@ -679,7 +679,13 @@ static Expression* parse_conditional_expression(Parser* parser)
 
 static Expression* parse_assignment_expression(Parser* parser)
 {
-    parse_conditional_expression(parser);
+    static const TokenType assignment_operators[] = {
+        TOKEN_EQUAL, TOKEN_STAR_EQUAL, TOKEN_SLASH_EQUAL, TOKEN_PERCENT_EQUAL,
+        TOKEN_PLUS_EQUAL, TOKEN_MINUS_EQUAL, TOKEN_LT_LT_EQUAL, TOKEN_GT_GT_EQUAL,
+        TOKEN_AND_EQUAL, TOKEN_XOR_EQUAL, TOKEN_OR_EQUAL
+    };
+    static const size_t num_operators = 
+            sizeof(assignment_operators) / sizeof(assignment_operators[0]);
 
     /* 
      * well need to add in the other actual part but for now we'll just
@@ -690,6 +696,19 @@ static Expression* parse_assignment_expression(Parser* parser)
      * 
      * unary-expression assignment-operator assignment-expression
      */
+
+    // Some c compilers seem to just parse a conditional here so this is what
+    // I will do for now until I find a better solution
+    parse_conditional_expression(parser);
+
+    if (has_match(parser, assignment_operators, num_operators))
+    {
+        // TODO: this is naught since we will eventually want to know the
+        // TODO: type that we matched since that information is needed later
+        TokenType current_type = curr_type(parser->stream);
+        match(parser, current_type);
+        parse_assignment_expression(parser);
+    }
 
     return NULL;
 }
