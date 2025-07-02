@@ -13,7 +13,7 @@
 // on demand by the parser. E.g. if its a number it gets converted, and properly
 // checked there, and e.g. string literals are concatenated by parser
 typedef enum TokenType {
-    TOKEN_UNKNOWN = -1,
+    TOKEN_UNKNOWN = 0,
     TOKEN_EOF,
 
     // Punctuators
@@ -136,6 +136,9 @@ typedef enum TokenType {
     TOKEN_HEADER_NAME,
     TOKEN_MACRO_PARAMATER,
     TOKEN_NEWLINE,
+
+    /* the last token to get the number of tokens */
+    TOKEN_LAST
 } TokenType;
 
 // TODO: maybe turn opt value into a pointer if we want to save space???

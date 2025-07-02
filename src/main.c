@@ -29,11 +29,14 @@ int main(int argc, char** argv)
         // "test[32][46];\n"
         // "function_call();\n"
         // "nest.the->mf.structs[32](*abc, a, 2, 9, 10 == 11 ? 1 : 0);\n";
-        "switch (123 + 10) abc: break;\n"
-        "goto abc; {{{{{{{goto _;}}}}}}}\n"
-        "for (a != 0; a /= != 10; a++) { ; a == 3; }\n"
-        "for (a = a *= 0; (printf)(\"NO\"); a++) { printf(\"Hello!\", 1, 2, 'a'); }\n"
-        "return a == 0;";
+        // "switch (123 + 10) abc: break;\n";
+        // "goto abc; {{{{{{{goto _;}}}}}}}\n";
+        "for (a != 0; a /= 10 != 10; a++) { ; a == 3; }\n"
+        "hello: ;\n"
+        "case 1234: return 0; \n"
+        "default: break;";
+        // "for (a = a *= 0; (printf)(\"NO\"); a++) { printf(\"Hello!\", 1, 2, 'a'); }\n";
+        //"return a == 0;";
         // "int main();\n"
         // "\n"
         // "int main()\n"

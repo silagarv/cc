@@ -17,6 +17,9 @@ struct Parser {
 
     // Will need to add context to it as well for parsing loops conditionals
     // and other things
+
+    /* our anchor set for recovering from parsing */
+    unsigned int recover_set[TOKEN_LAST];
 };
 typedef struct Parser Parser;
 

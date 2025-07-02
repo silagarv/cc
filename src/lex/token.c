@@ -151,6 +151,7 @@ const char* token_type_get_name(TokenType type)
         case TOKEN_HEADER_NAME: return "<<INTERNAL_HEADER_NAME>>"; 
         case TOKEN_MACRO_PARAMATER: return "<<INTERNAL_MACRO_PARAM>>"; 
         case TOKEN_NEWLINE: return "<newline-token>";
+        case TOKEN_LAST: return "<<INTERNAL_TOKEN_LAST>>";
     }
 
     panic("unable to get token type in token_get_name");

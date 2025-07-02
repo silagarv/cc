@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <stdio.h>
 
+#include "lex/token.h"
 #include "util/panic.h"
 #include "util/str_view.h"
 
@@ -268,7 +269,11 @@ static void determine_identifier_keyword(Token* tok)
             break;
 
         case 'c':
-            if (string_view_equals(&tok->opt_value, "char"))
+            if (string_view_equals(&tok->opt_value, "case"))
+            {
+                tok->type = TOKEN_CASE;
+            }
+            else if (string_view_equals(&tok->opt_value, "char"))
             {
                 tok->type = TOKEN_CHAR;
             }

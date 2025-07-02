@@ -1,5 +1,6 @@
 #include "parser.h"
 
+#include <stdlib.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <assert.h>
@@ -34,14 +35,6 @@ static const TokenType type_qualifiers[] =
     TOKEN_VOLATILE,
     TOKEN_INLINE
 };
-
-static const TokenType statement_start_set[] = 
-{
-    TOKEN_FOR
-};
-
-static const size_t statement_start_set_size = 
-        sizeof(statement_start_set) / sizeof(statement_start_set[0]);
 
 static bool is_valid_stream_position(TokenStream* stream)
 {
@@ -107,6 +100,21 @@ static void parse_error(Parser* parser, const char* fmt, ...)
     va_start(args, fmt);
     diag_verror(fmt, args);
     va_end(args);
+}
+
+// The require function requires a token to be of that type. I.e. we should
+// have already checked we got that type and to get any other type would mean
+// that something has gone quite wrong and that we should panic.
+static void require(Parser* parser, TokenType type)
+{
+    TokenStream* stream = parser->stream;
+
+    if (curr_type(stream) != type)
+    {
+        panic("function require failed due to current type not being type");
+    }
+
+    consume(stream);
 }
 
 static bool match(Parser* parser, TokenType type)
@@ -199,7 +207,9 @@ static Expression* parse_constant_expression(Parser* parser);
 static Expression* parse_expression(Parser* parser);
 
 // All of our functions for parsing statements
-static Statement* parse_labeled_statement(Parser* parser);
+static Statement* parse_label_statement(Parser* parser);
+static Statement* parse_case_statement(Parser* parser);
+static Statement* parse_default_statement(Parser* parser);
 static Statement* parse_compound_statement(Parser* parser);
 static Statement* parse_expression_statement(Parser* parser);
 static Statement* parse_selection_statement(Parser* parser);
@@ -471,6 +481,25 @@ static Expression* parse_cast_expression(Parser* parser)
 
     /* ( type-name ) cast-expression*/
 
+    // TODO: clean this up a lot
+
+    if (curr_type(parser->stream) == TOKEN_LPAREN)
+    {
+        /* test if we got a typename or not */
+        if (false)
+        {
+            goto unary;
+        }
+        else
+        {
+            /* parse type name */
+            match(parser, TOKEN_RPAREN);
+
+            return NULL; /* return the expression we built */
+        }
+    }
+
+unary:
     parse_unary_expression(parser);
 
     return NULL;
@@ -747,35 +776,72 @@ static Statement* statement_allocate(Parser* parser, StatementType type)
     return stmt;
 }
 
-static Statement* parse_labeled_statement(Parser* parser)
+static void statement_free(Statement* stmt)
 {
-    switch (curr_type(parser->stream)) 
-    {
-        case TOKEN_IDENTIFIER:
-            match(parser, TOKEN_IDENTIFIER);
-            match(parser, TOKEN_COLON);
-            parse_statement(parser);
-            break;
+    free(stmt);
+}
 
-        case TOKEN_CASE:
-            match(parser, TOKEN_CASE);
-            match(parser, TOKEN_COLON);
-            parse_statement(parser);
-            break;
+static Statement* parse_label_statement(Parser* parser)
+{
+    Statement* stmt = statement_allocate(parser, STATEMENT_LABEL);
 
-        case TOKEN_DEFAULT:
-            match(parser, TOKEN_DEFAULT);
-            match(parser, TOKEN_COLON);
-            parse_statement(parser);
-            break;
-        
-        default:
-            panic("bad labelled statement");
-            break;
-    }
+    Token* tok = curr(parser->stream);
+
+    require(parser, TOKEN_IDENTIFIER);
+    require(parser, TOKEN_COLON);
+
+    // Somehow we want to get the name from the token
+    stmt->label_stmt.name = (String) {0};
+    stmt->label_stmt.statement = parse_statement(parser);
+
+    statement_free(stmt);
 
     return NULL;
 }
+
+static Statement* parse_case_statement(Parser* parser)
+{
+    // TODO: we will need to check somewhere that we are actually within the
+    // TODO: context of a switch statment
+    
+    Statement* stmt = statement_allocate(parser, STATEMENT_CASE);
+
+    require(parser, TOKEN_CASE);
+
+    // TODO: somewhere we will need to parse the constant expression and then
+    // TODO: eventually fold it somewhere
+    
+    // Get the experssion and the statment
+    stmt->case_stmt.constant_expression = parse_constant_expression(parser);
+    
+    // Get the colon and the rest of the statment
+    match(parser, TOKEN_COLON);
+
+    stmt->case_stmt.statement = parse_statement(parser);
+
+    statement_free(stmt);
+
+    return NULL;
+}
+
+static Statement* parse_default_statement(Parser* parser)
+{
+    // TODO: add in check to make sure we are in the context of a switch
+    // TODO: otherwise this is invalid
+
+    Statement* stmt = statement_allocate(parser, STATEMENT_CASE);
+
+    require(parser, TOKEN_DEFAULT);
+
+    match(parser, TOKEN_COLON);
+
+    stmt->default_stmt.statement = parse_statement(parser);
+
+    statement_free(stmt);
+
+    return NULL;
+}
+
 static Statement* parse_compound_statement(Parser* parser)
 {
     match(parser, TOKEN_LCURLY);
@@ -957,22 +1023,32 @@ static Statement* parse_jump_statement(Parser* parser)
 
 static Statement* parse_statement(Parser* parser)
 {
+    Statement* stmt;
+
     switch(curr_type(parser->stream))
     {
         // Here we are specifically looking for a label
         // e.g. fail: ...
+        // TODO: we will also eventually need to check if the identifier might
+        // TODO: be a type name or not i think
         case TOKEN_IDENTIFIER:
             if (next_type(parser->stream) != TOKEN_COLON)
             {
                 goto case_expression_statement;
             }
+            stmt = parse_label_statement(parser);
+            break;
+
         case TOKEN_CASE:
+            stmt = parse_case_statement(parser);
+            break;
+
         case TOKEN_DEFAULT:
-            parse_labeled_statement(parser);
+            stmt = parse_default_statement(parser);
             break;
 
         case TOKEN_LCURLY:
-            parse_compound_statement(parser);
+            stmt = parse_compound_statement(parser);
             break;
         
         /* note that if we get a ';' we're just going to match an empty 
@@ -980,25 +1056,25 @@ static Statement* parse_statement(Parser* parser)
          * semi colon later but will leave this here for now
          */
         case TOKEN_SEMI:
-            parse_expression_statement(parser);
+            stmt = parse_expression_statement(parser);
             break;
 
         case TOKEN_IF:
         case TOKEN_SWITCH:
-            parse_selection_statement(parser);
+            stmt = parse_selection_statement(parser);
             break;
 
         case TOKEN_WHILE:
         case TOKEN_DO:
         case TOKEN_FOR:
-            parse_iteration_statement(parser);
+            stmt = parse_iteration_statement(parser);
             break;
 
         case TOKEN_GOTO:
         case TOKEN_CONTINUE:
         case TOKEN_BREAK:
         case TOKEN_RETURN:
-            parse_jump_statement(parser);
+            stmt = parse_jump_statement(parser);
             break;
 
         default:
@@ -1010,10 +1086,15 @@ static Statement* parse_statement(Parser* parser)
 
             // TODO: improve the logic here to handle this case better
 case_expression_statement:
-            parse_expression_statement(parser);    
+            stmt = parse_expression_statement(parser);    
 
             // panic("bad statement start");
             break;
+    }
+
+    if (stmt != NULL)
+    {
+        panic("random test");
     }
 
     return NULL;
