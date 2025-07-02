@@ -14,6 +14,9 @@ struct Parser {
     // Current tokens and where we are in the list
     TokenStream* stream;
     LineMap* map;
+
+    // Will need to add context to it as well for parsing loops conditionals
+    // and other things
 };
 typedef struct Parser Parser;
 

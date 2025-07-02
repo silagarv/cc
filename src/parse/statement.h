@@ -1,6 +1,8 @@
 #ifndef STATEMENT_H
 #define STATEMENT_H
 
+#include "util/str.h"
+
 #include "lex/location.h"
 
 #include "parse/expression.h"
@@ -33,10 +35,10 @@ enum StatementType {
 typedef enum StatementType StatementType;
 
 typedef struct StatementBase StatementBase;
-typedef struct StatmentLabel StatmentLabel;
-typedef struct StatmentCase StatmentCase;
-typedef struct StatmentDefault StatmentDefault;
-typedef struct StatmentCompound StatmentCompound;
+typedef struct StatementLabel StatementLabel;
+typedef struct StatementCase StatementCase;
+typedef struct StatementDefault StatementDefault;
+typedef struct StatementCompound StatementCompound;
 typedef struct StatementExpression StatementExpression;
 typedef struct StatementIf StatementIf;
 typedef struct StatementSwitch StatementSwitch;
@@ -53,37 +55,37 @@ typedef union Statement Statement;
 struct StatementBase {
     StatementType type;
     Location loc;
+    Statement* parent; /* the parent statement of the execution*/
 };
 
 // Labelled statements
-struct StatmentLabel {
+struct StatementLabel {
     StatementBase base;
-    // Identifier in here somehow?
+    String name;
     Statement* statement;
 };
 
-struct StatmentCase {
+struct StatementCase {
     StatementBase base;
     Expression* constant_expression;
     Statement* statement;
 };
 
-struct StatmentDefault {
+struct StatementDefault {
     StatementBase base;
     Statement* statement;
 };
 
-struct StatmentCompound {
+struct StatementCompound {
     StatementBase base;
     // Maybe add a block item list opt?
     Statement* statement;
-    size_t used;
-    size_t allocated;
+    size_t statement_count;
 };
 
 struct StatementExpression {
     StatementBase base;
-    Expression* opt;
+    Expression* expression;
 };
 
 // selection statement
@@ -98,6 +100,10 @@ struct StatementSwitch {
     StatementBase base;
     Expression* expression;
     Statement* body;
+    // All of the cases in the switch
+    StatementCase* first_case;
+    StatementCase* last_case;
+    StatementDefault* default_label;
 };
 
 // Iteration statement
@@ -115,12 +121,15 @@ struct StatementDoWhile {
 
 struct StatementFor {
     StatementBase base;
+    Expression* initialisation;
+    Expression* condition;
+    Statement* body;
 };
 
 // Jump statement
 struct StatmentGoto {
     StatementBase base;
-    // Need to have some kind of label thing
+    String label_name; // This will need to be changed in the future
 };
 
 struct StatmentContinue {
@@ -141,12 +150,12 @@ union Statement {
     StatementBase base;
 
     // Labelled statements
-    StatmentLabel label_stmt;
-    StatmentCase case_stmt;
-    StatmentDefault default_stmt;
+    StatementLabel label_stmt;
+    StatementCase case_stmt;
+    StatementDefault default_stmt;
 
     // Compound ... duh
-    StatmentCompound compound_stmt;
+    StatementCompound compound_stmt;
 
     // Expression statement
     StatementExpression expression_stmt;

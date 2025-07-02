@@ -735,6 +735,18 @@ static Expression* parse_expression(Parser* parser)
 
 // For parsing statements
 
+// Allocate and setup the current statement
+static Statement* statement_allocate(Parser* parser, StatementType type)
+{
+    Statement* stmt = xmalloc(sizeof(Statement));
+
+    stmt->base.type = type;
+    stmt->base.loc = curr(parser->stream)->loc;
+    stmt->base.parent = NULL; // TODO: change this from NULL to proper stmt
+
+    return stmt;
+}
+
 static Statement* parse_labeled_statement(Parser* parser)
 {
     switch (curr_type(parser->stream)) 
@@ -942,6 +954,7 @@ static Statement* parse_jump_statement(Parser* parser)
 
     return NULL;
 }
+
 static Statement* parse_statement(Parser* parser)
 {
     switch(curr_type(parser->stream))
@@ -991,6 +1004,9 @@ static Statement* parse_statement(Parser* parser)
         default:
             // For now we should just try to parse an expression statement
             // even if that might not be right
+            
+            // TODO: eventually we want to change this to make an error statement
+            // TODO: and will move the logic of parsing an expression to elsewhere
 
             // TODO: improve the logic here to handle this case better
 case_expression_statement:
