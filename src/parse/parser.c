@@ -298,6 +298,9 @@ static Expression* parse_constant(Parser *parser)
 
 static Expression* parse_primary_expression(Parser* parser)
 {
+    // TODO: make sure we handle wide strings, stirngs, wide chars, and chars
+    // TODO: propeperly
+
     /* for now just match numbers */
     if (is_match(parser, TOKEN_LPAREN))
     {
@@ -314,6 +317,14 @@ static Expression* parse_primary_expression(Parser* parser)
     else if (is_match(parser, TOKEN_NUMBER))
     {
         match(parser, TOKEN_NUMBER);
+    }
+    else if (is_match(parser, TOKEN_STRING))
+    {
+        match(parser, TOKEN_STRING);
+    }
+    else if (is_match(parser, TOKEN_CHARACTER))
+    {
+        match(parser, TOKEN_CHARACTER);
     }
     else
     {
@@ -743,7 +754,14 @@ static Statement* parse_compound_statement(Parser* parser)
     // TODO: idk maybe statement start set or declarations start set
 
     // for now we will just parse a statement
-    parse_statement(parser);
+
+    // TODO: this may not work later so we will need to change this to
+    // TODO: check for statements startings...
+
+    while (!is_match(parser, TOKEN_RCURLY))
+    {
+        parse_statement(parser);
+    }
 
     match(parser, TOKEN_RCURLY);
 
@@ -754,9 +772,16 @@ static Statement* parse_expression_statement(Parser* parser)
 {
     // Need some way to check if we can start and expression
     // like idk might need some kind of expression start set
-    parse_expression(parser);
 
-    match(parser, TOKEN_SEMI);
+    if (is_match(parser, TOKEN_SEMI))
+    {
+        match(parser, TOKEN_SEMI);
+    }
+    else
+    {
+        parse_expression(parser);
+        match(parser, TOKEN_SEMI);
+    }
 
     return NULL;
 }
@@ -825,12 +850,25 @@ static Statement* parse_iteration_statement(Parser* parser)
             // TODO: additionally like below some distinction of declaration
             // vs expression start is needed
 
-            parse_expression(parser);
-            match(parser, TOKEN_SEMI);
-            parse_expression(parser);
-            match(parser, TOKEN_SEMI);
-            parse_expression(parser);
+            // TODO: this first one should also handle a declaration
+            // TODO: but im not sure how to do that just yet
+            if (!is_match(parser, TOKEN_SEMI))
+            {
+                parse_expression(parser);
+            }
 
+            match(parser, TOKEN_SEMI);
+
+            if (!is_match(parser, TOKEN_SEMI))
+            {
+                parse_expression(parser);
+            }
+            match(parser, TOKEN_SEMI);
+
+            if (!is_match(parser, TOKEN_RPAREN))
+            {
+                parse_expression(parser);
+            }
             match(parser, TOKEN_RPAREN);
 
             parse_statement(parser);
@@ -889,6 +927,8 @@ static Statement* parse_statement(Parser* parser)
 {
     switch(curr_type(parser->stream))
     {
+        // Here we are specifically looking for a label
+        // e.g. fail: ...
         case TOKEN_IDENTIFIER:
             if (next_type(parser->stream) != TOKEN_COLON)
             {
@@ -902,10 +942,12 @@ static Statement* parse_statement(Parser* parser)
         case TOKEN_LCURLY:
             parse_compound_statement(parser);
             break;
-
-        // TODO: use some like expression start set or something...
+        
+        /* note that if we get a ';' we're just going to match an empty 
+         * expression statement so this can easily just be reduced to match a
+         * semi colon later but will leave this here for now
+         */
         case TOKEN_SEMI:
-case_expression_statement:
             parse_expression_statement(parser);
             break;
 
@@ -928,7 +970,14 @@ case_expression_statement:
             break;
 
         default:
-            panic("bad statement start");
+            // For now we should just try to parse an expression statement
+            // even if that might not be right
+
+            // TODO: improve the logic here to handle this case better
+case_expression_statement:
+            parse_expression_statement(parser);    
+
+            // panic("bad statement start");
             break;
     }
 

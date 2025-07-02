@@ -31,7 +31,9 @@ int main(int argc, char** argv)
         // "nest.the->mf.structs[32](*abc, a, 2, 9, 10 == 11 ? 1 : 0);\n";
         "switch (123 + 10) abc: break;\n"
         "goto abc; {{{{{{{goto _;}}}}}}}\n"
-        "for (a != 0; a != 10; a++) { a + 30; }\n";
+        "for (a != 0; a != 10; a++) { ; a == 3; }\n"
+        "for (a == 0; (printf)(\"NO\"); a++) { printf(\"Hello!\", 1, 2, 'a'); }\n"
+        "return a == 0;";
         // "int main();\n"
         // "\n"
         // "int main()\n"
