@@ -42,4 +42,3 @@ cc: $(SRC) src/main.c
 clean:
 	rm -f cc
 
-remake: clean cc
