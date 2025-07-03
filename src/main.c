@@ -26,23 +26,25 @@ int main(int argc, char** argv)
     diag_init();
     
     char test_pgm[] =
-        // "test[32][46];\n"
+        "int test[static  a = 0];\n"
         // "function_call();\n"
         // "nest.the->mf.structs[32](*abc, a, 2, 9, 10 == 11 ? 1 : 0);\n";
         // "switch (123 + 10) abc: break;\n";
         // "goto abc; {{{{{{{goto _;}}}}}}}\n";
-        "for (a != 0; a /= 10 != 10; a++) { ; a == 3; }\n"
-        "hello: ;\n"
-        "case 1234: return 0; \n"
-        "default: break;";
+        // "for (a != 0; a /= 10 != 10; a++) { ; a == 3; }\n"
+        // "hello: ;\n"
+        // "case 1234: return 0; \n"
+        // "default: break;";
         // "for (a = a *= 0; (printf)(\"NO\"); a++) { printf(\"Hello!\", 1, 2, 'a'); }\n";
         //"return a == 0;";
-        // "int main();\n"
+
+        // "int printf(const char* fmt, ...);\n"
+
+        // "int main(int argc, char** argv, ...);\n"
+        // "int c = 0;";
         // "\n"
-        // "int main()\n"
-        // "{\n"
-        // "    return 69;\n"
-        // "};\n";
+        "int main(int argc, char** argv);\n"
+        "char test_pgm[32];";
 
     Filepath path = FILEPATH_STATIC_INIT("test_pgm.c");
 

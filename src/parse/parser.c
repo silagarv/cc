@@ -19,22 +19,53 @@
 #include "parse/declaration.h"
 #include "parse/statement.h"
 
-static const TokenType storage_classes[] = 
-{
-    TOKEN_EXTERN,
-    TOKEN_TYPEDEF,
+#define countof(array) (sizeof(array) / sizeof(array[0]))
+
+// Below are the start set for some of the specifiers / qualifiers
+
+static const TokenType storage_class[] = {
+    TOKEN_TYPEDEF, 
+    TOKEN_EXTERN, 
     TOKEN_STATIC,
     TOKEN_AUTO,
     TOKEN_REGISTER
 };
 
-static const TokenType type_qualifiers[] =
-{
+static const size_t storage_class_count = countof(storage_class);
+
+static const TokenType type_specifier[] = {
+    TOKEN_VOID,
+    TOKEN_CHAR,
+    TOKEN_SHORT,
+    TOKEN_INT,
+    TOKEN_LONG,
+    TOKEN_FLOAT,
+    TOKEN_DOUBLE,
+    TOKEN_SIGNED,
+    TOKEN_UNSIGNED,
+    TOKEN__BOOL,
+    TOKEN__COMPLEX,
+    TOKEN__IMAGINARY,
+    TOKEN_STRUCT,
+    TOKEN_UNION,
+    TOKEN_ENUM
+};
+
+static const size_t type_specifier_count = countof(type_specifier);
+
+static const TokenType type_qualifier[] = {
     TOKEN_CONST,
     TOKEN_RESTRICT,
-    TOKEN_VOLATILE,
+    TOKEN_VOLATILE
+};
+
+static const size_t type_qualifier_count = countof(type_qualifier);
+
+static const TokenType function_specificer[] = {
     TOKEN_INLINE
 };
+
+static const size_t function_specificer_count = countof(function_specificer);
 
 static bool is_valid_stream_position(TokenStream* stream)
 {
@@ -258,22 +289,7 @@ static Declaration* parse_declaration(Parser* parser);
 
 // Some functions for creating errors
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+// TODO: add things for error recovery and whatnot to make parsing better
 
 void parse_translation_unit(TokenStream* stream, LineMap* map)
 {
@@ -281,7 +297,7 @@ void parse_translation_unit(TokenStream* stream, LineMap* map)
 
     while (curr_type(stream) != TOKEN_EOF)
     {
-        parse_statement(&parser);
+        parse_declaration(&parser);
     }
 
     return;
@@ -1099,6 +1115,472 @@ case_expression_statement:
 
     return NULL;
 }
+
+static Declaration* parse_designation(Parser* parser)
+{
+
+ 
+    return NULL;
+}
+
+static Declaration* parse_designator_list(Parser* parser)
+{
+
+ 
+    return NULL;
+}
+
+static Declaration* parse_designator(Parser* parser)
+{
+
+ 
+    return NULL;
+}
+
+static Declaration* parse_initializer(Parser* parser)
+{
+    if (is_match(parser, TOKEN_LCURLY))
+    {
+        match(parser, TOKEN_LCURLY);
+
+
+        match(parser, TOKEN_RCURLY);
+    }
+    else
+    {
+        parse_assignment_expression(parser);
+    }
+
+ 
+    return NULL;
+}
+
+static Declaration* parse_initializer_list(Parser* parser)
+{
+
+ 
+    return NULL;
+}
+
+static Declaration* parse_declarator(Parser* parser)
+{
+    if (is_match(parser, TOKEN_STAR))
+    {
+        parse_pointer(parser);
+    }
+
+    parse_direct_declarator(parser);
+ 
+    return NULL;
+}
+
+static Declaration* parse_init_declarator(Parser* parser)
+{
+    parse_declarator(parser);
+
+    if (is_match(parser, TOKEN_EQUAL))
+    {
+        match(parser, TOKEN_EQUAL);
+        parse_initializer(parser);
+    }
+
+ 
+    return NULL;
+}
+
+static Declaration* parse_init_declarator_list(Parser* parser)
+{
+    parse_init_declarator(parser);
+
+    while (is_match(parser, TOKEN_COMMA))
+    {
+        match(parser, TOKEN_COMMA);
+        parse_init_declarator(parser);
+    }
+ 
+    return NULL;
+}
+
+static Declaration* parse_typedef_name(Parser* parser)
+{
+
+ 
+    return NULL;
+}
+
+static Declaration* parse_enumerator_list(Parser* parser)
+{
+
+ 
+    return NULL;
+}
+
+static Declaration* parse_enum_specificer(Parser* parser)
+{
+
+ 
+    return NULL;
+}
+
+static Declaration* parse_direct_declarator(Parser* parser)
+{   
+    // Parse the first part
+    switch (curr_type(parser->stream))
+    {
+        case TOKEN_IDENTIFIER:
+            match(parser, TOKEN_IDENTIFIER);
+            break;
+        case TOKEN_LPAREN:
+            match(parser, TOKEN_LPAREN);
+            parse_declarator(parser);
+            match(parser, TOKEN_RPAREN);
+            break;
+
+        default:
+            panic("bad parse_direct_declarator");
+            break;
+    }
+
+    while (has_match(parser, (TokenType[]) {TOKEN_LPAREN, TOKEN_LBRACKET}, 2))
+    {
+        switch (curr_type(parser->stream))
+        {
+            case TOKEN_LPAREN:
+                match(parser, TOKEN_LPAREN);
+
+                if (is_match(parser, TOKEN_IDENTIFIER))
+                {
+                    parse_identifier_list(parser);
+                }
+                else if (is_match(parser, TOKEN_RPAREN))
+                {
+                    /* Do nothing */
+                }
+                else
+                {
+                    parse_paramater_type_list(parser);
+                }
+
+                match(parser, TOKEN_RPAREN);
+                break;
+
+            case TOKEN_LBRACKET:
+            match(parser, TOKEN_LBRACKET);
+
+            if (is_match(parser, TOKEN_STAR))
+            {
+                match(parser, TOKEN_STAR);
+            }
+            else if (has_match(parser, type_qualifier, type_qualifier_count))
+            {
+                parse_type_qualifier_list(parser);
+
+                if (is_match(parser, TOKEN_STATIC))
+                {
+                    match(parser, TOKEN_STATIC);
+                    parse_assignment_expression(parser);
+                }
+                else if (is_match(parser, TOKEN_STAR))
+                {
+                    match(parser, TOKEN_STAR);
+                }
+                else
+                {
+                    /* should be parsing an assignment expression otherwise
+                     * but I don't currently have the tools to confirm this...
+                     * TODO: add check to make sure its an assignment expression
+                     */
+                    parse_assignment_expression(parser);
+                }
+            }
+            else if (is_match(parser, TOKEN_STATIC))
+            {
+                match(parser, TOKEN_STATIC);
+
+                if (has_match(parser, type_qualifier, type_qualifier_count))
+                {
+                    parse_type_qualifier_list(parser);
+                }
+
+                parse_assignment_expression(parser);
+            }
+            else if (is_match(parser, TOKEN_NUMBER))
+            {
+                match(parser, TOKEN_NUMBER);
+            }
+
+            match(parser, TOKEN_RBRACKET);
+            break;
+
+            default:
+                panic("unreachable");
+                break;
+        }
+    }
+ 
+    return NULL;
+}
+
+static Declaration* parse_direct_abstract_declarator(Parser* parser)
+{
+
+ 
+    return NULL;
+}
+
+static Declaration* parse_abstract_declarator(Parser* parser)
+{
+
+ 
+    return NULL;
+}
+
+static Declaration* parse_pointer(Parser* parser)
+{
+    match(parser, TOKEN_STAR);
+
+    while (has_match(parser, type_qualifier, type_qualifier_count))
+    {
+        parse_type_qualifier(parser);
+    }
+
+    if (is_match(parser, TOKEN_STAR))
+    {
+        parse_pointer(parser);
+    }
+ 
+    return NULL;
+}
+
+static Declaration* parse_identifier_list(Parser* parser)
+{
+    match(parser, TOKEN_LPAREN);
+    match(parser, TOKEN_IDENTIFIER);
+    while (is_match(parser, TOKEN_COMMA))
+    {
+        match(parser, TOKEN_COMMA);
+        match(parser, TOKEN_IDENTIFIER);
+    }
+
+    match(parser, TOKEN_RPAREN);
+ 
+    return NULL;
+}
+
+static Declaration* parse_paramater_declaration(Parser* parser)
+{
+    /*
+        declaration-specifiers declarator
+        declaration-specifiers abstract-declarator opt
+        
+                               ^^^^^^^^^^^^^^^^^^^^^^^
+
+        in the above rule we are currently ignoring that abstract declarator
+        bs since I cba determining first sets and such
+    */
+
+    parse_declaration_specifiers(parser);
+    parse_declarator(parser);
+ 
+    return NULL;
+}
+
+static Declaration* parse_paramater_list(Parser* parser)
+{
+    parse_paramater_declaration(parser);
+    // Make sure we don't eat the , ... part if it exists
+    while (is_match(parser, TOKEN_COMMA) && next_type(parser->stream) != TOKEN_ELIPSIS)
+    {
+        match(parser, TOKEN_COMMA);
+        parse_paramater_declaration(parser);
+    }
+
+ 
+    return NULL;
+}
+
+static Declaration* parse_paramater_type_list(Parser* parser)
+{
+    parse_paramater_list(parser);
+
+    if (is_match(parser, TOKEN_COMMA))
+    {
+        match(parser, TOKEN_COMMA);
+        match(parser, TOKEN_ELIPSIS);
+    }
+    
+    return NULL;
+}
+
+static Declaration* parse_type_qualifier_list(Parser* parser)
+{
+
+ 
+    return NULL;
+}
+
+static Declaration* parse_specifier_qualifier_list(Parser* parser)
+{
+
+ 
+    return NULL;
+}
+
+static Declaration* parse_struct_declarator(Parser* parser)
+{
+
+ 
+    return NULL;
+}
+
+static Declaration* parse_struct_declarator_list(Parser* parser)
+{
+
+ 
+    return NULL;
+}
+
+static Declaration* parse_struct_declaration(Parser* parser)
+{
+
+ 
+    return NULL;
+}
+
+static Declaration* parse_struct_declaration_list(Parser* parser)
+{
+
+ 
+    return NULL;
+}
+
+static Declaration* parse_struct_or_union(Parser* parser)
+{
+
+ 
+    return NULL;
+}
+
+static Declaration* parse_struct_or_union_specifier(Parser* parser)
+{
+    assert(has_match(parser, (TokenType[]) {TOKEN_STRUCT, TOKEN_UNION}, 2));
+
+    match(parser, curr_type(parser->stream));
+
+    if (is_match(parser, TOKEN_IDENTIFIER))
+    {
+        match(parser, TOKEN_IDENTIFIER);
+
+        // We matched an identifier so continuing the struct defn is optional...
+        if (!is_match(parser, TOKEN_LCURLY))
+        {
+            return NULL;
+        }
+    }
+    
+    if (is_match(parser, TOKEN_LCURLY))
+    {
+        match(parser, TOKEN_LCURLY);
+        parse_struct_declaration_list(parser);
+        match(parser, TOKEN_RCURLY);
+    }
+    
+    return NULL;
+}
+
+static Declaration* parse_function_specificer(Parser* parser)
+{
+    // Nothing else to do here
+    match(parser, curr_type(parser->stream));
+ 
+    return NULL;
+}
+
+static Declaration* parse_type_qualifier(Parser* parser)
+{
+    // Nothing else to do here
+    match(parser, curr_type(parser->stream));
+ 
+    return NULL;
+}
+
+static Declaration* parse_type_specifier(Parser* parser)
+{
+    if (has_match(parser, (TokenType[]) {TOKEN_STRUCT, TOKEN_UNION}, 2))
+    {
+        parse_struct_or_union_specifier(parser);
+    }
+    else if (is_match(parser, TOKEN_ENUM))
+    {
+        parse_enum_specificer(parser);
+    }
+    else
+    {
+        match(parser, curr_type(parser->stream));
+    }
+
+    return NULL;
+}
+
+static Declaration* parse_storage_class_specifier(Parser* parser)
+{
+    // Nothing else to do here
+    match(parser, curr_type(parser->stream));
+ 
+    return NULL;
+}
+
+static Declaration* parse_declaration_specifiers(Parser* parser)
+{
+    while (true)
+    {
+        if (has_match(parser, storage_class, storage_class_count))
+        {
+            parse_storage_class_specifier(parser);
+
+            continue;
+        }
+        else if (has_match(parser, type_specifier, type_specifier_count))
+        {
+            parse_type_specifier(parser);
+
+            continue;
+        }
+        else if (has_match(parser, type_qualifier, type_qualifier_count))
+        {
+            parse_type_qualifier(parser);
+
+            continue;
+        }
+        else if (has_match(parser, function_specificer, function_specificer_count))
+        {
+            parse_function_specificer(parser);
+
+            continue;
+        }
+
+        break;
+    }
+
+
+    return NULL;
+}
+
+static Declaration* parse_declaration(Parser* parser)
+{
+    parse_declaration_specifiers(parser);
+
+    if (!is_match(parser, TOKEN_SEMI))
+    {
+        parse_init_declarator_list(parser);
+    }
+    match(parser, TOKEN_SEMI);
+
+    return NULL;
+}
+
+// The definitions of the functions we will use for pasing
+
 
 
 
