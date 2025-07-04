@@ -72,8 +72,7 @@ static bool is_valid_stream_position(TokenStream* stream)
     return (stream->current_token < stream->count);
 }
 
-// Below are basic token matching functions for us to use while parsing
-
+// Return the type of the current token in a token stream
 static TokenType curr_type(TokenStream* stream)
 {
     assert(is_valid_stream_position(stream));
@@ -114,12 +113,36 @@ static void consume(TokenStream* stream)
     assert(is_valid_stream_position(stream));
 
     // Make sure we only eat tokens when it is okay to do so, otherwise we might
-    // go over how many we can actually eat
+    // go over how many we can actually eat. In the case there is none to eat
+    // we just panic
     if (stream->current_token < stream->count)
     {
         stream->current_token++;
     }
+    else
+    {
+        panic("trying to comsume a token we shouldn't...");
+    }
 }
+
+// Now we are below the token stream methods we have the parser methods. These
+// are the actual onces which should be called and acted upon
+
+// Anchor token methods
+static void add_recover_token(Parser* parser, TokenType type);
+static void remove_recover_token(Parser* parser, TokenType type);
+static void add_recover_tokens(Parser* parser, const TokenType* types, size_t count);
+static void remove_anchor_tokens(Parser* parser, const TokenType* types, size_t count);
+
+// Get the current token from the parser
+static Token* get_token(Parser* parser);
+
+// Parsing helper methods for matching
+static void require(Parser* parser, TokenType type);
+static void match(Parser* parser, TokenType type);
+static bool is_match(Parser* parser, TokenType type);
+static bool is_next_match(Parser* parser, TokenType type);
+static bool has_match(Parser* parser, const TokenType* types, size_t count);
 
 static void parse_error(Parser* parser, const char* fmt, ...)
 {
@@ -133,22 +156,63 @@ static void parse_error(Parser* parser, const char* fmt, ...)
     va_end(args);
 }
 
+static void add_recover_token(Parser* parser, TokenType type)
+{
+    assert(type && type < TOKEN_LAST);
+
+    parser->recover_set[type]++;
+}
+
+static void remove_recover_token(Parser* parser, TokenType type)
+{
+    assert(type && type < TOKEN_LAST);
+
+    if (parser->recover_set[type] == 0)
+    {
+        panic("removing recovery token when it's not added");
+    }
+
+    parser->recover_set[type]--;
+}
+
+static void add_recover_tokens(Parser* parser, const TokenType* types, size_t count)
+{
+    for (size_t i = 0; i < count; i++)
+    {
+        add_recover_token(parser, types[i]);
+    }
+}
+
+static void remove_anchor_tokens(Parser* parser, const TokenType* types, size_t count)
+{
+    for (size_t i = 0; i < count; i++)
+    {
+        remove_recover_token(parser, types[i]);
+    }
+}
+
+static Token* get_token(Parser* parser)
+{
+    return curr(parser->stream);
+}
+
 // The require function requires a token to be of that type. I.e. we should
 // have already checked we got that type and to get any other type would mean
-// that something has gone quite wrong and that we should panic.
+// that something has gone quite wrong. In this case I think it is more than 
+// okay that we just give up all together
 static void require(Parser* parser, TokenType type)
 {
     TokenStream* stream = parser->stream;
 
     if (curr_type(stream) != type)
     {
-        panic("function require failed due to current type not being type");
+        panic("function require failed due to current type not being type.");
     }
 
     consume(stream);
 }
 
-static bool match(Parser* parser, TokenType type)
+static void match(Parser* parser, TokenType type)
 {
     TokenStream* stream = parser->stream;
 
@@ -156,7 +220,7 @@ static bool match(Parser* parser, TokenType type)
     {
         consume(stream);
 
-        return true;
+        return;
     }
 
     parse_error(parser, "expected '%s' but got '%s'", 
@@ -166,12 +230,17 @@ static bool match(Parser* parser, TokenType type)
 
     panic("error");
 
-    return false;
+    return;
 }
 
 static bool is_match(Parser* parser, TokenType type)
 {
     return (curr_type(parser->stream) == type);
+}
+
+static bool is_next_match(Parser* parser, TokenType type)
+{
+    return (next_type(parser->stream) == type);
 }
 
 static bool has_match(Parser* parser, const TokenType* types, size_t count)
@@ -189,24 +258,9 @@ static bool has_match(Parser* parser, const TokenType* types, size_t count)
     return false;
 }
 
-// Functions to help with error recovery eventually we will have more 
-// intelligent error recovery functions but this will do for now...
-static void consume_until_and(Parser* parser, TokenType type)
-{   
-    TokenStream* stream = parser->stream;
 
-    while (curr_type(stream) != type)
-    {
-        if (curr_type(stream) == TOKEN_EOF)
-        {
-            return;
-        }
 
-        consume(stream);
-    }
 
-    consume(stream);
-}
 
 // Functions for parsing our constants which include integer, floating point
 // enumeration and character constants
@@ -314,6 +368,7 @@ static Expression* parse_constant(Parser *parser)
     {
 
 
+
         default:
             panic("not a valid constant type");
 
@@ -330,6 +385,9 @@ static Expression* parse_primary_expression(Parser* parser)
     /* for now just match numbers */
     if (is_match(parser, TOKEN_LPAREN))
     {
+        // TODO: here when we create the expression make sure it is set to
+        // TODO: be in parens
+
         match(parser, TOKEN_LPAREN);
 
         parse_expression(parser);

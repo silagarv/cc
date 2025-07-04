@@ -10,11 +10,12 @@
 typedef struct Symbol {
     String name;
     Type type;
-    // Some symbol stuff here
 } Symbol;
 
+// An array of Symbol pointers since we don't want the symbol pointer itself
+// to change once created
 typedef struct SymbolTable {
-    Symbol* symbols;
+    Symbol** symbols;
     size_t count;
     size_t cap;
 

@@ -1,51 +1,130 @@
 #ifndef EXPRESSION_H
 #define EXPRESSION_H
 
-// TODO: figure out how we want to implement expressions
+#include "parse/type.h"
 
-enum ExpressionType {
-    EXPRESSION_ERROR = -1,
+typedef enum ExpressionType {
+    EXPRESSION_ERROR,
 
-    /* an identifer in the symbol table */
-    EXPRESSION_IDENTIFIER,
+    EXPRESSION_REFERENCE, // an identifier in the symbol table
     
-    /* these 4 below are anything that is considered a constant */
     EXPRESSION_INTEGER_CONSTANT,
     EXPRESSION_FLOATING_CONSTANT,
     EXPRESSION_ENUMERATION_CONSTANT,
     EXPRESSION_CHARACTER_CONSTANT,
-
-    /* string literal after concatenation */
     EXPRESSION_STRING_LITERAL,
 
-    EXPRESSION_UNARY,
-    EXPRESSION_BINARY,
+    EXPRESSION_ARRAY_ACCESS,
+    EXPRESSION_FUNCTION_CALL,
+    EXPRESSION_MEMBER_ACCESS,
+    EXPRESSION_MEMBER_POINTER_ACCESS,
+    EXPRESSION_COMPOUND_LITERAL,
+    EXPRESSION_SIZE_OF,
+    EXPRESSION_CAST,
+
+    EXPRESSION_UNARY_ADDRESS,
+    EXPRESSION_UNARY_DEREFERENCE,
+    EXPRESSION_UNARY_PLUS,
+    EXPRESSION_UNARY_MINUS,
+    EXPRESSION_UNARY_BIT_NOT,
+    EXPRESSION_UNARY_NOT,
+    EXPRESSION_UNARY_PRE_INCREMENT,
+    EXPRESSION_UNARY_PRE_DECREMENT,
+    EXPRESSION_UNARY_POST_INCREMENT,
+    EXPRESSION_UNARY_POST_DECREMENT,
+
+    EXPRESSION_BINARY_TIMES,
+    EXPRESSION_BINARY_DIVIDE,
+    EXPRESSION_BINARY_MODULO,
+    EXPRESSION_BINARY_ADD,
+    EXPRESSION_BINARY_SUBTRACT,
+    EXPRESSION_BINARY_SHIFT_LEFT,
+    EXPRESSION_BINARY_SHIFT_RIGHT,
+    EXPRESSION_BINARY_LESS_THAN,
+    EXPRESSION_BINARY_GREATER_THAN,
+    EXPRESSION_BINARY_LESS_THAN_EQUAL,
+    EXPRESSION_BINARY_GREATER_THAN_EQUAL,
+    EXPRESSION_BINARY_EQUAL,
+    EXPRESSION_BINARY_NOT_EQUAL,
+    EXPRESSION_BINARY_AND,
+    EXPRESSION_BINARY_XOR,
+    EXPRESSION_BINARY_OR,
+    EXPRESSION_BINARY_LOGICAL_AND,
+    EXPRESSION_BINARY_LOGICAL_OR,
+    EXPRESSION_BINARY_ASSIGN,
+    EXPRESSION_BINARY_TIMES_ASSIGN,
+    EXPRESSION_BINARY_DIVIDE_ASSIGN,
+    EXPRESSION_BINARY_MODULO_ASSIGN,
+    EXPRESSION_BINARY_ADD_ASSIGN,
+    EXPRESSION_BINARY_SUBTRACT_ASSIGN,
+    EXPRESSION_BINARY_SHIFT_LEFT_ASSIGN,
+    EXPRESSION_BINARY_SHIFT_RIGHT_ASSIGN,
+    EXPRESSION_BINARY_AND_ASSIGN,
+    EXPRESSION_BINARY_XOR_ASSIGN,
+    EXPRESSION_BINARY_OR_ASSIGN,
+
     EXPRESSION_CONDITIONAL,
-    EXPRESSION_ASSIGNMENT,
-    EXPRESSION_LIST /* Comma seperated expressions*/
-};
-typedef enum ExpressionType ExpressionType;
+    EXPRESSION_COMMA // Here we just use the binary expression...
+} ExpressionType;
 
-typedef struct ExpressionBase ExpressionBase;
-
-// Our primary expressions
-typedef struct ExpressionIdentifier ExpressionIdentifier;
-typedef struct ExpressionInteger ExpressionInteger;
-typedef struct ExpressionFloat ExpressionFloat;
-typedef struct ExpressionCharacter ExpressionCharacter;
-typedef struct ExpressionStringLiteral ExpressionStringLiteral;
-
-typedef struct ExpressionUnary ExpressionUnary;
-typedef struct ExpressionBinary ExpressionBinary;
-typedef struct ExpressionConditional ExpressionConditional;
-typedef struct ExpressionAssignment ExpressionAssignment;
-typedef struct ExpressionList ExpressionList;
+// TODO: i think it would be smart to compbine these enums into one big
+// expression enum...
 
 typedef union Expression Expression;
 
+typedef struct ExpressionBase {
+    ExpressionType kind;
+    Type* type;
 
+    bool is_parenthesized;
+} ExpressionBase;
 
-Expression* expression_create(void);
-void expression_delete(Expression* expression);
+// Our primary expressions
+typedef struct ExpressionReference ExpressionReference;
+
+typedef struct ExpressionInteger {
+    ExpressionBase base;
+    
+} ExpressionInteger;
+
+typedef struct ExpressionFloat ExpressionFloat;
+typedef struct ExpressionEnumeration ExpressionEnumeration;
+typedef struct ExpressionCharacter ExpressionCharacter;
+typedef struct ExpressionStringLiteral ExpressionStringLiteral;
+
+typedef struct ExpressionArrayAccess ExpressionArrayAccess;
+typedef struct ExpressionFunctionCall ExpressionFunctionCall;
+typedef struct ExpressionMemberAccess ExpressionMemberAccess;
+typedef struct ExpressionCompoundLiteral ExpressionCompoundLiteral;
+typedef struct ExpressionSizeOf ExpressionSizeOf;
+typedef struct ExpressionCast ExpressionCast; 
+
+typedef struct ExpressionUnary {
+    ExpressionBase base;
+    Expression* lhs;
+} ExpressionUnary;
+
+typedef struct ExpressionBinary {
+    ExpressionBase base;
+    Expression* lhs;
+    Expression* rhs;
+} ExpressionBinary;
+
+typedef struct ExpressionConditional {
+    ExpressionBase base;
+    Expression* condition;
+    Expression* true_part;
+    Expression* false_part;
+} ExpressionConditional;
+
+union Expression {
+    ExpressionBase base;
+
+    ExpressionInteger integer;
+
+    ExpressionUnary unary;
+    ExpressionBinary binary;
+    ExpressionConditional conditional;
+};
 
 #endif /* EXPRESSION_H */

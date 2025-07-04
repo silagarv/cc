@@ -19,7 +19,7 @@ struct Parser {
     // and other things
 
     /* our anchor set for recovering from parsing */
-    unsigned int recover_set[TOKEN_LAST];
+    size_t recover_set[TOKEN_LAST];
 };
 typedef struct Parser Parser;
 
