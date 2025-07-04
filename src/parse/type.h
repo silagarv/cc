@@ -29,6 +29,7 @@ typedef enum TypeKind {
     TYPE_ARRAY,
     TYPE_STRUCT,
     TYPE_UNION,
+    TYPE_ENUM,
     TYPE_FUNCTION,
     TYPE_POINTER,
     TYPE_TYPEDEF
@@ -44,6 +45,7 @@ typedef struct TypeQualifiers {
     bool is_volatile;
 } TypeQualifiers;
 
+// The base type telling us how to interpret it
 typedef struct TypeBase {
     TypeKind type;
     TypeQualifiers qualifiers;
@@ -52,14 +54,14 @@ typedef struct TypeBase {
 // Both imaginairy and complex types have an underlying type which is either
 // float, double, or long double
 typedef struct TypeUnreal {
-    TypeKind type;
+    TypeBase type;
     Type* underlying_type;
 } TypeUnreal;
 
 // An array has an underlying element type and the length of an array may either
 // be known or unknown and we may have done all of the counting ourselves...
 typedef struct TypeArray {
-    TypeKind type;
+    TypeBase type;
     Type* element_type; // The individual element type
     size_t length; // Set if known otherwise 0
 
@@ -76,14 +78,14 @@ typedef struct TypeCompoundMember {
     String name; // The members name
     Type* member_type; // The type of the member
 
-    size_t bitfield_size; // Size of the members bitfield if needed
     bool is_bitfield; // is the member a bitfield
-
+    size_t bitfield_size; // Size of the members bitfield if needed
+    
     struct TypeCompoundMember* next; // the next member in the struct or NULL
 } TypeCompoundMember;
 
 typedef struct TypeCompound {
-    TypeKind type;
+    TypeBase type_base;
     String name; // name may be given or could be anonymous but we give it one
 
     TypeCompoundMember* first_member; // the members of the compound type
@@ -92,22 +94,56 @@ typedef struct TypeCompound {
     bool is_anonamous; // e.g. struct { int x;} a;
 } TypeCompound;
 
-// A function type
+// A struct to represent an enum type
+typedef struct TypeEnumMember {
+    String name; // the name of the member
+    /* TODO: need to have some kind of value? but is this the right place... */
 
-// TODO: finish all of the below
+    struct TypeEnumMember* next;
+} TypeEnumMember;
+
+typedef struct TypeEnum {
+    TypeBase type_base;
+    String name; // the name of the member of mangled if anon
+    Type* underlying_type; // the underlying type of the enum
+
+    TypeEnumMember* first; // the first member of enum
+    TypeEnumMember* last; // The last member of the enum
+
+    bool is_anonamous; // if it is ananonamous
+} TypeEnum;
+
+// A function type
+typedef struct TypeFunctionParam {
+    String name;
+    Type* type;
+    struct TypeFunctionParam* next;
+} TypeFunctionParam;
+
 typedef struct TypeFunction {
     TypeBase type_base;
+    Type* return_type; // Functions return type
+
+    TypeFunctionParam* first_param; // the first paramter
+    TypeFunctionParam* last_param; // the last memeber 
+
+    size_t num_params; // Number of params if known otherwise 0
+
+    bool unspecified_paramters; // e.g. int foo()
+    bool is_variadic; // e.g. int foo(int, ...)
 } TypeFunction;
 
+// A type to a pointer
 typedef struct TypePointer {
     TypeBase type_base;
     Type* underlying_type; // the type beneath could also be a pointer
 } TypePointer;
 
+// And a typedef
 typedef struct TypeTypedef {
     TypeBase type_base;
-    String name; // name of the typedef
-    Type* underlying_type; // the underlying type aka. real type it is
+    String name; // name of the typedef for looking up
+    Type* resolved_type; // the fully underlying type resolved all the way
 } TypeTypedef;
 
 union Type {
@@ -117,6 +153,7 @@ union Type {
     TypeArry type_array;
     TypeCompound type_struct;
     TypeCompound type_union;
+    TypeEnum type_enum;
     TypeFunction type_function;
     TypePointer type_pointer;
     TypeTypedef type_typedef;
