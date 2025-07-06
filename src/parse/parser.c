@@ -132,7 +132,7 @@ static void consume(TokenStream* stream)
 static void add_recover_token(Parser* parser, TokenType type);
 static void remove_recover_token(Parser* parser, TokenType type);
 static void add_recover_tokens(Parser* parser, const TokenType* types, size_t count);
-static void remove_anchor_tokens(Parser* parser, const TokenType* types, size_t count);
+static void remove_recover_tokens(Parser* parser, const TokenType* types, size_t count);
 
 // Get the current token from the parser
 static Token* get_token(Parser* parser);
@@ -183,7 +183,7 @@ static void add_recover_tokens(Parser* parser, const TokenType* types, size_t co
     }
 }
 
-static void remove_anchor_tokens(Parser* parser, const TokenType* types, size_t count)
+static void remove_recover_tokens(Parser* parser, const TokenType* types, size_t count)
 {
     for (size_t i = 0; i < count; i++)
     {
@@ -212,6 +212,45 @@ static void require(Parser* parser, TokenType type)
     consume(stream);
 }
 
+static void eat_until(Parser* parser, TokenType type)
+{
+    while (!is_match(parser, type) && !is_match(parser, TOKEN_EOF))
+    {
+        consume(parser->stream);
+    }
+}
+
+// A parsing method to synchronise the stream of tokens in the event of an error
+// will go until we hit the a token in the recovery set. This is using panic mode
+// recovery
+static void recover(Parser* parser, TokenType type)
+{
+    eat_until(parser, type);
+
+    if (!is_match(parser, TOKEN_EOF))
+    {
+        assert(is_match(parser, type));
+        consume(parser->stream);
+    }
+
+    // TODO: change this to basic recover set stuff once we are parsing everything
+    // TODO: also might also consider adding statement level recovery?
+
+    // while (true)
+    // {
+    //     TokenType curr = curr_type(parser->stream);
+    //     if (parser->recover_set[curr] != 0)
+    //     {
+    //         break;
+    //     }
+
+    //     // TODO: maybe add some things in here handle braces / parens / brackets
+    //     // TODO: better
+
+    //     consume(parser->stream);
+    // }
+}
+
 static void match(Parser* parser, TokenType type)
 {
     TokenStream* stream = parser->stream;
@@ -228,7 +267,7 @@ static void match(Parser* parser, TokenType type)
             token_type_get_name(curr_type(stream))
         );
 
-    panic("error");
+    recover(parser, type);    
 
     return;
 }
@@ -260,6 +299,12 @@ static bool has_match(Parser* parser, const TokenType* types, size_t count)
 
 
 
+// TODO: we definitely want to add methods like for example the below
+static bool is_typename_start(TokenType type);
+// TODO: maybe some for expressions etc... this is important since they will
+// TODO: very much affect how we choose to parse things...
+// TODO: however I think we will need a symbol table and stuff for the next part
+// TODO: for sure though
 
 
 // Functions for parsing our constants which include integer, floating point
@@ -303,6 +348,7 @@ static Statement* parse_jump_statement(Parser* parser);
 static Statement* parse_statement(Parser* parser);
 
 // All of our functions for parsing declarations / definitions
+// TODO: maybe all of these don't need to return a declaration type???
 static Declaration* parse_designation(Parser* parser);
 static Declaration* parse_designator_list(Parser* parser);
 static Declaration* parse_designator(Parser* parser);
@@ -339,22 +385,41 @@ static Declaration* parse_storage_class_specifier(Parser* parser);
 static Declaration* parse_declaration_specifiers(Parser* parser);
 static Declaration* parse_declaration(Parser* parser);
 
+static void* parse_type_name(Parser* parser);
+
 // The definitions of the functions we will use for pasing
 
 // Some functions for creating errors
 
 // TODO: add things for error recovery and whatnot to make parsing better
 
-void parse_translation_unit(TokenStream* stream, LineMap* map)
+static bool is_typename_start(TokenType type)
 {
-    Parser parser = {.stream = stream, .map = map};
-
-    while (curr_type(stream) != TOKEN_EOF)
+    switch (type)
     {
-        parse_declaration(&parser);
-    }
+        case TOKEN_VOID:
+        case TOKEN_CHAR:
+        case TOKEN_SHORT:
+        case TOKEN_INT:
+        case TOKEN_LONG:
+        case TOKEN_FLOAT:
+        case TOKEN_DOUBLE:
+        case TOKEN_SIGNED:
+        case TOKEN_UNSIGNED:
+        case TOKEN__BOOL:
+        case TOKEN__COMPLEX:
+        case TOKEN__IMAGINARY:
+        case TOKEN_STRUCT:
+        case TOKEN_UNION:
+        case TOKEN_ENUM:
+            return true;
 
-    return;
+        case TOKEN_IDENTIFIER: // TODO: once we make a symbol table and stuff
+            return false;
+
+        default:
+            return false;
+    }
 }
 
 static Expression* parse_integer_constant(Parser *parser);
@@ -420,10 +485,10 @@ static Expression* parse_primary_expression(Parser* parser)
 
 static Expression* parse_postfix_expression(Parser* parser)
 {
-    /* for now we will ignore the typename followed by initialiser list */
-    /* ( type-name ) { initializer-list } */
-    /* in fact for now we will just parse a primary expression as this would 
-     * be quite a bit of effort to implement at the moment
+    /* For postfix expression we ignore the following rule:
+     * ( type-name ) { initializer-list } 
+     * this rule is actually handled in the function parse_cast_expression. See
+     * that function for details
      */
 
     parse_primary_expression(parser);
@@ -440,7 +505,7 @@ static Expression* parse_postfix_expression(Parser* parser)
 
             case TOKEN_LPAREN:
                 match(parser, TOKEN_LPAREN);
-                if (curr_type(parser->stream) != TOKEN_RPAREN)
+                if (!is_match(parser, TOKEN_RPAREN))
                 {
                     parse_argument_expression_list(parser);
                 }
@@ -532,9 +597,17 @@ static Expression* parse_unary_expression(Parser* parser)
             break;
 
         case TOKEN_SIZEOF:
-            match(parser, TOKEN_SIZEOF);
-            /* for now we will ignore the case where we have a type name */
-            parse_unary_expression(parser);
+            require(parser, TOKEN_SIZEOF);
+            if (is_match(parser, TOKEN_LPAREN) && is_typename_start(next_type(parser->stream)))
+            {
+                match(parser, TOKEN_LPAREN);
+                parse_type_name(parser);
+                match(parser, TOKEN_RPAREN);
+            }
+            else
+            {
+                parse_unary_expression(parser);
+            }
             break;
 
         default:
@@ -547,33 +620,36 @@ static Expression* parse_unary_expression(Parser* parser)
 
 static Expression* parse_cast_expression(Parser* parser)
 {
-    /* for now we will just do a unary expression and ignore the part below */
-
-    /* this is because they share some of the same start set and we don't want
-     * anyhing to do with that just yet 
-     */
-
-    /* ( type-name ) cast-expression*/
-
-    // TODO: clean this up a lot
-
-    if (curr_type(parser->stream) == TOKEN_LPAREN)
+    /* ( type-name ) cast-expression */
+    while (is_match(parser, TOKEN_LPAREN) && is_typename_start(next_type(parser->stream)))
     {
-        /* test if we got a typename or not */
-        if (false)
-        {
-            goto unary;
-        }
-        else
-        {
-            /* parse type name */
-            match(parser, TOKEN_RPAREN);
+        require(parser, TOKEN_LPAREN);
+        parse_type_name(parser);
+        match(parser, TOKEN_RPAREN);
 
-            return NULL; /* return the expression we built */
+        /* ( type-name ) { initializer-list }
+         * ( type-name ) { initializer-list , }
+         * 
+         * Although this is technically a postfix expression we cannot handle it
+         * there is we eat all of the typenames so handle it here.
+         */
+        if (is_match(parser, TOKEN_LCURLY))
+        {
+            require(parser, TOKEN_LCURLY);
+            
+            parse_initializer_list(parser);
+
+            if (is_match(parser, TOKEN_COMMA))
+            {
+                require(parser, TOKEN_COMMA);
+            }
+
+            match(parser, TOKEN_RCURLY);
+
+            return NULL;
         }
     }
 
-unary:
     parse_unary_expression(parser);
 
     return NULL;
@@ -604,24 +680,47 @@ static Expression* parse_multiplicative_expression(Parser* parser)
 
 static Expression* parse_additive_expression(Parser* parser)
 {
-    parse_multiplicative_expression(parser);
+    static const TokenType additive_operators[] = {TOKEN_PLUS, TOKEN_MINUS};
+    static const size_t num_operators = countof(additive_operators);
 
-    while (has_match(parser, (TokenType[]) {TOKEN_PLUS, TOKEN_MINUS}, 2))
+    add_recover_tokens(parser, additive_operators, num_operators);
+
+    Expression* expr = parse_multiplicative_expression(parser);
+
+    while (has_match(parser, additive_operators, num_operators))
     {
-        switch (curr_type(parser->stream)) 
+        /* Need to create a new binary expression and allocate it that way and
+         * then set its type to match the corrosponding operator
+         */
+        
+        ExpressionType type = EXPRESSION_ERROR;
+        switch (curr_type(parser->stream))
         {
-            case TOKEN_PLUS: match(parser, TOKEN_PLUS); break;
-            case TOKEN_MINUS: match(parser, TOKEN_MINUS); break;
+            case TOKEN_PLUS: 
+                require(parser, TOKEN_PLUS);
+                type = EXPRESSION_BINARY_ADD; 
+                break;
 
-            default:
-                panic("unreachable");
+            case TOKEN_MINUS: 
+                require(parser, TOKEN_MINUS);
+                type = EXPRESSION_BINARY_SUBTRACT; 
+                break;
+
+            default: 
+                panic("unreachable"); 
                 break;
         }
 
-        parse_multiplicative_expression(parser);
+        Expression* rhs = parse_multiplicative_expression(parser);
+
+        // To stop warning about unused for now
+        if (type == 0) {}
+
     }
 
-    return NULL;
+    remove_recover_tokens(parser, additive_operators, num_operators);
+
+    return expr;
 }
 
 static Expression* parse_shift_expression(Parser* parser)
@@ -1637,8 +1736,27 @@ static Declaration* parse_declaration(Parser* parser)
     return NULL;
 }
 
+static void* parse_type_name(Parser* parser)
+{
+    parse_specifier_qualifier_list(parser);
+    // TODO: parse abstract declarator if needed
+
+    return NULL;
+}
+
 // The definitions of the functions we will use for pasing
 
 
+void parse_translation_unit(TokenStream* stream, LineMap* map)
+{
+    Parser parser = {.stream = stream, .map = map};
 
+    while (curr_type(stream) != TOKEN_EOF)
+    {
+        parse_expression(&parser);
+        match(&parser, TOKEN_SEMI);
+    }
+
+    return;
+}
 

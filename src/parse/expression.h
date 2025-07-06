@@ -1,6 +1,8 @@
 #ifndef EXPRESSION_H
 #define EXPRESSION_H
 
+#include "lex/location.h"
+
 #include "parse/type.h"
 
 typedef enum ExpressionType {
@@ -67,20 +69,21 @@ typedef enum ExpressionType {
     EXPRESSION_COMMA // Here we just use the binary expression...
 } ExpressionType;
 
-// TODO: i think it would be smart to compbine these enums into one big
-// expression enum...
-
 typedef union Expression Expression;
 
 typedef struct ExpressionBase {
     ExpressionType kind;
+    Location loc;
     Type* type;
 
     bool is_parenthesized;
 } ExpressionBase;
 
 // Our primary expressions
-typedef struct ExpressionReference ExpressionReference;
+typedef struct ExpressionReference {
+    ExpressionBase base;
+    String name;
+} ExpressionReference;
 
 typedef struct ExpressionInteger {
     ExpressionBase base;
@@ -88,16 +91,27 @@ typedef struct ExpressionInteger {
 } ExpressionInteger;
 
 typedef struct ExpressionFloat ExpressionFloat;
-typedef struct ExpressionEnumeration ExpressionEnumeration;
+
+typedef struct ExpressionEnumeration {
+    ExpressionBase base;
+} ExpressionEnumeration;
+
 typedef struct ExpressionCharacter ExpressionCharacter;
 typedef struct ExpressionStringLiteral ExpressionStringLiteral;
 
 typedef struct ExpressionArrayAccess ExpressionArrayAccess;
 typedef struct ExpressionFunctionCall ExpressionFunctionCall;
-typedef struct ExpressionMemberAccess ExpressionMemberAccess;
+
+typedef struct ExpressionMemberAccess {
+    ExpressionBase base;
+    Expression* lhs;
+    String member;
+    Location member_loc;
+} ExpressionMemberAccess;
+
 typedef struct ExpressionCompoundLiteral ExpressionCompoundLiteral;
 typedef struct ExpressionSizeOf ExpressionSizeOf;
-typedef struct ExpressionCast ExpressionCast; 
+typedef struct ExpressionCast ExpressionCast;
 
 typedef struct ExpressionUnary {
     ExpressionBase base;
