@@ -5,10 +5,10 @@
 #include <stdbool.h>
 
 #include "lex/token.h"
-#include "lex/location.h"
+// #include "lex/location.h"
 #include "lex/location_map.h"
 
-#include "parse/scope.h"
+// #include "parse/scope.h"
 
 struct Parser {
     // Current tokens and where we are in the list

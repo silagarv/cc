@@ -16,9 +16,9 @@
 #include "parse/parser.h"
 
 // char test_pgm[] = {
-//         // #embed "/usr/include/stdio.h"
-//         // #embed "sqlite3.c.testing.i"
-//         // #embed "../sqlite-autoconf-3490100/sqlite3.c"
+        // #embed "/usr/include/stdio.h"
+        // #embed "sqlite3.c.testing.i"
+        // #embed "../../external/sqlite3/sqlite3.i"
 // };
 
 int main(int argc, char** argv)
@@ -26,17 +26,18 @@ int main(int argc, char** argv)
     diag_init();
     
     char test_pgm[] =
-        "(int[]) { meow, }; a + sizeof (float double); a == 0;\n"
-        "function_call();\n"
-        "nest.the->mf.structs[32](*abc, a, 2, 9, 10 == 11 ? 0 : 0);\n";
-        // "switch (123 + 10) abc: break;\n";
-        // "goto abc; {{{{{{{goto _;}}}}}}}\n";
+        "typedef int meow;\n";
+        // "(int[]) { meow, }; a + sizeof (float double); a == 0;\n"
+        // "function_call(a, b, a == d);\n"
+        // "nest.the->mf.structs[32](*abc, a, 2, 9, 10 == 11 ? 0 : 0);\n";
+        // "switch (123 + 10) abc: break;\n"
+        // "goto abc; {{{{{{{goto _;}}}}}}}\n"
         // "for (a != 0; a /= 10 != 10; a++) { ; a == 3; }\n"
         // "hello: ;\n"
         // "case 1234: return 0; \n"
-        // "default: break;";
-        // "for (a = a *= 0; (printf)(\"NO\"); a++) { printf(\"Hello!\", 1, 2, 'a'); }\n";
-        //"return a == 0;";
+        // "default: break;"
+        // "for (a = a *= 0; (printf)(\"NO\"); a++) { printf(\"Hello!\", 1, 2, 'a'); }\n"
+        // "return a == 0;";
 
         // "int printf(const char* fmt, ...);\n"
 
@@ -44,6 +45,8 @@ int main(int argc, char** argv)
         // "int c = 0;";
         // "\n"
         // "int main(int argc, char** argv);\n"
+        // "int main(argc, argv) { c = \'a\'; }\n";
+        // "enum poo { a, b, c = 123, POOP = 10,  };\n";
         // "char test_pgm[32];";
 
     Filepath path = FILEPATH_STATIC_INIT("test_pgm.c");

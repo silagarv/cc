@@ -7,9 +7,19 @@
 
 #include "parse/type.h"
 
+// 6.2.3 identifier namespaces
+typedef enum SymbolNameSpace {
+    SYMBOL_NAME_SPACE_ERROR, // Should never be used
+    SYMBOL_NAME_SPACE_NONE, // The normal namespace ordinairy declarators or enum constants
+    SYMBOL_NAME_SPACE_LABELS, // e.g. label: ...
+    SYMBOL_NAME_SPACE_TAG, // struct, union, enum
+    SYMBOL_NAME_SPACE_MEMBERS // members of struct / unions
+} SymbolNameSpace;
+
 typedef struct Symbol {
+    SymbolNameSpace namespace;
     String name;
-    Type type;
+    Type* type;
 } Symbol;
 
 // An array of Symbol pointers since we don't want the symbol pointer itself

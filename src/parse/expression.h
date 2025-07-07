@@ -96,7 +96,13 @@ typedef struct ExpressionEnumeration {
     ExpressionBase base;
 } ExpressionEnumeration;
 
-typedef struct ExpressionCharacter ExpressionCharacter;
+// 6.4.4.4 (Characters have type int)
+typedef struct ExpressionCharacter {
+    ExpressionBase base;
+    int value;
+    bool multibyte;
+} ExpressionCharacter;
+
 typedef struct ExpressionStringLiteral ExpressionStringLiteral;
 
 typedef struct ExpressionArrayAccess ExpressionArrayAccess;
@@ -135,6 +141,8 @@ union Expression {
     ExpressionBase base;
 
     ExpressionInteger integer;
+
+    ExpressionCharacter character;
 
     ExpressionUnary unary;
     ExpressionBinary binary;

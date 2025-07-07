@@ -19,10 +19,12 @@
 #include "parse/declaration.h"
 #include "parse/statement.h"
 
+// Special thanks to the below
+// https://recc.robertelder.org/ll-c-grammar.txt
+
 #define countof(array) (sizeof(array) / sizeof(array[0]))
 
 // Below are the start set for some of the specifiers / qualifiers
-
 static const TokenType storage_class[] = {
     TOKEN_TYPEDEF, 
     TOKEN_EXTERN, 
@@ -30,8 +32,6 @@ static const TokenType storage_class[] = {
     TOKEN_AUTO,
     TOKEN_REGISTER
 };
-
-static const size_t storage_class_count = countof(storage_class);
 
 static const TokenType type_specifier[] = {
     TOKEN_VOID,
@@ -51,20 +51,19 @@ static const TokenType type_specifier[] = {
     TOKEN_ENUM
 };
 
-static const size_t type_specifier_count = countof(type_specifier);
-
 static const TokenType type_qualifier[] = {
     TOKEN_CONST,
     TOKEN_RESTRICT,
     TOKEN_VOLATILE
 };
 
-static const size_t type_qualifier_count = countof(type_qualifier);
-
 static const TokenType function_specificer[] = {
     TOKEN_INLINE
 };
 
+static const size_t storage_class_count = countof(storage_class);
+static const size_t type_specifier_count = countof(type_specifier);
+static const size_t type_qualifier_count = countof(type_qualifier);
 static const size_t function_specificer_count = countof(function_specificer);
 
 static bool is_valid_stream_position(TokenStream* stream)
@@ -133,9 +132,11 @@ static void add_recover_token(Parser* parser, TokenType type);
 static void remove_recover_token(Parser* parser, TokenType type);
 static void add_recover_tokens(Parser* parser, const TokenType* types, size_t count);
 static void remove_recover_tokens(Parser* parser, const TokenType* types, size_t count);
+static bool is_in_recover_set(Parser* parser, TokenType type);
 
 // Get the current token from the parser
-static Token* get_token(Parser* parser);
+static Token* get_curr_token(Parser* parser);
+static Token* get_next_token(Parser* parser);
 
 // Parsing helper methods for matching
 static void require(Parser* parser, TokenType type);
@@ -146,7 +147,7 @@ static bool has_match(Parser* parser, const TokenType* types, size_t count);
 
 static void parse_error(Parser* parser, const char* fmt, ...)
 {
-    Token* tok = curr(parser->stream);   
+    Token* tok = get_curr_token(parser);   
 
     ResolvedLocation loc = line_map_resolve_location(parser->map, tok->loc);
     fprintf(stderr, "%s:%u:%u\n", loc.name->path, loc.line, loc.col);
@@ -191,9 +192,19 @@ static void remove_recover_tokens(Parser* parser, const TokenType* types, size_t
     }
 }
 
-static Token* get_token(Parser* parser)
+static bool is_in_recover_set(Parser* parser, TokenType type)
+{
+    return (parser->recover_set[type] != 0);
+}
+
+static Token* get_curr_token(Parser* parser)
 {
     return curr(parser->stream);
+}
+
+static Token* get_next_token(Parser* parser)
+{
+    return next(parser->stream);
 }
 
 // The require function requires a token to be of that type. I.e. we should
@@ -214,8 +225,26 @@ static void require(Parser* parser, TokenType type)
 
 static void eat_until(Parser* parser, TokenType type)
 {
+    // Can't have a match for the type when this function is called
+    assert(!is_match(parser, type));
+
     while (!is_match(parser, type) && !is_match(parser, TOKEN_EOF))
     {
+        consume(parser->stream);
+    }
+}
+
+static void eat_until_recover(Parser* parser)
+{
+    while (true)
+    {
+        TokenType curr = curr_type(parser->stream);
+
+        if (is_in_recover_set(parser, curr))
+        {
+            break;
+        }
+
         consume(parser->stream);
     }
 }
@@ -297,15 +326,11 @@ static bool has_match(Parser* parser, const TokenType* types, size_t count)
     return false;
 }
 
-
-
 // TODO: we definitely want to add methods like for example the below
-static bool is_typename_start(TokenType type);
-// TODO: maybe some for expressions etc... this is important since they will
-// TODO: very much affect how we choose to parse things...
+static bool is_typename_start(Parser* parser, const Token* tok);
+static bool is_expression_start(Parser* parser, const Token* tok);
 // TODO: however I think we will need a symbol table and stuff for the next part
 // TODO: for sure though
-
 
 // Functions for parsing our constants which include integer, floating point
 // enumeration and character constants
@@ -393,8 +418,9 @@ static void* parse_type_name(Parser* parser);
 
 // TODO: add things for error recovery and whatnot to make parsing better
 
-static bool is_typename_start(TokenType type)
+static bool is_typename_start(Parser* parser, const Token* tok)
 {
+    const TokenType type = tok->type;
     switch (type)
     {
         case TOKEN_VOID:
@@ -422,8 +448,40 @@ static bool is_typename_start(TokenType type)
     }
 }
 
+static bool is_expression_start(Parser* parser, const Token* tok)
+{
+    const TokenType type = tok->type;
+
+    switch (type)
+    {
+        case TOKEN_NUMBER:
+        case TOKEN_WIDE_CHARACTER:
+        case TOKEN_WIDE_STRING:
+        case TOKEN_CHARACTER:
+        case TOKEN_STRING:
+        case TOKEN_LPAREN:
+        case TOKEN_PLUS_PLUS:
+        case TOKEN_MINUS_MINUS:
+        case TOKEN_AND:
+        case TOKEN_STAR:
+        case TOKEN_PLUS:
+        case TOKEN_MINUS:
+        case TOKEN_NOT:
+        case TOKEN_TILDE:
+        case TOKEN_SIZEOF:
+            return true;
+
+        case TOKEN_IDENTIFIER:
+            return true; // TODO: fix once we have a proper symbol table
+        
+        default:
+            return false;
+    }
+}
+
 static Expression* parse_integer_constant(Parser *parser);
 static Expression* parse_floating_constant(Parser *parser);
+static Expression* parse_number_constant(Parser* parser);
 static Expression* parse_enumeration_constant(Parser *parser);
 static Expression* parse_character_constant(Parser *parser);
 
@@ -598,7 +656,8 @@ static Expression* parse_unary_expression(Parser* parser)
 
         case TOKEN_SIZEOF:
             require(parser, TOKEN_SIZEOF);
-            if (is_match(parser, TOKEN_LPAREN) && is_typename_start(next_type(parser->stream)))
+            if (is_match(parser, TOKEN_LPAREN) && 
+                    is_typename_start(parser, get_next_token(parser)))
             {
                 match(parser, TOKEN_LPAREN);
                 parse_type_name(parser);
@@ -621,7 +680,8 @@ static Expression* parse_unary_expression(Parser* parser)
 static Expression* parse_cast_expression(Parser* parser)
 {
     /* ( type-name ) cast-expression */
-    while (is_match(parser, TOKEN_LPAREN) && is_typename_start(next_type(parser->stream)))
+    while (is_match(parser, TOKEN_LPAREN) && 
+            is_typename_start(parser, get_next_token(parser)))
     {
         require(parser, TOKEN_LPAREN);
         parse_type_name(parser);
@@ -714,8 +774,7 @@ static Expression* parse_additive_expression(Parser* parser)
         Expression* rhs = parse_multiplicative_expression(parser);
 
         // To stop warning about unused for now
-        if (type == 0) {}
-
+        (void) type;
     }
 
     remove_recover_tokens(parser, additive_operators, num_operators);
@@ -924,15 +983,20 @@ static Expression* parse_constant_expression(Parser* parser)
 
 static Expression* parse_expression(Parser* parser)
 {
-    parse_assignment_expression(parser);
+    add_recover_token(parser, TOKEN_COMMA);
+
+    Expression* expr = parse_assignment_expression(parser);
 
     while (is_match(parser, TOKEN_COMMA))
     {
-        match(parser, TOKEN_COMMA);
-        parse_assignment_expression(parser);
+        require(parser, TOKEN_COMMA);
+
+        Expression* rhs = parse_assignment_expression(parser);
     }
 
-    return NULL;
+    remove_recover_token(parser, TOKEN_COMMA);
+
+    return expr;
 }
 
 // For parsing statements
@@ -943,7 +1007,7 @@ static Statement* statement_allocate(Parser* parser, StatementType type)
     Statement* stmt = xmalloc(sizeof(Statement));
 
     stmt->base.type = type;
-    stmt->base.loc = curr(parser->stream)->loc;
+    stmt->base.loc = get_curr_token(parser)->loc;
     stmt->base.parent = NULL; // TODO: change this from NULL to proper stmt
 
     return stmt;
@@ -958,7 +1022,7 @@ static Statement* parse_label_statement(Parser* parser)
 {
     Statement* stmt = statement_allocate(parser, STATEMENT_LABEL);
 
-    Token* tok = curr(parser->stream);
+    Token* tok = get_curr_token(parser);
 
     require(parser, TOKEN_IDENTIFIER);
     require(parser, TOKEN_COLON);
@@ -1275,21 +1339,42 @@ case_expression_statement:
 
 static Declaration* parse_designation(Parser* parser)
 {
+    parse_designator_list(parser);
 
+    match(parser, TOKEN_EQUAL);
  
     return NULL;
 }
 
 static Declaration* parse_designator_list(Parser* parser)
 {
-
+    while (has_match(parser, (TokenType[]) {TOKEN_LBRACKET, TOKEN_DOT}, 2))
+    {
+        parse_designator(parser);
+    }
  
     return NULL;
 }
 
 static Declaration* parse_designator(Parser* parser)
 {
+    if (is_match(parser, TOKEN_LBRACKET))
+    {
+        match(parser, TOKEN_LBRACKET);
 
+        parse_constant_expression(parser);
+
+        match(parser, TOKEN_RBRACKET);
+    }
+    else if (is_match(parser, TOKEN_DOT))
+    {
+        match(parser, TOKEN_DOT);
+        match(parser, TOKEN_IDENTIFIER);
+    }
+    else
+    {
+        panic("parse_designator");
+    }
  
     return NULL;
 }
@@ -1300,6 +1385,12 @@ static Declaration* parse_initializer(Parser* parser)
     {
         match(parser, TOKEN_LCURLY);
 
+        parse_initializer_list(parser);
+
+        if (is_match(parser, TOKEN_COMMA))
+        {
+            require(parser, TOKEN_COMMA);
+        }
 
         match(parser, TOKEN_RCURLY);
     }
@@ -1314,8 +1405,28 @@ static Declaration* parse_initializer(Parser* parser)
 
 static Declaration* parse_initializer_list(Parser* parser)
 {
+    while (!is_match(parser, TOKEN_RCURLY))
+    {
+        // If we can match a designation do that...
+        if (has_match(parser, (TokenType[]) {TOKEN_DOT, TOKEN_LBRACKET}, 2))
+        {
+            parse_designation(parser);
 
- 
+        }
+        // Then get the initializer
+        parse_initializer(parser);
+
+        // End of initializer list e.g. {..., }
+        if (is_match(parser, TOKEN_COMMA) && is_next_match(parser, TOKEN_RCURLY))
+        {
+            break;
+        }
+        else // Get the comma and keep going
+        {
+            match(parser, TOKEN_COMMA);
+        }
+    }
+
     return NULL;
 }
 
@@ -1341,7 +1452,7 @@ static Declaration* parse_init_declarator(Parser* parser)
         parse_initializer(parser);
     }
 
- 
+
     return NULL;
 }
 
@@ -1360,22 +1471,64 @@ static Declaration* parse_init_declarator_list(Parser* parser)
 
 static Declaration* parse_typedef_name(Parser* parser)
 {
-
+    // TODO: fix this later
+    match(parser, TOKEN_IDENTIFIER);
  
+    return NULL;
+}
+
+static Declaration* parse_enumerator(Parser* parser)
+{
+    match(parser, TOKEN_IDENTIFIER);
+    if (is_match(parser, TOKEN_EQUAL))
+    {
+        require(parser, TOKEN_EQUAL);
+        parse_constant_expression(parser);
+    }
+
     return NULL;
 }
 
 static Declaration* parse_enumerator_list(Parser* parser)
 {
+    parse_enumerator(parser);
 
+    while (is_match(parser, TOKEN_COMMA) && !is_next_match(parser, TOKEN_RCURLY))
+    {
+        require(parser, TOKEN_COMMA);
+
+        parse_enumerator(parser);
+    }
  
     return NULL;
 }
 
 static Declaration* parse_enum_specificer(Parser* parser)
 {
+    match(parser, TOKEN_ENUM);
 
- 
+    if (is_match(parser, TOKEN_IDENTIFIER))
+    {
+        match(parser, TOKEN_IDENTIFIER);
+
+        if (!is_match(parser, TOKEN_LCURLY))
+        {
+            return NULL;
+        }
+    }
+
+    // Here we should match a left curly
+    match(parser, TOKEN_LCURLY);
+
+    parse_enumerator_list(parser);
+
+    if (is_match(parser, TOKEN_COMMA))
+    {
+        require(parser, TOKEN_COMMA);
+    }
+
+    match(parser, TOKEN_RCURLY);
+
     return NULL;
 }
 
@@ -1480,15 +1633,101 @@ static Declaration* parse_direct_declarator(Parser* parser)
 
 static Declaration* parse_direct_abstract_declarator(Parser* parser)
 {
+    if (is_match(parser, TOKEN_LPAREN))
+    {
+        match(parser, TOKEN_LPAREN);
 
- 
+        if (is_match(parser, TOKEN_RPAREN))
+        {
+            match(parser, TOKEN_RPAREN);
+        }
+        else if (is_typename_start(parser, get_curr_token(parser)))
+        {
+            parse_paramater_type_list(parser);
+
+            match(parser, TOKEN_RPAREN);
+        }
+        else
+        {
+            parse_abstract_declarator(parser);
+
+            match(parser, TOKEN_RPAREN);
+        }
+    }
+    else if (is_match(parser, TOKEN_LBRACKET))
+    {
+        match(parser, TOKEN_LBRACKET);
+
+        if (is_match(parser, TOKEN_RBRACKET))
+        {
+            match(parser, TOKEN_RBRACKET);
+        }
+        else
+        {
+            parse_constant_expression(parser);
+        }
+    }
+    else
+    {
+        panic("unexpected token type...");
+    }
+
+    // TODO: make this code better
+
+    // Now parse the rest of it
+    while (has_match(parser, (TokenType[]) {TOKEN_LBRACKET, TOKEN_LPAREN}, 2))
+    {
+        if (is_match(parser, TOKEN_LPAREN))
+        {
+            match(parser, TOKEN_LPAREN);
+
+            if (is_match(parser, TOKEN_RPAREN))
+            {
+                match(parser, TOKEN_RPAREN);
+            }
+            else if (is_typename_start(parser, get_curr_token(parser)))
+            {
+                parse_paramater_type_list(parser);
+
+                match(parser, TOKEN_RPAREN);
+            }
+        }
+
+        if (is_match(parser, TOKEN_LBRACKET))
+        {
+            match(parser, TOKEN_LBRACKET);
+
+            if (is_match(parser, TOKEN_RBRACKET))
+            {
+                match(parser, TOKEN_RBRACKET);
+            }
+            else
+            {
+                assert(is_expression_start(parser, get_curr_token(parser)));
+
+                parse_constant_expression(parser);
+            }
+        }
+        else
+        {
+            panic("unreachale");
+        }
+    }
+
     return NULL;
 }
 
 static Declaration* parse_abstract_declarator(Parser* parser)
 {
+    if (is_match(parser, TOKEN_STAR))
+    {
+        parse_pointer(parser);
+    }
+    else
+    {
+        parse_direct_abstract_declarator(parser);
+    }
 
- 
     return NULL;
 }
 
@@ -1536,6 +1775,8 @@ static Declaration* parse_paramater_declaration(Parser* parser)
         bs since I cba determining first sets and such
     */
 
+    // TODO: determine how to do the above
+
     parse_declaration_specifiers(parser);
     parse_declarator(parser);
  
@@ -1552,7 +1793,6 @@ static Declaration* parse_paramater_list(Parser* parser)
         parse_paramater_declaration(parser);
     }
 
- 
     return NULL;
 }
 
@@ -1571,49 +1811,123 @@ static Declaration* parse_paramater_type_list(Parser* parser)
 
 static Declaration* parse_type_qualifier_list(Parser* parser)
 {
+    parse_type_qualifier(parser);
 
+    while (has_match(parser, type_qualifier, type_qualifier_count))
+    {
+        parse_type_qualifier(parser);
+    }
  
     return NULL;
 }
 
 static Declaration* parse_specifier_qualifier_list(Parser* parser)
 {
+    if (has_match(parser, type_qualifier, type_qualifier_count))
+    {
+        parse_type_qualifier(parser);
+    }
+    else if (has_match(parser, type_specifier, type_specifier_count))
+    {
+        parse_type_specifier(parser);
+    }
+    else
+    {
+        panic("expected specifier or qualifier");
+    }
 
- 
+    // TODO: this could be a bit cleaner????
+
+    while (has_match(parser, type_qualifier, type_qualifier_count)
+            || has_match(parser, type_specifier, type_specifier_count))
+    {
+        if (has_match(parser, type_qualifier, type_qualifier_count))
+        {
+            parse_type_qualifier(parser);
+        }
+        else if (has_match(parser, type_specifier, type_specifier_count))
+        {
+            parse_type_specifier(parser);
+        }
+    }
+
     return NULL;
 }
 
 static Declaration* parse_struct_declarator(Parser* parser)
-{
+{   
+    // TODO: this is a really bad way to do this
 
- 
+    // If we get a bit field off the bar
+    if (is_match(parser, TOKEN_COMMA))
+    {
+        require(parser, TOKEN_COMMA);
+        parse_constant_expression(parser);
+
+        return NULL;
+    }
+
+    parse_declarator(parser);
+
+    // If we maybe have a bitfield after
+    if (is_match(parser, TOKEN_COMMA))
+    {
+        require(parser, TOKEN_COMMA);
+        parse_constant_expression(parser);
+
+        return NULL;
+    }
+
     return NULL;
 }
 
 static Declaration* parse_struct_declarator_list(Parser* parser)
 {
+    parse_struct_declarator(parser);
 
+    if (is_match(parser, TOKEN_COMMA))
+    {
+        require(parser, TOKEN_COMMA);
+        parse_struct_declarator(parser);
+    }
  
     return NULL;
 }
 
 static Declaration* parse_struct_declaration(Parser* parser)
 {
+    parse_specifier_qualifier_list(parser);
+    parse_struct_declarator_list(parser);
 
- 
+    match(parser, TOKEN_SEMI);
+
     return NULL;
 }
 
 static Declaration* parse_struct_declaration_list(Parser* parser)
 {
+    while (get_curr_token(parser)->type != TOKEN_RCURLY)
+    {
+        parse_struct_declaration(parser);
+    }
 
- 
     return NULL;
 }
 
 static Declaration* parse_struct_or_union(Parser* parser)
 {
-
+    if (is_match(parser, TOKEN_STRUCT))
+    {
+        require(parser, TOKEN_STRUCT);
+    }
+    else if (is_match(parser, TOKEN_UNION))
+    {
+        require(parser, TOKEN_UNION);
+    }
+    else
+    {
+        panic("expected struct or union");
+    }
  
     return NULL;
 }
@@ -1655,6 +1969,8 @@ static Declaration* parse_function_specificer(Parser* parser)
 
 static Declaration* parse_type_qualifier(Parser* parser)
 {
+    assert(has_match(parser, type_qualifier, type_qualifier_count));
+
     // Nothing else to do here
     match(parser, curr_type(parser->stream));
  
@@ -1731,7 +2047,32 @@ static Declaration* parse_declaration(Parser* parser)
     {
         parse_init_declarator_list(parser);
     }
-    match(parser, TOKEN_SEMI);
+
+    return NULL;
+}
+
+static Declaration* parse_declaration_or_definition(Parser* parser)
+{
+    parse_declaration(parser);
+
+    if (is_match(parser, TOKEN_SEMI))
+    {
+        require(parser, TOKEN_SEMI);
+
+        return NULL;
+    }
+    else if (is_match(parser, TOKEN_LCURLY))
+    {
+        parse_compound_statement(parser);
+
+        return NULL;
+    }
+    else 
+    {
+        match(parser, TOKEN_EOF);
+
+        panic("expected ';' or '{'");
+    }
 
     return NULL;
 }
@@ -1751,12 +2092,23 @@ void parse_translation_unit(TokenStream* stream, LineMap* map)
 {
     Parser parser = {.stream = stream, .map = map};
 
+    add_recover_token(&parser, TOKEN_EOF);
+
     while (curr_type(stream) != TOKEN_EOF)
     {
-        parse_expression(&parser);
-        match(&parser, TOKEN_SEMI);
+        // if (is_expression_start(&parser, get_curr_token(&parser)))
+        // {
+        //     parse_expression(&parser);
+        // }
+        // else
+        // {
+        //     eat_until(&parser, TOKEN_SEMI);
+        // }
+        // match(&parser, TOKEN_SEMI);
+        parse_declaration_or_definition(&parser);
     }
+
+    remove_recover_token(&parser, TOKEN_EOF);
 
     return;
 }
-
