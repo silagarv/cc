@@ -142,6 +142,8 @@ typedef enum TokenType {
 } TokenType;
 
 // TODO: maybe turn opt value into a pointer if we want to save space???
+// TODO: should I add a flag which tells us if token is well formed or not?
+// TODO: that would mainly be used for characters and such...s
 typedef struct Token {
     TokenType type;
     Location loc;

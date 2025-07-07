@@ -1,5 +1,6 @@
 #include "parser.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -213,14 +214,8 @@ static Token* get_next_token(Parser* parser)
 // okay that we just give up all together
 static void require(Parser* parser, TokenType type)
 {
-    TokenStream* stream = parser->stream;
-
-    if (curr_type(stream) != type)
-    {
-        panic("function require failed due to current type not being type.");
-    }
-
-    consume(stream);
+    assert(is_match(parser, type));
+    consume(parser->stream);
 }
 
 static void eat_until(Parser* parser, TokenType type)
@@ -251,7 +246,7 @@ static void eat_until_recover(Parser* parser)
 
 // A parsing method to synchronise the stream of tokens in the event of an error
 // will go until we hit the a token in the recovery set. This is using panic mode
-// recovery
+// recovery and this should work pretty well in c...
 static void recover(Parser* parser, TokenType type)
 {
     eat_until(parser, type);
@@ -1427,8 +1422,8 @@ static Declaration* parse_initializer_list(Parser* parser)
         if (has_match(parser, (TokenType[]) {TOKEN_DOT, TOKEN_LBRACKET}, 2))
         {
             parse_designation(parser);
-
         }
+
         // Then get the initializer
         parse_initializer(parser);
 
@@ -1437,9 +1432,14 @@ static Declaration* parse_initializer_list(Parser* parser)
         {
             break;
         }
+        else if (is_match(parser, TOKEN_RCURLY))
+        {
+            break;
+        }
         else // Get the comma and keep going
         {
             match(parser, TOKEN_COMMA);
+            assert(!is_match(parser, TOKEN_RCURLY));
         }
     }
 
@@ -1849,6 +1849,8 @@ static Declaration* parse_specifier_qualifier_list(Parser* parser)
     }
     else
     {
+        match(parser, TOKEN_EOF);
+
         panic("expected specifier or qualifier");
     }
 

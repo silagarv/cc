@@ -5,6 +5,7 @@
 #include "driver/diagnostic.h"
 #include "util/panic.h"
 #include "util/buffer.h"
+#include "util/str.h"
 #include "util/xmalloc.h"
 
 #include "lex/source_line.h"
@@ -15,19 +16,24 @@
 
 #include "parse/parser.h"
 
-char test_pgm[] = {
-        // #embed "/usr/include/stdio.h"
-        // #embed "sqlite3.c.testing.i"
-        // #embed "../../external/sqlite3/sqlite3.i"
-        #embed "../../external/c-testsuite/tests/single-exec/00004.c"
-};
+// char test_pgm[] = {
+//         // #embed "/usr/include/stdio.h"
+//         // #embed "sqlite3.c.testing.i"
+//         // #embed "../../external/sqlite3/sqlite3.i"
+//         #embed "../../external/c-testsuite/tests/single-exec/00004.c"
+// };
+
+#include "parse/type.h"
+
 
 int main(int argc, char** argv)
 {
     diag_init();
+
     
-    // char test_pgm[] =
-        // "typedef int meow;\n";
+
+    char test_pgm[] =
+        "typedef int meow;\n"
         // "(int[]) { meow, }; a + sizeof (float double); a == 0;\n"
         // "function_call(a, b, a == d);\n"
         // "nest.the->mf.structs[32](*abc, a, 2, 9, 10 == 11 ? 0 : 0);\n";
@@ -40,13 +46,13 @@ int main(int argc, char** argv)
         // "for (a = a *= 0; (printf)(\"NO\"); a++) { printf(\"Hello!\", 1, 2, 'a'); }\n"
         // "return a == 0;";
 
-        // "int printf(const char* fmt, ...);\n"
+        "int printf(const char* fmt, ...);\n"
 
         // "int main(int argc, char** argv, ...);\n"
         // "int c = 0;";
         // "\n"
         // "int main(int argc, char** argv);\n"
-        // "int main(argc, argv) { c = \'a\'; }\n";
+        "int main(int argc, char* argv[]) { c = \'a\'; }\n";
         // "enum poo { a, b, c = 123, POOP = 10,  };\n";
         // "char test_pgm[32];";
 

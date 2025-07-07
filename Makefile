@@ -32,7 +32,8 @@ LEX = src/lex/source_stream.c \
 	src/lex/token.c \
 	src/lex/token_lexer.c
 
-PARSE = src/parse/parser.c
+PARSE = src/parse/type.c \
+	src/parse/parser.c
 
 SRC = $(UTIL) $(FILES) $(LEX) $(PARSE) $(DRIVER) 
 

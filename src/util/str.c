@@ -86,6 +86,9 @@ void string_free(String* str)
 
 String string_from_buffer(Buffer* buff)
 {
+    // Ensure that we have a valid c-string
+    buff->buffer[buff->len] = '\0';
+
     char* ptr = buffer_get_ptr(buff);
     size_t len = buffer_get_len(buff);
 

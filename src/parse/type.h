@@ -37,6 +37,8 @@ typedef enum TypeKind {
 
 typedef union Type Type;
 
+// TODO: should I make a qualified type a type itself and have that recurse???
+
 // Type qualifiers note that only a pointer type has the possibility to have
 // the restrict section set
 typedef struct TypeQualifiers {
@@ -168,6 +170,30 @@ typedef struct TypeStorageSpecifier {
     bool is_auto;
     bool is_register;
 } TypeStorageSpecifier;
+
+// Functions to create our basic types
+Type* type_create_error(void);
+Type* type_create_void(void);
+Type* type_create_bool(void);
+Type* type_create_char(void);
+Type* type_create_signed_char(void);
+Type* type_create_unsigned_char(void);
+Type* type_create_signed_short(void);
+Type* type_create_unsigned_short(void);
+Type* type_create_signed_int(void);
+Type* type_create_unsigned_int(void);
+Type* type_create_signed_long(void);
+Type* type_create_unsigned_long(void);
+Type* type_create_signed_long_long(void);
+Type* type_create_unsigned_long_long(void);
+Type* type_create_float(void);
+Type* type_create_double(void);
+Type* type_create_long_double(void);
+
+void type_free(Type* type);
+
+// Function to transform a type to a string for when it is needed for diagnostics
+String type_to_string(Type* type);
 
 // Any type that is not user defined. (TODO: Should I include typedefs?)
 bool is_builtin_type(Type* type);
