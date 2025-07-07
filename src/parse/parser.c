@@ -1323,9 +1323,25 @@ static Statement* parse_statement(Parser* parser)
 
             // TODO: improve the logic here to handle this case better
 case_expression_statement:
-            stmt = parse_expression_statement(parser);    
+            if (is_expression_start(parser, get_curr_token(parser)))
+            {
+                stmt = parse_expression_statement(parser);    
+            }
+            else if (is_typename_start(parser, get_curr_token(parser)))
+            {
+                parse_declaration(parser);
 
-            // panic("bad statement start");
+                stmt = NULL;
+            }
+            else
+            {
+                stmt = NULL;
+
+                match(parser, TOKEN_EOF);
+
+                panic("bad statement start");
+            }
+
             break;
     }
 

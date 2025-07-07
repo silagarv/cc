@@ -15,18 +15,19 @@
 
 #include "parse/parser.h"
 
-// char test_pgm[] = {
+char test_pgm[] = {
         // #embed "/usr/include/stdio.h"
         // #embed "sqlite3.c.testing.i"
         // #embed "../../external/sqlite3/sqlite3.i"
-// };
+        #embed "../../external/c-testsuite/tests/single-exec/00004.c"
+};
 
 int main(int argc, char** argv)
 {
     diag_init();
     
-    char test_pgm[] =
-        "typedef int meow;\n";
+    // char test_pgm[] =
+        // "typedef int meow;\n";
         // "(int[]) { meow, }; a + sizeof (float double); a == 0;\n"
         // "function_call(a, b, a == d);\n"
         // "nest.the->mf.structs[32](*abc, a, 2, 9, 10 == 11 ? 0 : 0);\n";
