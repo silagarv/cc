@@ -11,81 +11,7 @@ static Type* type_create_simple(TypeKind kind)
 {
     Type* t = xmalloc(sizeof(Type));
     t->type_base.qualifiers = (TypeQualifiers) {0};
-
-    switch (kind)
-    {
-        case TYPE_ERROR: 
-            t->type_base.type = TYPE_ERROR;
-            break;
-
-        case TYPE_VOID: 
-            t->type_base.type = TYPE_VOID;
-            break;
-
-        case TYPE_BOOL: 
-            t->type_base.type = TYPE_BOOL;
-            break;
-
-        case TYPE_CHAR: 
-            t->type_base.type = TYPE_CHAR;
-            break;
-
-        case TYPE_S_CHAR: 
-            t->type_base.type = TYPE_S_CHAR;
-            break;
-
-        case TYPE_U_CHAR: 
-            t->type_base.type = TYPE_U_CHAR;
-            break;
-
-        case TYPE_S_SHORT: 
-            t->type_base.type = TYPE_S_SHORT;
-            break;
-
-        case TYPE_U_SHORT: 
-            t->type_base.type = TYPE_U_SHORT;
-            break;
-
-        case TYPE_S_INT: 
-            t->type_base.type = TYPE_S_INT;
-            break;
-
-        case TYPE_U_INT: 
-            t->type_base.type = TYPE_U_INT;
-            break;
-
-        case TYPE_S_LONG: 
-            t->type_base.type = TYPE_S_LONG;
-            break;
-
-        case TYPE_U_LONG: 
-            t->type_base.type = TYPE_U_LONG;
-            break;
-
-        case TYPE_S_LONG_LONG: 
-            t->type_base.type = TYPE_S_LONG_LONG;
-            break;
-
-        case TYPE_U_LONG_LONG: 
-            t->type_base.type = TYPE_U_LONG_LONG;
-            break;
-
-        case TYPE_FLOAT: 
-            t->type_base.type = TYPE_FLOAT;
-            break;
-
-        case TYPE_DOUBLE: 
-            t->type_base.type = TYPE_DOUBLE;
-            break;
-
-        case TYPE_LONG_DOUBLE: 
-            t->type_base.type = TYPE_LONG_DOUBLE;
-            break;
-
-        default:
-            panic("cannot create a simple type for this...");
-            return NULL;
-    }
+    t->type_base.type = kind;
 
     return t;
 }
@@ -175,6 +101,24 @@ Type* type_create_long_double(void)
     return type_create_simple(TYPE_LONG_DOUBLE);
 }
 
+Type* type_create_complex(Type* base_type)
+{
+    Type* t = type_create_simple(TYPE_COMPLEX);
+    t->type_complex.underlying_type = base_type;
+
+    return t;
+}
+
+Type* type_create_imaginary(Type* base_type)
+{
+    Type* t = type_create_simple(TYPE_IMAGINARY);
+    t->type_imaginary.underlying_type = base_type;
+
+    return t;
+}
+
+Type* type_create_imaginary(Type* base_type);
+
 void type_free(Type* type)
 {
     switch (type->type_base.type)
@@ -206,6 +150,9 @@ void type_free(Type* type)
 
     free(type);
 }
+
+// Declaration of function to print types to a buffer
+static void type_to_string_internal(Type* type, Buffer* buff);
 
 // NOTE: from testing with clangd the type printing order is:
 //      -> const
@@ -301,6 +248,16 @@ static void type_print_rest(Type* type, Buffer* buff)
         case TYPE_LONG_DOUBLE:
             buffer_printf(buff, "long double");
             break;
+
+        case TYPE_COMPLEX:
+            buffer_printf(buff, "_Complex ");
+            type_to_string_internal(type->type_complex.underlying_type, buff);
+            break;
+
+        case TYPE_IMAGINARY:
+            buffer_printf(buff, "_Imaginary ");
+            type_to_string_internal(type->type_complex.underlying_type, buff);
+            break;
             
         // TODO: do the rest of the types
 
@@ -311,14 +268,19 @@ static void type_print_rest(Type* type, Buffer* buff)
     }
 }
 
+static void type_to_string_internal(Type* type, Buffer* buff)
+{
+    type_print_qualifiers(&type->type_base.qualifiers, buff);
+
+    type_print_rest(type, buff);
+}
+
 String type_to_string(Type* type)
 {
     // NOTE: some arbitrary size is used here...
     Buffer type_buffer = buffer_new_size(20);
 
-    type_print_qualifiers(&type->type_base.qualifiers, &type_buffer);
-
-    type_print_rest(type, &type_buffer);
+    type_to_string_internal(type, &type_buffer);
 
     String string = string_from_buffer(&type_buffer);
 

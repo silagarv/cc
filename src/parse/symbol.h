@@ -34,4 +34,6 @@ typedef struct SymbolTable {
 
 SymbolTable* symbol_table_new(SymbolTable* prev);
 
+Symbol* symbol_table_lookup(SymbolTable* table);
+
 #endif /* SYMBOL_H */

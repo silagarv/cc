@@ -189,6 +189,8 @@ Type* type_create_unsigned_long_long(void);
 Type* type_create_float(void);
 Type* type_create_double(void);
 Type* type_create_long_double(void);
+Type* type_create_complex(Type* base_type);
+Type* type_create_imaginary(Type* base_type);
 
 void type_free(Type* type);
 

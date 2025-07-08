@@ -9,17 +9,20 @@
 #include "parse/symbol.h"
 
 // Add some sort of a symbol table in here
-struct Scope {
+typedef struct Scope {
     SymbolTable symbols;
 
-    struct Scope* parent;
-};
-typedef struct Scope Scope;
+    struct Scope* parent; // the scope level above this one
+    struct Scope* top; // the top level scope overall
+
+} Scope;
 
 Scope* scope_new(Scope* parent);
 void scope_free(Scope* scope);
 
 Symbol* scope_lookup(Scope* scope, String* name);
+
+bool scope_contains(Scope* scope, String* name);
 
 bool scope_add_symbol(Scope* scope, Symbol* symbol);
 

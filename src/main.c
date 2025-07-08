@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,6 +17,8 @@
 
 #include "parse/parser.h"
 
+#include "util/arena.h"
+
 // char test_pgm[] = {
 //         // #embed "/usr/include/stdio.h"
 //         // #embed "sqlite3.c.testing.i"
@@ -25,12 +28,11 @@
 
 #include "parse/type.h"
 
+#include <assert.h>
 
 int main(int argc, char** argv)
 {
     diag_init();
-
-    
 
     char test_pgm[] =
         "typedef int meow;\n"
