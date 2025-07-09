@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <stdint.h>
 #include <stdio.h>
 
 #include "lex/token.h"
@@ -51,6 +52,11 @@ static bool is_numeric(char c)
     return false;
 }
 
+static bool is_hexadecimal(char c)
+{
+    return (is_numeric(c) || ('a' <= c && c <= 'e') || ('A' <= c && c <= 'E'));
+}
+
 static bool is_horizontal_whitespace(char c)
 {
     // TODO: is '\0' considered whitespace???
@@ -96,6 +102,16 @@ TokenLexer token_lexer_create(SourceStream stream, LineRun* run)
 void token_lexer_close(TokenLexer* lexer)
 {
     source_stream_close(&lexer->stream);
+}
+
+static size_t token_lexer_save_position(TokenLexer* lexer)
+{
+    return lexer->line_pos;
+}
+
+static void token_lexer_restore_position(TokenLexer* lexer, size_t pos)
+{
+    lexer->line_pos = pos;
 }
 
 static bool at_eof(TokenLexer* lexer)
@@ -245,7 +261,15 @@ static void lex_preprocessing_number(TokenLexer* lexer, Token* tok)
     }
 }
 
-static uint32_t lex_universal_character(TokenLexer* lexer, Token* tok);
+static bool is_valid_ucn_identifier(uint32_t ucn)
+{
+    return false;
+}
+
+static uint32_t lex_universal_character(TokenLexer* lexer, Token* tok)
+{
+    return 0;
+}
 
 static void determine_identifier_keyword(Token* tok)
 {
