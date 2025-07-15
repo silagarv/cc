@@ -1,5 +1,7 @@
 #include "char_type.h"
 
+#include <stdbool.h>
+
 bool is_identifier_start(char c)
 {
     if ('a' <= c && c <= 'z')
