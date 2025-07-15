@@ -96,6 +96,8 @@ bool is_ascii(char c)
 {
     unsigned char uc = (unsigned char) c;
 
+    // TODO: change to 'uc' since this is a bug lol... but this function is
+    // unused for now though
     if (c <= 127)
     {
         return true;

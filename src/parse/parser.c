@@ -161,6 +161,9 @@ static void parse_error(Parser* parser, const char* fmt, ...)
 static void add_recover_token(Parser* parser, TokenType type)
 {
     assert(type && type < TOKEN_LAST);
+    assert(parser->recover_set[type] != SIZE_MAX);
+    // If above assertion is triggered, then there we basically have infinite
+    // memory, so realistically it should never happen...
 
     parser->recover_set[type]++;
 }
@@ -168,11 +171,7 @@ static void add_recover_token(Parser* parser, TokenType type)
 static void remove_recover_token(Parser* parser, TokenType type)
 {
     assert(type && type < TOKEN_LAST);
-
-    if (parser->recover_set[type] == 0)
-    {
-        panic("removing recovery token when it's not added");
-    }
+    assert(parser->recover_set[type] != 0);
 
     parser->recover_set[type]--;
 }
@@ -327,6 +326,10 @@ static bool is_expression_start(Parser* parser, const Token* tok);
 // TODO: however I think we will need a symbol table and stuff for the next part
 // TODO: for sure though
 
+// TODO: implement below so we can do important stuff
+static bool is_declorator_start(Parser* parser, const Token* tok);
+static bool is_abstract_declarator_start(Parser* parser, const Token* tok);
+
 // Functions for parsing our constants which include integer, floating point
 // enumeration and character constants
 static Expression* parse_integer_constant(Parser* parser);
@@ -335,7 +338,6 @@ static Expression* parse_enumeration_constant(Parser* parser);
 static Expression* parse_character_constant(Parser* parser);
 static Expression* parse_constant(Parser* parser);
 
-// All of our functions for parsing expressions
 static Expression* parse_primary_expression(Parser* parser);
 static Expression* parse_postfix_expression(Parser* parser);
 static Expression* parse_argument_expression_list(Parser* parser);
@@ -767,6 +769,12 @@ static Expression* parse_additive_expression(Parser* parser)
         }
 
         Expression* rhs = parse_multiplicative_expression(parser);
+
+        // TODO: get new binary expression tmp with type type
+        Expression* tmp = NULL; 
+        // TODO: assign tmp's lhs to expr, and tmp's rhs to rhs
+        
+        expr = tmp;
 
         // To stop warning about unused for now
         (void) type;
@@ -1794,7 +1802,17 @@ static Declaration* parse_paramater_declaration(Parser* parser)
     // TODO: determine how to do the above
 
     parse_declaration_specifiers(parser);
-    parse_declarator(parser);
+
+    // TODO: in the case of 'void' this parses the declaration specifiers then
+    // has to kill itself since there is only ')' after it. So make the next
+    // part options
+
+    // TODO: leave this true for now then we will just fix it up later hopefully
+    // TODO: need some function to determine if we're starting a declaration or not
+    if (true)
+    {
+        parse_declarator(parser);
+    }
  
     return NULL;
 }
@@ -2071,7 +2089,9 @@ static Declaration* parse_declaration(Parser* parser)
 
 static Declaration* parse_declaration_or_definition(Parser* parser)
 {
-    parse_declaration(parser);
+    Declaration* decl = parse_declaration(parser);
+
+    /* TODO: add declaration to list of declarations */
 
     if (is_match(parser, TOKEN_SEMI))
     {
@@ -2082,6 +2102,8 @@ static Declaration* parse_declaration_or_definition(Parser* parser)
     else if (is_match(parser, TOKEN_LCURLY))
     {
         parse_compound_statement(parser);
+
+        // TODO: add the function to list of functions and that
 
         return NULL;
     }
@@ -2110,6 +2132,7 @@ void parse_translation_unit(TokenStream* stream, LineMap* map)
 {
     Parser parser = {.stream = stream, .map = map};
 
+    // add so we can never go past
     add_recover_token(&parser, TOKEN_EOF);
 
     while (curr_type(stream) != TOKEN_EOF)

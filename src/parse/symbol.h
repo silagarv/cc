@@ -16,10 +16,18 @@ typedef enum SymbolNameSpace {
     SYMBOL_NAME_SPACE_MEMBERS // members of struct / unions
 } SymbolNameSpace;
 
+typedef enum SymbolLinkage {
+    SYMBOL_LINKAGE_NONE, /* if the symbols linkage is not relavent e.g. labels */
+    SYMBOL_LINKAGE_INTERNAL,
+    SYMBOL_LINKAGE_EXTERNAL
+} SymbolLinkage;
+
 typedef struct Symbol {
     SymbolNameSpace namespace;
-    String name;
+    String name; // The name of the symbol (potentially mangled)
     Type* type;
+
+    bool used; /* is the symbol used. for detecting e.g. unused labels */
 } Symbol;
 
 // An array of Symbol pointers since we don't want the symbol pointer itself

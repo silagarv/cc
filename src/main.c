@@ -35,7 +35,7 @@ int main(int argc, char** argv)
     diag_init();
 
     char test_pgm[] =
-        "typedef int meow;\n"
+        "\n"
         // "(int[]) { meow, }; a + sizeof (float double); a == 0;\n"
         // "function_call(a, b, a == d);\n"
         // "nest.the->mf.structs[32](*abc, a, 2, 9, 10 == 11 ? 0 : 0);\n";
@@ -54,7 +54,10 @@ int main(int argc, char** argv)
         // "int c = 0;";
         // "\n"
         // "int main(int argc, char** argv);\n"
-        "int main(int argc, char* argv[]) { c = \'a\'; }\n";
+        "int main(int argc, char* argv[]) { c = \'a\'; };\n"
+        "enum COLOR {RED, GREEN, BLUE} c;\n"
+        "int a, *b=NULL;\n";
+        // "const int *f(void);\n";
         // "enum poo { a, b, c = 123, POOP = 10,  };\n";
         // "char test_pgm[32];";
 

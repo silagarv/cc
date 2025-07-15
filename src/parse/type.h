@@ -97,22 +97,22 @@ typedef struct TypeCompound {
 } TypeCompound;
 
 // A struct to represent an enum type
-typedef struct TypeEnumMember {
+typedef struct TypeEnumConstant {
     String name; // the name of the member
     /* TODO: need to have some kind of value? but is this the right place... */
 
-    struct TypeEnumMember* next;
-} TypeEnumMember;
+    struct TypeEnumConstant* next;
+} TypeEnumConstant;
 
 typedef struct TypeEnum {
     TypeBase type_base;
     String name; // the name of the member of mangled if anon
     Type* underlying_type; // the underlying type of the enum
 
-    TypeEnumMember* first; // the first member of enum
-    TypeEnumMember* last; // The last member of the enum
+    TypeEnumConstant* first; // the first member of enum
+    TypeEnumConstant* last; // The last member of the enum
 
-    bool is_anonamous; // if it is ananonamous
+    bool is_anonamous; // if it is ananonamous enum
 } TypeEnum;
 
 // A function type

@@ -8,13 +8,27 @@
 
 #include "parse/symbol.h"
 
+/* Scope:
+ * 4 kinds of scopes: function, file, block, and function prototype
+ *
+ * function: only a label name is in here
+ * everything else is determined by the placement of the identifier
+ */
+
+// TODO: below is probably not needed...
+typedef enum ScopeType {
+    SCOPE_ERROR,
+    SCOPE_FUNCTION,
+    SCOPE_FILE,
+    SCOPE_BLOCK,
+    SCOPE_FUNCTION_PROTOTYPE
+} ScopeType;
+
 // Add some sort of a symbol table in here
 typedef struct Scope {
-    SymbolTable symbols;
+    size_t level;
 
-    struct Scope* parent; // the scope level above this one
-    struct Scope* top; // the top level scope overall
-
+    
 } Scope;
 
 Scope* scope_new(Scope* parent);

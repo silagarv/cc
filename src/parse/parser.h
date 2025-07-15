@@ -20,6 +20,8 @@ struct Parser {
 
     /* our anchor set for recovering from parsing */
     size_t recover_set[TOKEN_LAST];
+
+    /* TODO: add an automatic bracket balancer */
 };
 typedef struct Parser Parser;
 

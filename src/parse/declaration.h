@@ -1,6 +1,10 @@
 #ifndef DECLARATION_H
 #define DECLARATION_H
 
+#include "lex/location.h"
+
+#include "parse/type.h"
+
 typedef enum DeclarationType {
     DECLARATION_ERROR = -1, /* an error in a declaration */
 
@@ -15,7 +19,11 @@ typedef enum DeclarationType {
     DECLARATION_TYPEDEF /* a typedef to any of the above */
 } DeclarationType;
 
-typedef struct DeclarationBase DeclarationBase;
+typedef struct DeclarationBase {
+    DeclarationType decl_type; /* what type of declaration is this? */
+    Location loc; /* where is this declaraiton located */
+    Type* type; /* the overall type of the declaration */
+} DeclarationBase;
 
 typedef struct DeclarationVariable DeclarationVariable;
 typedef struct DeclarationFunctionParamater DeclarationFunctionParamater;
