@@ -13,70 +13,10 @@
 #include "lex/location_map.h"
 #include "lex/source_line.h"
 #include "lex/source_stream.h"
+#include "lex/char_type.h"
 
 // TODO: will need to somehow implement digraph support in the lexer
 // TODO: add support for lexing angled bracket header files
-
-static bool is_identifier(char c)
-{
-    if ('a' <= c && c <= 'z')
-    {
-        return true;
-    }
-
-    if ('A' <= c && c <= 'Z')
-    {
-        return true;
-    }
-
-    if ('0' <= c && c <= '9')
-    {
-        return true;
-    }
-
-    if (c == '_')
-    {
-        return true;
-    }
-
-    return false;
-}
-
-static bool is_numeric(char c)
-{
-    if ('0' <= c && c <= '9')
-    {
-        return true;
-    }
-
-    return false;
-}
-
-static bool is_hexadecimal(char c)
-{
-    return (is_numeric(c) || ('a' <= c && c <= 'e') || ('A' <= c && c <= 'E'));
-}
-
-static bool is_horizontal_whitespace(char c)
-{
-    // TODO: is '\0' considered whitespace???
-    switch (c)
-    {
-        case ' ':
-        case '\t':
-        case '\f':
-        case '\v':
-            return true;
-
-        default:
-            return false;
-    }
-}
-
-static bool is_ascii(char c)
-{
-    return ((unsigned char) c <= 127);
-}
 
 TokenLexer token_lexer_create(SourceStream stream, LineRun* run)
 {
