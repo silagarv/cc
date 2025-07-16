@@ -5,8 +5,8 @@
 
 #include "lex/location.h"
 
+#include "parse/symbol.h"
 #include "parse/expression.h"
-#include "parse/declaration.h"
 
 enum StatementType {
     STATEMENT_ERROR = -1,
@@ -81,6 +81,8 @@ struct StatementCompound {
     // Maybe add a block item list opt?
     Statement* statement;
     size_t statement_count;
+
+    SymbolTable symbols;
 };
 
 struct StatementExpression {
@@ -101,6 +103,7 @@ struct StatementSwitch {
     Expression* expression;
     Statement* body;
     // All of the cases in the switch
+    // TODO: should I change this so default is just a type of StatementCase?
     StatementCase* first_case;
     StatementCase* last_case;
     StatementDefault* default_label;
@@ -121,6 +124,8 @@ struct StatementDoWhile {
 
 struct StatementFor {
     StatementBase base;
+    // TODO: need some way to differentiate between a declaration and a
+    // TODO: expression here. This is very important....
     Expression* initialisation;
     Expression* condition;
     Statement* body;

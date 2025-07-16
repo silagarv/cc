@@ -3,9 +3,7 @@
 
 #include <stddef.h>
 
-#include "util/str.h"
-
-#include "parse/type.h"
+#include "parse/declaration.h"
 
 // 6.2.3 identifier namespaces
 typedef enum SymbolNameSpace {
@@ -24,10 +22,9 @@ typedef enum SymbolLinkage {
 
 typedef struct Symbol {
     SymbolNameSpace namespace;
-    String name; // The name of the symbol (potentially mangled)
-    Type* type;
+    SymbolLinkage linkage; /* the linkage of the symbol */
 
-    bool used; /* is the symbol used. for detecting e.g. unused labels */
+    Declaration decl; /* the symbols declaration */
 } Symbol;
 
 // An array of Symbol pointers since we don't want the symbol pointer itself
@@ -37,11 +34,15 @@ typedef struct SymbolTable {
     size_t count;
     size_t cap;
 
+    size_t depth;
+
     struct SymbolTable* prev;
 } SymbolTable;
 
 SymbolTable* symbol_table_new(SymbolTable* prev);
 
-Symbol* symbol_table_lookup(SymbolTable* table);
+bool symbol_table_insert(SymbolTable* table, Symbol* sym);
+
+Symbol* symbol_table_lookup(SymbolTable* table, SymbolNameSpace ns);
 
 #endif /* SYMBOL_H */

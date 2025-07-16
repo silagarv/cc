@@ -35,31 +35,7 @@ int main(int argc, char** argv)
     diag_init();
 
     char test_pgm[] =
-        "\n"
-        // "(int[]) { meow, }; a + sizeof (float double); a == 0;\n"
-        // "function_call(a, b, a == d);\n"
-        // "nest.the->mf.structs[32](*abc, a, 2, 9, 10 == 11 ? 0 : 0);\n";
-        // "switch (123 + 10) abc: break;\n"
-        // "goto abc; {{{{{{{goto _;}}}}}}}\n"
-        // "for (a != 0; a /= 10 != 10; a++) { ; a == 3; }\n"
-        // "hello: ;\n"
-        // "case 1234: return 0; \n"
-        // "default: break;"
-        // "for (a = a *= 0; (printf)(\"NO\"); a++) { printf(\"Hello!\", 1, 2, 'a'); }\n"
-        // "return a == 0;";
-
-        "int printf(const char* fmt, ...);\n"
-
-        // "int main(int argc, char** argv, ...);\n"
-        // "int c = 0;";
-        // "\n"
-        // "int main(int argc, char** argv);\n"
-        "int main(int argc, char* argv[]) { c = \'a\'; };\n"
-        "enum COLOR {RED, GREEN, BLUE} c;\n"
-        "int a, *b=NULL;\n";
-        // "const int *f(void);\n";
-        // "enum poo { a, b, c = 123, POOP = 10,  };\n";
-        // "char test_pgm[32];";
+        "const int a;\n";    
 
     Filepath path = FILEPATH_STATIC_INIT("test_pgm.c");
 
