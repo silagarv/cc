@@ -35,7 +35,7 @@ int main(int argc, char** argv)
     diag_init();
 
     char test_pgm[] =
-        "const int a;\n";    
+        "const int;\n";    
 
     Filepath path = FILEPATH_STATIC_INIT("test_pgm.c");
 
@@ -71,10 +71,10 @@ int main(int argc, char** argv)
         }
     }
 
-    TokenStream stream = token_list_to_stream(&tokens);
-    parse_translation_unit(&stream, &map);
+    // TokenStream stream = token_list_to_stream(&tokens);
+    // parse_translation_unit(&stream, &map);
     free(tokens.tokens);
 
-    token_lexer_close(&lexer);
-    line_map_free(&map);
+    // token_lexer_close(&lexer);
+    // line_map_free(&map);
 }

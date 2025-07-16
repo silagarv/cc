@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-#include "util/str_view.h"
+#include "util/str.h"
 
 #include "lex/location.h"
 
@@ -148,7 +148,7 @@ typedef struct Token {
     TokenType type;
     Location loc;
 
-    StringView opt_value;
+    String opt_value;
     
     bool leading_space;
     bool start_of_line;

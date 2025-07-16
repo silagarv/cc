@@ -179,7 +179,7 @@ const char* token_get_string(Token* tok)
         return token_get_name(tok);
     }
 
-    return string_view_get_ptr(&tok->opt_value);
+    return string_get_ptr(&tok->opt_value);
 }
 
 size_t token_get_length(Token* tok)
