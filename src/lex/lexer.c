@@ -703,6 +703,30 @@ retry_lexing:;
 
                 consume_char(lexer);
             }
+            else if (curr == '>')
+            {
+                token->type = TOKEN_RBRACKET;
+
+                consume_char(lexer);
+            }
+            else if (curr == ':')
+            {
+                /* Here we either got %: or %:%: */
+
+                consume_char(lexer);
+
+                if (get_curr_char(lexer) == '%' && peek_char(lexer) == ':')
+                {
+                    token->type = TOKEN_HASH_HASH;
+
+                    consume_char(lexer);
+                    consume_char(lexer);
+                }
+                else
+                {
+                    token->type = TOKEN_HASH;
+                }
+            }
             else
             {
                 token->type = TOKEN_PERCENT;
@@ -872,6 +896,20 @@ retry_lexing:;
             else if (curr == '=')
             {
                 token->type = TOKEN_LT_EQUAL;
+
+                consume_char(lexer);
+            }
+            else if (curr == ':')
+            {
+                token->type = TOKEN_LBRACKET;
+
+                consume_char(lexer);
+            }
+            else if (curr == '%')
+            {
+                token->type = TOKEN_LBRACKET;
+
+                consume_char(lexer);
             }
             else
             {
@@ -909,6 +947,20 @@ retry_lexing:;
             }
             break;
 
+        case ':': 
+            curr = get_curr_char(lexer);
+            if (curr == '>')
+            {
+                token->type = TOKEN_RBRACKET;
+
+                consume_char(lexer);
+            } 
+            else
+            {
+                token->type = TOKEN_COLON;
+            }
+            break;
+
         // All single character tokens in c99
         case '[': token->type = TOKEN_LBRACKET; break;
         case ']': token->type = TOKEN_RBRACKET; break;
@@ -920,7 +972,6 @@ retry_lexing:;
         case ';': token->type = TOKEN_SEMI; break;
         case ',': token->type = TOKEN_COMMA; break;
         case '~': token->type = TOKEN_TILDE; break;
-        case ':': token->type = TOKEN_COLON; break;
 
         default: // Currently just create an unknown token and die
         {
@@ -947,4 +998,3 @@ bool lexer_get_next(Lexer* lexer, Token* token)
 
     return lex_internal(lexer, token);
 }
-
