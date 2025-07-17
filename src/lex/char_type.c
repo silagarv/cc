@@ -92,6 +92,19 @@ bool is_horizontal_whitespace(char c)
     }
 }
 
+bool is_vertical_whitespace(char c)
+{
+    switch (c)
+    {
+        case '\r':
+        case '\n':
+            return true;
+
+        default:
+            return false;
+    }
+}
+
 bool is_ascii(char c)
 {
     unsigned char uc = (unsigned char) c;

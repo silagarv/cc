@@ -16,17 +16,18 @@
 #include "lex/location_map.h"
 
 #include "parse/parser.h"
+#include "lex/token.h"
 
 #include "util/arena.h"
 
-// char test_pgm[] = {
-//         // #embed "/usr/include/stdio.h"
-//         // #embed "sqlite3.c.testing.i"
-//         // #embed "../../external/sqlite3/sqlite3.i"
-//         #embed "../../external/c-testsuite/tests/single-exec/00004.c"
-// };
+#include "lex/lexer.h"
 
-#include "parse/type.h"
+char test_pgm[] = {
+        // #embed "/usr/include/stdio.h"
+        #embed "../../external/sqlite3/sqlite3.c"
+//         #embed "../../external/c-testsuite/tests/single-exec/00004.c"
+    ,'\0'
+};
 
 #include <assert.h>
 
@@ -34,47 +35,74 @@ int main(int argc, char** argv)
 {
     diag_init();
 
-    char test_pgm[] =
-        "const int;\n";    
+    // char test_pgm[] =
+    //     "L\"m\?eow\\\n\""
+    //     "L'a\n"
+    //     "   \t const int;\\\n"
+    //     "meow poo poo\n"
+    //     "\\\n"
+    //     "inc\\\n"
+    //     "lude stdio h\n"
+    //     "a\\\n"
+    //     "\\\n"
+    //     "\\\n"
+    //     "b\n"
+    //     "meow meow 123.123.12.34.1aE+12\n"
+    //     "a?\?/\n"
+    //     "b\n"
+    //     "meow\n"
+    //     ".\\\n.\\\n.\n";
 
     Filepath path = FILEPATH_STATIC_INIT("test_pgm.c");
 
-    Buffer buff = buffer_from_cstr(test_pgm);
-    SourceStream ss = source_stream_from_buffer(&buff);
-    
-    LineMap map = line_map_create();
-    LineRun* run = line_map_start(&map, &path);
-    TokenLexer lexer = token_lexer_create(ss, run);
+    Lexer l = lexer(test_pgm, test_pgm + sizeof(test_pgm) - 1, 0);
 
-    TokenList tokens = (TokenList)
+    Token tok;
+    while (lexer_get_next(&l, &tok))
     {
-        .tokens = xmalloc(sizeof(Token)),
-        .used = 0,
-        .allocated = 1
-    };
+        // printf("%s\n", token_get_string(&tok));
+        // printf("%s\n", token_type_get_name(tok.type));
 
-    while (true)
-    {
-        if (tokens.used == tokens.allocated)
+        if (token_has_opt_value(&tok))
         {
-            tokens.allocated *= 2;
-            tokens.tokens = xrealloc(tokens.tokens, sizeof(Token) * tokens.allocated);
-        }
-
-        tokens.tokens[tokens.used++] = token_lexer_get_next(&lexer);
-
-        Token* tok = &tokens.tokens[tokens.used - 1];
-
-        if (tok->type == TOKEN_EOF)
-        {
-            break;
+            free(tok.opt_value.ptr);
         }
     }
+    
 
-    // TokenStream stream = token_list_to_stream(&tokens);
-    // parse_translation_unit(&stream, &map);
-    free(tokens.tokens);
+    // LineMap map = line_map_create();
+    // LineRun* run = line_map_start(&map, &path);
+    // TokenLexer lexer = token_lexer_create(ss, run);
 
-    // token_lexer_close(&lexer);
-    // line_map_free(&map);
+    // TokenList tokens = (TokenList)
+    // {
+    //     .tokens = xmalloc(sizeof(Token)),
+    //     .used = 0,
+    //     .allocated = 1
+    // };
+
+    // while (true)
+    // {
+    //     if (tokens.used == tokens.allocated)
+    //     {
+    //         tokens.allocated *= 2;
+    //         tokens.tokens = xrealloc(tokens.tokens, sizeof(Token) * tokens.allocated);
+    //     }
+
+    //     tokens.tokens[tokens.used++] = token_lexer_get_next(&lexer);
+
+    //     Token* tok = &tokens.tokens[tokens.used - 1];
+
+    //     if (tok->type == TOKEN_EOF)
+    //     {
+    //         break;
+    //     }
+    // }
+
+    // // TokenStream stream = token_list_to_stream(&tokens);
+    // // parse_translation_unit(&stream, &map);
+    // free(tokens.tokens);
+
+    // // token_lexer_close(&lexer);
+    // // line_map_free(&map);
 }

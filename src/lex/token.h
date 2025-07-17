@@ -137,6 +137,8 @@ typedef enum TokenType {
     TOKEN_MACRO_PARAMATER,
     TOKEN_NEWLINE,
 
+    TOKEN_END_OF_DIRECTIVE,
+
     /* the last token to get the number of tokens */
     TOKEN_LAST
 } TokenType;

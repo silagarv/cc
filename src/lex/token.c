@@ -162,6 +162,7 @@ const char* token_get_name(Token* tok)
 {
     return token_type_get_name(tok->type);
 }
+
 const char* token_get_string(Token* tok)
 {   
     if (tok->type == TOKEN_NEWLINE)
