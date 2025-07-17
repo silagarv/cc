@@ -47,7 +47,7 @@ void token_free(Token* tok)
 const char* token_type_get_name(TokenType type)
 {
     // DO NOT ADD DEFAULT CASE HERE to trigger -Wswitch if anything added
-    switch(type)
+    switch (type)
     {
         case TOKEN_UNKNOWN: return "<unknown-token>";
         case TOKEN_EOF: return "<end-of-file>";
@@ -151,6 +151,7 @@ const char* token_type_get_name(TokenType type)
         case TOKEN_HEADER_NAME: return "<<INTERNAL_HEADER_NAME>>"; 
         case TOKEN_MACRO_PARAMATER: return "<<INTERNAL_MACRO_PARAM>>"; 
         case TOKEN_NEWLINE: return "<newline-token>";
+        case TOKEN_END_OF_DIRECTIVE: return "<end-of-directive>";
         case TOKEN_LAST: return "<<INTERNAL_TOKEN_LAST>>";
     }
 

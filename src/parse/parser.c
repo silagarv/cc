@@ -150,8 +150,8 @@ static void parse_error(Parser* parser, const char* fmt, ...)
 {
     Token* tok = get_curr_token(parser);   
 
-    ResolvedLocation loc = line_map_resolve_location(parser->map, tok->loc);
-    fprintf(stderr, "%s:%u:%u\n", loc.name->path, loc.line, loc.col);
+    ResolvedLocation loc = {.name = NULL, .col = 1, .line = 1};//line_map_resolve_location(parser->map, tok->loc);
+    fprintf(stderr, "%u:%u\n", loc.line, loc.col);
     va_list args;
     va_start(args, fmt);
     diag_verror(fmt, args);

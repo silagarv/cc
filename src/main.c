@@ -9,9 +9,6 @@
 #include "util/str.h"
 #include "util/xmalloc.h"
 
-#include "lex/source_line.h"
-#include "lex/source_stream.h"
-#include "lex/token_lexer.h"
 #include "lex/token.h"
 #include "lex/location_map.h"
 
@@ -25,7 +22,7 @@
 char test_pgm[] = {
         // #embed "/usr/include/stdio.h"
         // #embed "../../external/sqlite3/sqlite3.c"
-        #embed "src/main.c"
+        #embed "test.c"
 //         #embed "../../external/c-testsuite/tests/single-exec/00004.c"
     ,'\0'
 };
@@ -36,24 +33,24 @@ int main(int argc, char** argv)
 {
     diag_init();
 
-    char test_pgm[] =
-        "L\"m\?eow\\\n\""
-        "L'a\n"
-        "   \t const int;\\\n"
-        "meow poo poo\n"
-        "\\\n"
-        "inc\\\n"
-        "lude stdio h\n"
-        "a\\\n"
-        "\\\n"
-        "\\\n"
-        "b\n"
-        "meow meow 123.123.12.34.1aE+12\n"
-        "a?\?/\n"
-        "b\n"
-        "meow\n"
-        ".\\\n.\\\n.\n"
-        "%:include";
+    // char test_pgm[] =
+    //     "L\"m\?eow\\\n\""
+    //     "L'a\n"
+    //     "   \t const int;\\\n"
+    //     "meow poo poo\n"
+    //     "\\\n"
+    //     "inc\\\n"
+    //     "lude stdio h\n"
+    //     "a\\\n"
+    //     "\\\n"
+    //     "\\\n"
+    //     "b\n"
+    //     "meow meow 123.123.12.34.1aE+12\n"
+    //     "a?\?/\n"
+    //     "b\n"
+    //     "meow\n"
+    //     ".\\\n.\\\n.\n"
+    //     "%:include";
 
     Filepath path = FILEPATH_STATIC_INIT("test_pgm.c");
 

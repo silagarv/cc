@@ -7,7 +7,6 @@
 #include "files/filepath.h"
 
 #include "lex/location.h"
-#include "lex/source_line.h"
 
 // TODO: change LineMap to LocationMap??? Would make more sense to be fair
 
@@ -54,7 +53,7 @@ typedef struct LineInfo {
     Location start_location; // the location we start at
     Location end_location; // the location we end at
 
-    SourceLine line; // The statically allocated line we got
+    // SourceLine line; // The statically allocated line we got
     
     // Cannot have ptr to run's filename as this could be realloced and then invalid
     uint32_t current_line; // The current line number caclulated by the map
@@ -132,7 +131,7 @@ typedef struct LineMap {
 
 // Add a line to a line run and return the base location given for that 
 // particular line.
-Location line_run_add_line(LineRun* run, SourceLine line);
+// Location line_run_add_line(LineRun* run, SourceLine line);
 
 // Finalise a line run making it not able to ever be added to again
 void line_run_finalise(LineRun* run);
