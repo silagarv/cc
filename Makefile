@@ -28,7 +28,8 @@ DRIVER = src/driver/diagnostic.c \
 
 # FILES = src/files/file_entry.c
 
-LEX = src/lex/token.c \
+LEX = src/lex/location_map.c \
+	src/lex/token.c \
 	src/lex/char_type.c \
 	src/lex/lexer.c
 

@@ -4,6 +4,8 @@
 #include <stdlib.h>
 
 #include "driver/diagnostic.h"
+#include "files/source_file.h"
+#include "lex/location.h"
 #include "util/panic.h"
 #include "util/buffer.h"
 #include "util/str.h"
@@ -34,7 +36,7 @@ int main(int argc, char** argv)
     diag_init();
 
     // char test_pgm[] =
-    //     "L\"m\?eow\\\n\""
+    //     "L\"m\?eow\"\\\n"
     //     "L'a\n"
     //     "   \t const int;\\\n"
     //     "meow poo poo\n"
@@ -54,19 +56,44 @@ int main(int argc, char** argv)
 
     Filepath path = FILEPATH_STATIC_INIT("test_pgm.c");
 
+    SourceFile file;
+    file.contents = test_pgm;
+    file.end_contents = test_pgm + sizeof(test_pgm) - 1;
+    file.name = path;
+    file.contents_size = sizeof(test_pgm) - 1;
+
+    LineMap map;
+    line_map(&map, &file, 0);
+
     Lexer l = lexer(test_pgm, test_pgm + sizeof(test_pgm) - 1, 0);
 
     Token tok;
     while (lexer_get_next(&l, &tok))
     {
+        ResolvedLocation loc = line_map_resolve_location(&map, tok.loc);
+
+        printf("%s:%u:%u\n", loc.name->path, loc.line, loc.col);
+        
         printf("%s\n", token_get_string(&tok));
-        printf("%s\n", token_type_get_name(tok.type));
+        printf("%s\n\n", token_type_get_name(tok.type));
 
         if (token_has_opt_value(&tok))
         {
             free(tok.opt_value.ptr);
         }
     }
+
+    printf("%u\n", tok.loc);
+    printf("%u\n", map.range.end);
+
+        ResolvedLocation loc = line_map_resolve_location(&map, tok.loc);
+
+        printf("%s:%u:%u\n", loc.name->path, loc.line, loc.col);
+        
+        printf("%s\n", token_get_string(&tok));
+        printf("%s\n\n", token_type_get_name(tok.type));
+
+    line_map_delete(&map);
     
 
     // LineMap map = line_map_create();
