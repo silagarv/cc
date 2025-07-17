@@ -10,6 +10,7 @@ bool is_octal(char c);
 bool is_hexadecimal(char c);
 
 bool is_horizontal_whitespace(char c);
+bool is_vertical_whitespace(char c);
 bool is_whitespace(char c);
 
 bool is_ascii(char c);

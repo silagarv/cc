@@ -120,22 +120,23 @@ typedef enum TokenType {
     TOKEN_WIDE_STRING,
 
     // Special preprocessing token names
-    // TOKEN_DEFINE,
-    // TOKEN_UNDEF,
-    // TOKEN_INCLUDE,
-    // /* TOKEN_IF, */
-    // TOKEN_IFDEF,
-    // TOKEN_IFNDEF,
-    // /* TOKEN_ELSE, */
-    // TOKEN_ELIF,
-    // TOKEN_ENDIF,
-    // TOKEN_LINE,
-    // TOKEN_ERROR,
-    // TOKEN_PRAGMA,
+    TOKEN_PP_DEFINE,
+    TOKEN_PP_UNDEF,
+    TOKEN_PP_INCLUDE,
+    TOKEN_PP_IF,
+    TOKEN_PP_IFDEF,
+    TOKEN_PP_IFNDEF,
+    TOKEN_PP_ELSE,
+    TOKEN_PP_ELIF,
+    TOKEN_PP_ENDIF,
+    TOKEN_PP_LINE,
+    TOKEN_PP_ERROR,
+    TOKEN_PP_PRAGMA,
     
-    TOKEN_HEADER_NAME,
-    TOKEN_MACRO_PARAMATER,
-    TOKEN_NEWLINE,
+    TOKEN_PP_HEADER_NAME,
+    TOKEN_PP_MACRO_PARAMATER,
+
+    TOKEN_PP_EOD,
 
     /* the last token to get the number of tokens */
     TOKEN_LAST
@@ -169,6 +170,7 @@ typedef struct TokenStream {
 } TokenStream;
 
 void token_freshen_up(Token* tok);
+void token_free_data(Token* tok);
 void token_free(Token* tok);
 
 const char* token_type_get_name(TokenType type);

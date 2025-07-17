@@ -28,11 +28,10 @@ DRIVER = src/driver/diagnostic.c \
 
 # FILES = src/files/file_entry.c
 
-LEX = src/lex/source_stream.c \
-	src/lex/location_map.c \
+LEX = src/lex/location_map.c \
 	src/lex/token.c \
 	src/lex/char_type.c \
-	src/lex/token_lexer.c
+	src/lex/lexer.c
 
 PARSE = src/parse/type.c \
 	src/parse/parser.c
