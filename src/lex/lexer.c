@@ -326,6 +326,222 @@ static bool lex_number(Lexer* lexer, Token* token, char* start)
     return true;
 }
 
+// TODO: I would like to make this more modular to better support older / newer
+// language standards eventually...
+static void classify_identifier(Token* token)
+{
+    assert(token->type == TOKEN_IDENTIFIER);
+    assert(token->opt_value.len > 0);
+
+    switch (string_get(&token->opt_value, 0))
+    {
+        case 'a':
+            if (string_equal(&token->opt_value, "auto"))
+            {
+                token->type = TOKEN_AUTO;
+            }
+            break;
+        
+        case 'b':
+            if (string_equal(&token->opt_value, "break"))
+            {
+                token->type = TOKEN_BREAK;
+            }
+            break;
+
+        case 'c':
+            if (string_equal(&token->opt_value, "case"))
+            {
+                token->type = TOKEN_CASE;
+            }
+            else if (string_equal(&token->opt_value, "char"))
+            {
+                token->type = TOKEN_CHAR;
+            }
+            else if (string_equal(&token->opt_value, "const"))
+            {
+                token->type = TOKEN_CONST;
+            }
+            else if (string_equal(&token->opt_value, "continue"))
+            {
+                token->type = TOKEN_CONTINUE;
+            }
+            break;
+
+        case 'd':
+            if (string_equal(&token->opt_value, "default"))
+            {
+                token->type = TOKEN_DEFAULT;
+            }
+            else if (string_equal(&token->opt_value, "do"))
+            {
+                token->type = TOKEN_DO;
+            }
+            else if (string_equal(&token->opt_value, "double"))
+            {
+                token->type = TOKEN_DOUBLE;
+            }
+            break;
+
+        case 'e':
+            if (string_equal(&token->opt_value, "else"))
+            {
+                token->type = TOKEN_ELSE;
+            }
+            else if (string_equal(&token->opt_value, "enum"))
+            {
+                token->type = TOKEN_ENUM;
+            }
+            else if (string_equal(&token->opt_value, "extern"))
+            {
+                token->type = TOKEN_EXTERN;
+            }
+            break;
+
+        case 'f':
+            if (string_equal(&token->opt_value, "float"))
+            {
+                token->type = TOKEN_FLOAT;
+            }
+            else if (string_equal(&token->opt_value, "for"))
+            {
+                token->type = TOKEN_FOR;
+            }
+            break;
+
+        case 'g':
+            if (string_equal(&token->opt_value, "goto"))
+            {
+                token->type = TOKEN_GOTO;
+            }
+            break;
+
+        case 'i':
+            if (string_equal(&token->opt_value, "if"))
+            {
+                token->type = TOKEN_IF;
+            }
+            else if (string_equal(&token->opt_value, "inline"))
+            {
+                token->type = TOKEN_INLINE;
+            }
+            else if (string_equal(&token->opt_value, "int"))
+            {
+                token->type = TOKEN_INT;
+            }
+            break;
+
+        case 'l':
+            if (string_equal(&token->opt_value, "long"))
+            {
+                token->type = TOKEN_LONG;
+            }
+            break;
+
+        case 'r':
+            if (string_equal(&token->opt_value, "register"))
+            {
+                token->type = TOKEN_REGISTER;
+            }
+            else if (string_equal(&token->opt_value, "restrict"))
+            {
+                token->type = TOKEN_RESTRICT;
+            }
+            else if (string_equal(&token->opt_value, "return"))
+            {
+                token->type = TOKEN_RETURN;
+            }
+            break;
+
+        case 's':
+            if (string_equal(&token->opt_value, "short"))
+            {
+                token->type = TOKEN_SHORT;
+            }
+            else if (string_equal(&token->opt_value, "signed"))
+            {
+                token->type = TOKEN_SIGNED;
+            }
+            else if (string_equal(&token->opt_value, "sizeof"))
+            {
+                token->type = TOKEN_SIZEOF;
+            }            
+            else if (string_equal(&token->opt_value, "static"))
+            {
+                token->type = TOKEN_STATIC;
+            }
+            else if (string_equal(&token->opt_value, "struct"))
+            {
+                token->type = TOKEN_STRUCT;
+            }
+            else if (string_equal(&token->opt_value, "switch"))
+            {
+                token->type = TOKEN_SWITCH;
+            }
+            break;
+
+        case 't':
+            if (string_equal(&token->opt_value, "typedef"))
+            {
+                token->type = TOKEN_TYPEDEF;
+            }
+            break;
+
+        case 'u':
+            if (string_equal(&token->opt_value, "union"))
+            {
+                token->type = TOKEN_UNION;
+            }
+            else if (string_equal(&token->opt_value, "unsigned"))
+            {
+                token->type = TOKEN_UNSIGNED;
+            }
+            break;
+
+        case 'v':
+            if (string_equal(&token->opt_value, "volatile"))
+            {
+                token->type = TOKEN_VOLATILE;
+            }
+            else if (string_equal(&token->opt_value, "void"))
+            {
+                token->type = TOKEN_VOID;
+            }
+            break;
+
+        case 'w':
+            if (string_equal(&token->opt_value, "while"))
+            {
+                token->type = TOKEN_WHILE;
+            }
+            break;
+
+        case '_':
+            if (string_equal(&token->opt_value, "_Bool"))
+            {
+                token->type = TOKEN__BOOL;
+            }
+            else if (string_equal(&token->opt_value, "_Complex"))
+            {
+                token->type = TOKEN__COMPLEX;
+            }
+            else if (string_equal(&token->opt_value, "_Imaginary"))
+            {
+                token->type = TOKEN__IMAGINARY;
+            }
+            break;
+
+        default:
+            break;
+    }
+
+    // We also want to remove the allocated memory if any so we don't leak
+    if (token->type != TOKEN_IDENTIFIER)
+    {
+        token_free_data(token);
+    }
+}
+
 static bool lex_identifier(Lexer* lexer, Token* token, char* start)
 {
     token->type = TOKEN_IDENTIFIER;
@@ -355,6 +571,7 @@ static bool lex_identifier(Lexer* lexer, Token* token, char* start)
     token->opt_value = string_from_buffer(&identifier);
 
     // TODO: classify the identifier into catagories
+    classify_identifier(token);
 
     return true;
 }
@@ -371,7 +588,7 @@ static char get_starting_delimiter(TokenType type)
         case TOKEN_CHARACTER:
             return '\'';
 
-        case TOKEN_HEADER_NAME:
+        case TOKEN_PP_HEADER_NAME:
             return '<';
 
         default:
@@ -392,7 +609,7 @@ static char get_ending_delimiter(TokenType type)
         case TOKEN_CHARACTER:
             return '\'';
 
-        case TOKEN_HEADER_NAME:
+        case TOKEN_PP_HEADER_NAME:
             return '>';
 
         default:
@@ -492,7 +709,7 @@ static bool lex_wide_character_literal(Lexer* lexer, Token* token)
 
 static bool lex_header_name(Lexer* lexer, Token* token)
 {
-    return lex_string_like_literal(lexer, token, TOKEN_HEADER_NAME);
+    return lex_string_like_literal(lexer, token, TOKEN_PP_HEADER_NAME);
 }
 
 static bool lex_internal(Lexer* lexer, Token* token)
@@ -573,7 +790,7 @@ retry_lexing:;
                 lexer->lexing_directive = false;
                 lexer->start_of_line = true;
 
-                token->type = TOKEN_END_OF_DIRECTIVE;
+                token->type = TOKEN_PP_EOD;
 
                 break;
             }

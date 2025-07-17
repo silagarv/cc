@@ -30,8 +30,8 @@ bool token_has_opt_value(Token* tok)
         case TOKEN_WIDE_CHARACTER:
         case TOKEN_STRING:
         case TOKEN_WIDE_STRING:
-        case TOKEN_HEADER_NAME:
-        case TOKEN_MACRO_PARAMATER:
+        case TOKEN_PP_HEADER_NAME:
+        case TOKEN_PP_MACRO_PARAMATER:
             return true;
 
         default:
@@ -39,9 +39,13 @@ bool token_has_opt_value(Token* tok)
     }
 }
 
+void token_free_data(Token* tok)
+{
+    free(tok->opt_value.ptr);
+}
+
 void token_free(Token* tok)
 {
-    
 }
 
 const char* token_type_get_name(TokenType type)
@@ -148,11 +152,23 @@ const char* token_type_get_name(TokenType type)
         case TOKEN_WIDE_CHARACTER: return "<wide-character-constant>";
         case TOKEN_STRING: return "<string-literal>";
         case TOKEN_WIDE_STRING: return "<wide-string-literal>";
-        case TOKEN_HEADER_NAME: return "<<INTERNAL_HEADER_NAME>>"; 
-        case TOKEN_MACRO_PARAMATER: return "<<INTERNAL_MACRO_PARAM>>"; 
-        case TOKEN_NEWLINE: return "<newline-token>";
-        case TOKEN_END_OF_DIRECTIVE: return "<end-of-directive>";
+        case TOKEN_PP_HEADER_NAME: return "<<INTERNAL_HEADER_NAME>>"; 
+        case TOKEN_PP_MACRO_PARAMATER: return "<<INTERNAL_MACRO_PARAM>>"; 
+        case TOKEN_PP_EOD: return "<end-of-directive>";
         case TOKEN_LAST: return "<<INTERNAL_TOKEN_LAST>>";
+        
+        case TOKEN_PP_DEFINE: return "<<TOKEN_PP_DEFINE>>";
+        case TOKEN_PP_UNDEF: return "<<TOKEN_PP_UNDEF>>";
+        case TOKEN_PP_INCLUDE: return "<<TOKEN_PP_INCLUDE>>";
+        case TOKEN_PP_IF: return "<<TOKEN_PP_IF>>";
+        case TOKEN_PP_IFDEF: return "<<TOKEN_PP_IFDEF>>";
+        case TOKEN_PP_IFNDEF: return "<<TOKEN_PP_IFNDEF>>";
+        case TOKEN_PP_ELSE: return "<<TOKEN_PP_ELSE>>";
+        case TOKEN_PP_ELIF: return "<<TOKEN_PP_ELIF>>";
+        case TOKEN_PP_ENDIF: return "<<TOKEN_PP_ENDIF>>";
+        case TOKEN_PP_LINE: return "<<TOKEN_PP_LINE>>";
+        case TOKEN_PP_ERROR: return "<<TOKEN_PP_ERROR>>";
+        case TOKEN_PP_PRAGMA: return "<<TOKEN_PP_PRAGMA>>";
     }
 
     panic("unable to get token type in token_get_name");
@@ -166,7 +182,7 @@ const char* token_get_name(Token* tok)
 
 const char* token_get_string(Token* tok)
 {   
-    if (tok->type == TOKEN_NEWLINE)
+    if (tok->type == TOKEN_PP_EOD)
     {
         return "\n"; /* special case here */
     }

@@ -83,15 +83,15 @@ int main(int argc, char** argv)
         }
     }
 
-    printf("%u\n", tok.loc);
-    printf("%u\n", map.range.end);
+    // printf("%u\n", tok.loc);
+    // printf("%u\n", map.range.end);
 
-        ResolvedLocation loc = line_map_resolve_location(&map, tok.loc);
+    //     ResolvedLocation loc = line_map_resolve_location(&map, tok.loc);
 
-        printf("%s:%u:%u\n", loc.name->path, loc.line, loc.col);
+    //     printf("%s:%u:%u\n", loc.name->path, loc.line, loc.col);
         
-        printf("%s\n", token_get_string(&tok));
-        printf("%s\n\n", token_type_get_name(tok.type));
+    //     printf("%s\n", token_get_string(&tok));
+    //     printf("%s\n\n", token_type_get_name(tok.type));
 
     line_map_delete(&map);
     
