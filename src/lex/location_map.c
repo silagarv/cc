@@ -10,7 +10,6 @@
 #include "util/panic.h"
 #include "util/xmalloc.h"
 
-#include "files/filepath.h"
 #include "lex/location.h"
 
 // TODO: track down bug for end of files location for a well formed file which
@@ -123,8 +122,6 @@ ResolvedLocation line_map_resolve_location(const LineMap* map, Location loc)
     for (range_index = 0; range_index < map->num_ranges; range_index++)
     {
         range = map->ranges + range_index;
-
-        int printf(const char*, ...);
 
         if (location_range_contains(range, loc))
         {

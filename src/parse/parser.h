@@ -10,7 +10,7 @@
 
 // #include "parse/scope.h"
 
-struct Parser {
+typedef struct Parser {
     // Current tokens and where we are in the list
     TokenStream* stream;
     LineMap* map;
@@ -20,10 +20,7 @@ struct Parser {
 
     /* our anchor set for recovering from parsing */
     size_t recover_set[TOKEN_LAST];
-
-    /* TODO: add an automatic bracket balancer */
-};
-typedef struct Parser Parser;
+} Parser;
 
 void parse_translation_unit(TokenStream* stream, LineMap* map);
 

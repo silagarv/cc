@@ -28,7 +28,9 @@ typedef struct LineMap {
 
 // A structure to represent a mapping of locations to actual positions in many 
 // different files to a resolved location
-
+typedef struct LocationMap {
+    void* data;
+} LocationMap;
 
 // Check if a location range contains a specific location
 bool location_range_contains(const LocationRange* range, Location loc);

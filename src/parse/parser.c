@@ -150,8 +150,8 @@ static void parse_error(Parser* parser, const char* fmt, ...)
 {
     Token* tok = get_curr_token(parser);   
 
-    ResolvedLocation loc = {.name = NULL, .col = 1, .line = 1};//line_map_resolve_location(parser->map, tok->loc);
-    fprintf(stderr, "%u:%u\n", loc.line, loc.col);
+    ResolvedLocation loc = line_map_resolve_location(parser->map, tok->loc);
+    fprintf(stderr, "%s:%u:%u\n", loc.name->path, loc.line, loc.col);
     va_list args;
     va_start(args, fmt);
     diag_verror(fmt, args);
@@ -532,7 +532,7 @@ static Expression* parse_primary_expression(Parser* parser)
     }
     else
     {
-        panic("parse_primary_expression");
+        panic("expected expression");
     }
 
     return NULL;
@@ -547,6 +547,7 @@ static Expression* parse_postfix_expression(Parser* parser)
      */
 
     parse_primary_expression(parser);
+
     while (has_match(parser, (TokenType[]) {TOKEN_LBRACKET, TOKEN_LPAREN,
             TOKEN_DOT, TOKEN_ARROW, TOKEN_PLUS_PLUS, TOKEN_MINUS_MINUS}, 6))
     {
@@ -681,7 +682,11 @@ static Expression* parse_cast_expression(Parser* parser)
             is_typename_start(parser, get_next_token(parser)))
     {
         require(parser, TOKEN_LPAREN);
-        parse_type_name(parser);
+
+
+        Declaration* decl = parse_type_name(parser);
+        
+        
         match(parser, TOKEN_RPAREN);
 
         /* ( type-name ) { initializer-list }
@@ -925,7 +930,7 @@ static Expression* parse_logical_or_expression(Parser* parser)
 
 static Expression* parse_conditional_expression(Parser* parser)
 {
-    parse_logical_or_expression(parser);
+    Expression* expr = parse_logical_or_expression(parser);
 
     if (is_match(parser, TOKEN_QUESTION))
     {
@@ -979,9 +984,7 @@ static Expression* parse_assignment_expression(Parser* parser)
 
 static Expression* parse_constant_expression(Parser* parser)
 {
-    parse_conditional_expression(parser);
-
-    return NULL;
+    return parse_conditional_expression(parser);
 }
 
 static Expression* parse_expression(Parser* parser)
@@ -995,6 +998,8 @@ static Expression* parse_expression(Parser* parser)
         require(parser, TOKEN_COMMA);
 
         Expression* rhs = parse_assignment_expression(parser);
+
+        // TODO: build the expression here
     }
 
     remove_recover_token(parser, TOKEN_COMMA);
@@ -2119,7 +2124,7 @@ static Declaration* parse_declaration_or_definition(Parser* parser)
 
 static void* parse_type_name(Parser* parser)
 {
-    parse_specifier_qualifier_list(parser);
+    Declaration* decl = parse_specifier_qualifier_list(parser);
     // TODO: parse abstract declarator if needed
 
     return NULL;

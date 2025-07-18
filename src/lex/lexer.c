@@ -1093,6 +1093,11 @@ retry_lexing:;
             break;
         
         case '<':
+            if (lexer->can_lex_header)
+            {
+                return lex_header_name(lexer, token);
+            }
+
             curr = get_curr_char(lexer);
             if (curr == '<')
             {
@@ -1199,9 +1204,7 @@ retry_lexing:;
 
             token->opt_value = string_from_buffer(&unknown);
 
-            printf("%s\n", token_get_string(token));
-
-            panic("unknown token!");
+            // TODO: maybe warn of an unknown token?
         }
         break;
     }

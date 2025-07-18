@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
@@ -67,25 +68,9 @@ int main(int argc, char** argv)
 
     Lexer l = lexer(test_pgm, test_pgm + sizeof(test_pgm) - 1, 0);
 
-    Token tok;
-    while (lexer_get_next(&l, &tok))
-    {
-        ResolvedLocation loc = line_map_resolve_location(&map, tok.loc);
-
-        printf("%s:%u:%u\n", loc.name->path, loc.line, loc.col);
-        
-        printf("%s\n", token_get_string(&tok));
-        printf("%s\n\n", token_type_get_name(tok.type));
-
-        if (token_has_opt_value(&tok))
-        {
-            free(tok.opt_value.ptr);
-        }
-    }
-
-    // printf("%u\n", tok.loc);
-    // printf("%u\n", map.range.end);
-
+    // Token tok;
+    // while (lexer_get_next(&l, &tok))
+    // {
     //     ResolvedLocation loc = line_map_resolve_location(&map, tok.loc);
 
     //     printf("%s:%u:%u\n", loc.name->path, loc.line, loc.col);
@@ -93,42 +78,53 @@ int main(int argc, char** argv)
     //     printf("%s\n", token_get_string(&tok));
     //     printf("%s\n\n", token_type_get_name(tok.type));
 
-    line_map_delete(&map);
-    
-
-    // LineMap map = line_map_create();
-    // LineRun* run = line_map_start(&map, &path);
-    // TokenLexer lexer = token_lexer_create(ss, run);
-
-    // TokenList tokens = (TokenList)
-    // {
-    //     .tokens = xmalloc(sizeof(Token)),
-    //     .used = 0,
-    //     .allocated = 1
-    // };
-
-    // while (true)
-    // {
-    //     if (tokens.used == tokens.allocated)
+    //     if (token_has_opt_value(&tok))
     //     {
-    //         tokens.allocated *= 2;
-    //         tokens.tokens = xrealloc(tokens.tokens, sizeof(Token) * tokens.allocated);
-    //     }
-
-    //     tokens.tokens[tokens.used++] = token_lexer_get_next(&lexer);
-
-    //     Token* tok = &tokens.tokens[tokens.used - 1];
-
-    //     if (tok->type == TOKEN_EOF)
-    //     {
-    //         break;
+    //         free(tok.opt_value.ptr);
     //     }
     // }
 
-    // // TokenStream stream = token_list_to_stream(&tokens);
-    // // parse_translation_unit(&stream, &map);
-    // free(tokens.tokens);
+    TokenList tokens = (TokenList)
+    {
+        .tokens = xmalloc(sizeof(Token)),
+        .used = 0,
+        .allocated = 1
+    };
+    
+    while (true)
+    {
+        if (tokens.used == tokens.allocated)
+        {
+            tokens.allocated *= 2;
+            tokens.tokens = xrealloc(tokens.tokens, sizeof(Token) * tokens.allocated);
+        }
+        
+        Token* token =  &tokens.tokens[tokens.used];
 
-    // // token_lexer_close(&lexer);
+        lexer_get_next(&l, token);
+
+        tokens.used++;
+
+        if (token->type == TOKEN_EOF)
+        {
+            break;
+        }
+    }
+            
+    TokenStream stream = token_list_to_stream(&tokens);
+    parse_translation_unit(&stream, &map);
+
+    for (size_t i = 0; i < tokens.used; i++)
+    {
+        if (token_has_opt_value(&tokens.tokens[i]))
+        {
+            token_free_data(&tokens.tokens[i]);
+        }
+    }
+    free(tokens.tokens);
+            
+    line_map_delete(&map);
+                    
+                    // // token_lexer_close(&lexer);
     // // line_map_free(&map);
 }
