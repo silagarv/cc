@@ -12,6 +12,8 @@
 // this struct contains all of the current context information e.g. current
 // switch, if, else, etc...
 typedef struct AstContext {
+    void* current_function;
+
     void* current_if;
 } AstContext;
 

@@ -34,6 +34,7 @@ LEX = src/lex/location_map.c \
 	src/lex/lexer.c
 
 PARSE = src/parse/type.c \
+	src/parse/expression.c \
 	src/parse/parser.c
 
 SRC = $(UTIL) $(FILES) $(LEX) $(PARSE) $(DRIVER) 

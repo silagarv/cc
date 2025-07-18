@@ -529,6 +529,10 @@ static void classify_identifier(Token* token)
             {
                 token->type = TOKEN__IMAGINARY;
             }
+            else if (string_equal(&token->opt_value, "__func__"))
+            {
+                token->type = TOKEN___FUNC__;
+            }
             break;
 
         default:

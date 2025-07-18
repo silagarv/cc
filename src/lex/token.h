@@ -111,6 +111,8 @@ typedef enum TokenType {
     TOKEN__COMPLEX,
     TOKEN__IMAGINARY,
 
+    TOKEN___FUNC__, // __func__
+
     // Special tokens begin here
     TOKEN_IDENTIFIER,
     TOKEN_NUMBER,

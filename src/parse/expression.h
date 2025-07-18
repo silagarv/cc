@@ -149,4 +149,7 @@ union Expression {
     ExpressionConditional conditional;
 };
 
+Expression* expression_unary(Expression* expr, ExpressionType type, Location loc);
+Expression* expression_binary(Expression* lhs, Expression* rhs, ExpressionType type, Location loc);
+
 #endif /* EXPRESSION_H */

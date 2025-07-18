@@ -146,6 +146,7 @@ const char* token_type_get_name(TokenType type)
         case TOKEN__BOOL: return "_Bool";
         case TOKEN__COMPLEX: return "_Complex";
         case TOKEN__IMAGINARY: return "_Imaginary";
+        case TOKEN___FUNC__: return "__func__";
         case TOKEN_IDENTIFIER: return "<identifier>";
         case TOKEN_NUMBER: return "<preprocessing-number>";
         case TOKEN_CHARACTER: return "<character-constant>";
