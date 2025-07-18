@@ -686,6 +686,16 @@ static bool lex_string_like_literal(Lexer* lexer, Token* token, TokenType type)
 finish_string:
     buffer_make_cstr(&string);
 
+    // Invalid character constants since they have nothing in them...
+    if (is_wide(type) && buffer_get_len(&string) == 3)
+    {
+        token->type = TOKEN_UNKNOWN;
+    }
+    else if (buffer_get_len(&string) == 2)
+    {
+        token->type = TOKEN_UNKNOWN;
+    }
+
     token->opt_value = string_from_buffer(&string);
 
     return true;
@@ -786,6 +796,8 @@ retry_lexing:;
                 consume_curr_char_raw(lexer);
             }
 
+            /* FALLTHROUGH */
+
         case '\n':
             // If we are in a PP directive finish it up
             if (lexer->lexing_directive)
@@ -827,6 +839,8 @@ retry_lexing:;
 
                 return lex_wide_character_literal(lexer, token);
             }
+
+            /* FALLTHROUGH */
         
         case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G':
         case 'H': case 'I': case 'J': case 'K':    /*'L'*/case 'M': case 'N':

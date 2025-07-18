@@ -111,7 +111,7 @@ bool is_ascii(char c)
 
     // TODO: change to 'uc' since this is a bug lol... but this function is
     // unused for now though
-    if (c <= 127)
+    if (uc <= 127)
     {
         return true;
     }

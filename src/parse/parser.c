@@ -16,6 +16,7 @@
 #include "lex/token.h"
 #include "lex/location_map.h"
 
+#include "parse/literal_parser.h"
 #include "parse/expression.h"
 #include "parse/declaration.h"
 #include "parse/statement.h"
@@ -528,6 +529,18 @@ static Expression* parse_primary_expression(Parser* parser)
     }
     else if (is_match(parser, TOKEN_CHARACTER))
     {
+        CharValue value = {0};
+        bool success = parse_char_literal(&value, curr(parser->stream));
+
+        if (!success)
+        {
+            panic("bad char conversion");
+        }
+        else
+        {
+            // printf("'%s': %lu\n", token_get_string(curr(parser->stream)), value.value);
+        }
+
         match(parser, TOKEN_CHARACTER);
     }
     else

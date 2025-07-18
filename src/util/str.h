@@ -27,7 +27,7 @@ void string_copy_len(const String* src, String* dest,
 #define string_get_ptr(str) ((str)->ptr)
 #define string_get_len(str) ((str)->len)
 
-#define string_get(str, idx) string_get_ptr(str)[idx]
+#define string_get(str, idx) string_get_ptr(str)[(idx)]
 
 String string_from_buffer(Buffer* buff);
 

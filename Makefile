@@ -1,4 +1,4 @@
-CC = clang-19
+CC = clang
 CFLAGS = -Wall -Wextra -Wpedantic -std=c99 -g3 -O0
 CFLAGS += -Wshadow -Wno-unused-parameter -Wno-unused-function \
 	-Wno-unused-variable 
@@ -34,7 +34,7 @@ LEX = src/lex/location_map.c \
 	src/lex/lexer.c
 
 PARSE = src/parse/type.c \
-	src/parse/expression.c \
+	src/parse/literal_parser.c \
 	src/parse/parser.c
 
 SRC = $(UTIL) $(FILES) $(LEX) $(PARSE) $(DRIVER) 
