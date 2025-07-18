@@ -157,9 +157,16 @@ bool parse_char_literal(CharValue* value, const Token* token)
         if (current == '\\')
         {
             current = decode_escape_sequence(&to_convert, &pos);
+
+            // If the escape sequence had issues just quit here and return failure
+            if (!current)
+            {
+                return false;
+            }
         }
 
-        // Update the character value here
+        // Update the character value here this gives the same results as clang
+        // TODO: make this a bit cleaner and nicer
         char_value = (char_value * (2 << (CHAR_BIT - 1))) + current;
 
         // Increment the position
