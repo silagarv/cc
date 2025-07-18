@@ -3,8 +3,9 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <assert.h>
+#include <wchar.h>
 #include <limits.h>
+#include <assert.h>
 
 #include "lex/token.h"
 #include "util/panic.h"
@@ -57,15 +58,16 @@ static char convert_simple_escape(char c)
     }
 }
 
-// TODO: ensure we are correctly getting the right bit width...
+// "An integer character constant has type int"
 static int get_char_width(void)
 {
     return sizeof(int) * CHAR_BIT;
 }
 
+// "A wide character constant has type wchar_t"
 static int get_wide_char_width(void)
 {
-    return sizeof(int) * CHAR_BIT;
+    return sizeof(wchar_t) * CHAR_BIT;
 }
 
 static unsigned int decode_escape_sequence(const String* to_convert, size_t* pos)
