@@ -523,9 +523,14 @@ static Expression* parse_primary_expression(Parser* parser)
     {
         match(parser, TOKEN_NUMBER);
     }
-    else if (is_match(parser, TOKEN_STRING))
+    else if (has_match(parser, (TokenType[]) {TOKEN_STRING, TOKEN_WIDE_STRING}, 2))
     {
-        match(parser, TOKEN_STRING);
+        while (has_match(parser, (TokenType[]) {TOKEN_STRING, TOKEN_WIDE_STRING}, 2))
+        {
+            match(parser, TOKEN_STRING);
+        }
+
+        printf("matched string\n");
     }
     else if (is_match(parser, TOKEN_CHARACTER))
     {
@@ -1350,6 +1355,9 @@ case_expression_statement:
             }
             else if (is_typename_start(parser, get_curr_token(parser)))
             {
+            // TODO: e.g. const char* str ... will fail since atm we don't 
+            // see const as starting a type declaration
+
                 parse_declaration(parser);
 
                 stmt = NULL;

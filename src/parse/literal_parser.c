@@ -7,9 +7,10 @@
 #include <limits.h>
 #include <assert.h>
 
-#include "lex/char_type.h"
 #include "util/panic.h"
 #include "util/str.h"
+
+#include "lex/char_type.h"
 
 // Convert an octal character to it's corrosponding numeric value. Note that
 // convert hexadecimal can be used, but this is for stricter conversion
@@ -293,5 +294,9 @@ bool parse_char_literal(CharValue* value, const Token* token)
 
     return true;
 }
+
+// Note that decode escape sequence can probably be reused in parsing our
+// string literals to reduce code size
+
 
 

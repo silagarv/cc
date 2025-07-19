@@ -26,6 +26,22 @@ typedef struct IntegerValue {
     bool overflow;
 } IntegerValue;
 
+// Enum to represent different floating point value types
+typedef enum FloatingValueType {
+    FLOATING_VALUE_ERROR,
+    FLOATING_VALUE_FLOAT,
+    FLOATING_VALUE_DOUBLE,
+} FloatingValueType;
+
+// Structure to hold a floating point value
+typedef struct FloatingValue {
+    FloatingValueType type;
+    double value;
+
+    bool error;
+    bool overflow;
+} FloatingValue;
+
 // A structure to represent a character literal value in memory
 typedef struct CharValue {   
     uint64_t value; // The value of the character itself
@@ -42,9 +58,11 @@ typedef struct StringLiteral {
 } StringLiteral;
 
 bool parse_char_literal(CharValue* value, const Token* token);
+
 bool parse_string_literals(const Token* tokens, size_t num_tokens);
 
 bool parse_integer_value(IntegerValue* value, const Token* token);
-
+bool parse_floating_value(FloatingValue* value, const Token* token);
+bool parse_preprocessing_number(const Token* token);
 
 #endif /* LITERAL_PARSER_H */

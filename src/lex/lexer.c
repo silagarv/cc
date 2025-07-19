@@ -622,6 +622,19 @@ static char get_ending_delimiter(TokenType type)
     }
 }
 
+static bool is_character_like(TokenType type)
+{
+    switch (type) 
+    {
+        case TOKEN_CHARACTER:
+        case TOKEN_WIDE_CHARACTER:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
 static bool is_wide(TokenType type)
 {
     switch (type)
@@ -687,13 +700,16 @@ finish_string:
     buffer_make_cstr(&string);
 
     // Invalid character constants since they have nothing in them...
-    if (is_wide(type) && buffer_get_len(&string) == 3)
+    if (is_character_like(type))
     {
-        token->type = TOKEN_UNKNOWN;
-    }
-    else if (buffer_get_len(&string) == 2)
-    {
-        token->type = TOKEN_UNKNOWN;
+        if (is_wide(type) && buffer_get_len(&string) == 3)
+        {
+            token->type = TOKEN_UNKNOWN;
+        }
+        else if (buffer_get_len(&string) == 2)
+        {
+            token->type = TOKEN_UNKNOWN;
+        }
     }
 
     token->opt_value = string_from_buffer(&string);
