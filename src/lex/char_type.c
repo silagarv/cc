@@ -64,12 +64,12 @@ bool is_hexadecimal(char c)
         return true;
     }
 
-    if ('a' <= c && c <= 'e')
+    if ('a' <= c && c <= 'f')
     {
         return true;
     }
 
-    if ('A' <= c && c <= 'E')
+    if ('A' <= c && c <= 'F')
     {
         return true;
     }
