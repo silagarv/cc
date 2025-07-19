@@ -538,7 +538,7 @@ static Expression* parse_primary_expression(Parser* parser)
         }
         else
         {
-            // printf("'%s': %lu\n", token_get_string(curr(parser->stream)), value.value);
+            printf("'%s': %lu\n", token_get_string(curr(parser->stream)), value.value);
         }
 
         match(parser, TOKEN_CHARACTER);

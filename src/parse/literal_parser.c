@@ -11,6 +11,24 @@
 #include "util/panic.h"
 #include "util/str.h"
 
+// Convert an octal character to it's corrosponding numeric value. Note that
+// convert hexadecimal can be used, but this is for stricter conversion
+static unsigned int convert_octal(char c)
+{
+    switch (c)
+    {
+        case '0': return 0;
+        case '1': return 1;
+        case '2': return 2;
+        case '3': return 3;
+        case '4': return 4;
+        case '5': return 5;
+        case '6': return 6;
+        case '7': return 7;
+        default: panic("invalid octal digit"); return 0;
+    }
+}
+
 // Convert a hexadecimal character to its corrosponding numeric value
 static unsigned int convert_hexadecimal(char c)
 {
@@ -122,9 +140,44 @@ static unsigned int decode_escape_sequence(const String* to_convert, size_t* pos
     {
         // Hexadecimal escape sequence
 
+        // Check if the next digit is hexadecimal otherwise return current.
+        // TODO: diagnose not having an hex digit after the x
+        if (!is_hexadecimal(string_get(to_convert, *pos + 1)))
+        {
+            panic("expected hexadecimal digit after '\\x'");
 
-        // Here we have an unbounded number of hexadecimal chars
-        panic("unsupported hexadecimal escapes");
+            return current;
+        }
+
+        *pos += 1;
+
+        unsigned int value = 0;
+        bool overflow = false;
+        do
+        {
+            current = string_get(to_convert, *pos);
+
+            // Check if we are about to make the value overflow. I.e. is the top
+            // nibble of value currently set at all? This works since we are 
+            // about to multiply the value by 16 which removes top 4 bits.
+            if (value & 0xF0000000)
+            {
+                overflow = true;
+            }
+            value *= 16;
+            value += convert_hexadecimal(current);
+
+            *pos += 1;
+        } while (is_hexadecimal(string_get(to_convert, *pos)));
+        *pos -= 1;
+
+        // TODO: emit diagnostic on overflow
+        if (overflow)
+        {
+            panic("hexadecimal escape overflow");
+        }
+
+        return value;
     }
 
     if (current >= '0' && current <= '7')
@@ -137,14 +190,12 @@ static unsigned int decode_escape_sequence(const String* to_convert, size_t* pos
             current = string_get(to_convert, *pos);
 
             value *= 8;
-            value += convert_hexadecimal(current);
+            value += convert_octal(current);
 
             num_digits++;
 
             *pos += 1;
         } while (num_digits < 3 && is_octal(string_get(to_convert, *pos)));
-
-        // Need to go back one here since we skipped over whatever was last
         *pos -= 1;
 
         // Check the limits on character conversion
@@ -152,7 +203,7 @@ static unsigned int decode_escape_sequence(const String* to_convert, size_t* pos
         {
             // TODO: ensure there is an error here for octal conversion
 
-            // printf("Bad octal escape value\n");
+            panic("octal escape value overflow");
 
             // Stolen from LLVM, TODO: get why this is the answer...
             value &= ~0U >> (32-CHAR_BIT);

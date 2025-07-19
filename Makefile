@@ -4,7 +4,7 @@ CFLAGS += -Wshadow -Wno-unused-parameter -Wno-unused-function \
 	-Wno-unused-variable 
 CFLAGS += -x c
 # CFLAGS += -fanalyzer
-# CFLAGS += -flto
+CFLAGS += -flto
 
 IFLAGS = -Isrc
 CFLAGS += $(IFLAGS)
