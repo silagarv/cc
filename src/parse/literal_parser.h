@@ -1,6 +1,7 @@
 #ifndef LITERAL_PARSER_H
 #define LITERAL_PARSER_H
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -25,13 +26,23 @@ typedef struct IntegerValue {
     bool overflow;
 } IntegerValue;
 
-// I believe both wide and normal characters have 'int' type
-typedef struct CharValue {
+// A structure to represent a character literal value in memory
+typedef struct CharValue {   
     uint64_t value; // The value of the character itself
     bool error; // Did we get an error
 } CharValue;
 
+// Structures to represent string and wide string literal values
+typedef struct StringLiteral {
+    char* value;
+    size_t length;
+    size_t capacity;
+
+    bool error;
+} StringLiteral;
+
 bool parse_char_literal(CharValue* value, const Token* token);
+bool parse_string_literals(const Token* tokens, size_t num_tokens);
 
 bool parse_integer_value(IntegerValue* value, const Token* token);
 
