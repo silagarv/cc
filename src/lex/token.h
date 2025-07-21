@@ -144,9 +144,36 @@ typedef enum TokenType {
     TOKEN_LAST
 } TokenType;
 
-// TODO: maybe turn opt value into a pointer if we want to save space???
-// TODO: should I add a flag which tells us if token is well formed or not?
-// TODO: that would mainly be used for characters and such...s
+// TODO: eventually I would Like to use this structure within the token
+typedef struct IdentifierNode {
+    String value;
+    uint32_t hash;
+} IdentifierNode;
+
+typedef struct LiteralNode {
+    String value;
+} LiteralNode;
+
+typedef union TokenData {
+    IdentifierNode* identifier;
+    LiteralNode* literal;
+} TokenData;
+
+// TODO: goal token structure. Nice an compact enough strucutre with alot of
+// information about the token and it's contents
+// typedef struct Token {
+//     Location start; // the starting character in the token
+//     Location end; // the ending character within the token
+
+//     TokenType type; // The type of token
+    
+//     bool start_of_line; // it the token at the start of  a line
+//     bool leading_space; // does the token have at least 1 leading whitepsace
+//     bool disable_expand; // should the token not be expanded
+
+//     TokenData data; // data the token needs
+// } Token;
+
 typedef struct Token {
     TokenType type;
     Location loc;
@@ -171,7 +198,9 @@ typedef struct TokenStream {
     size_t current_token;
 } TokenStream;
 
-void token_freshen_up(Token* tok);
+TokenData token_create_identifier_node(String* string);
+TokenData token_create_literal_node(String* string);
+
 void token_free_data(Token* tok);
 void token_free(Token* tok);
 
@@ -185,12 +214,6 @@ size_t token_get_length(Token* tok);
 
 bool token_equal_string(Token* tok, const char* str);
 bool token_equal_token(Token* tok1, Token* tok2);
-
-bool token_concatenate(Token* tok1, Token* tok2, Token* dest);
-
-bool token_stringize(Token* src, Token* dest);
-
-bool token_string_cat(Token* tok1, Token* tok2, Token* dest);
 
 TokenList token_list_allocate(void);
 void token_list_free(TokenList* list);

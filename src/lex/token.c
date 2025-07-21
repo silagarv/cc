@@ -10,12 +10,33 @@
 #include "util/panic.h"
 #include "util/xmalloc.h"
 #include "util/str.h"
+#include "util/hash.h"
 
-// #include "preprocessor/location.h"
-
-void token_freshen_up(Token* tok)
+TokenData token_create_identifier_node(String* string)
 {
-    *tok = (Token) {.type = TOKEN_UNKNOWN};
+    IdentifierNode* node = xmalloc(sizeof(IdentifierNode));
+    *node = (IdentifierNode)
+    {
+        .value = *string,
+        .hash = string_get_hash(string)
+    };
+
+    TokenData data = { .identifier = node };
+
+    return data;
+}
+
+TokenData token_create_literal_node(String* string)
+{
+    LiteralNode* node = xmalloc(sizeof(LiteralNode));
+    *node = (LiteralNode)
+    {
+        .value = *string,
+    };
+
+    TokenData data = { .literal = node };
+
+    return data;   
 }
 
 bool token_has_opt_value(Token* tok)
@@ -205,7 +226,9 @@ size_t token_get_length(Token* tok)
 {
     // Bit of a cheat here
     // TODO: maybe turn into switch??? or maybe not??
-    return strlen(token_get_string(tok));
+    
+    
+    return string_get_len(&tok->opt_value);
 }
 
 bool token_equal_string(Token* tok, const char* str)
@@ -218,7 +241,7 @@ bool token_equal_string(Token* tok, const char* str)
         return false;
     }
 
-    const char* token_string = token_get_string(tok);
+    const char* token_string = string_get_ptr(&tok->opt_value);
 
     return (strncmp(str, token_string, str_length) == 0);
 }

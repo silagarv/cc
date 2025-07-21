@@ -336,200 +336,200 @@ static void classify_identifier(Token* token)
     switch (string_get(&token->opt_value, 0))
     {
         case 'a':
-            if (string_equal(&token->opt_value, "auto"))
+            if (token_equal_string(token, "auto"))
             {
                 token->type = TOKEN_AUTO;
             }
             break;
         
         case 'b':
-            if (string_equal(&token->opt_value, "break"))
+            if (token_equal_string(token, "break"))
             {
                 token->type = TOKEN_BREAK;
             }
             break;
 
         case 'c':
-            if (string_equal(&token->opt_value, "case"))
+            if (token_equal_string(token, "case"))
             {
                 token->type = TOKEN_CASE;
             }
-            else if (string_equal(&token->opt_value, "char"))
+            else if (token_equal_string(token, "char"))
             {
                 token->type = TOKEN_CHAR;
             }
-            else if (string_equal(&token->opt_value, "const"))
+            else if (token_equal_string(token, "const"))
             {
                 token->type = TOKEN_CONST;
             }
-            else if (string_equal(&token->opt_value, "continue"))
+            else if (token_equal_string(token, "continue"))
             {
                 token->type = TOKEN_CONTINUE;
             }
             break;
 
         case 'd':
-            if (string_equal(&token->opt_value, "default"))
+            if (token_equal_string(token, "default"))
             {
                 token->type = TOKEN_DEFAULT;
             }
-            else if (string_equal(&token->opt_value, "do"))
+            else if (token_equal_string(token, "do"))
             {
                 token->type = TOKEN_DO;
             }
-            else if (string_equal(&token->opt_value, "double"))
+            else if (token_equal_string(token, "double"))
             {
                 token->type = TOKEN_DOUBLE;
             }
             break;
 
         case 'e':
-            if (string_equal(&token->opt_value, "else"))
+            if (token_equal_string(token, "else"))
             {
                 token->type = TOKEN_ELSE;
             }
-            else if (string_equal(&token->opt_value, "enum"))
+            else if (token_equal_string(token, "enum"))
             {
                 token->type = TOKEN_ENUM;
             }
-            else if (string_equal(&token->opt_value, "extern"))
+            else if (token_equal_string(token, "extern"))
             {
                 token->type = TOKEN_EXTERN;
             }
             break;
 
         case 'f':
-            if (string_equal(&token->opt_value, "float"))
+            if (token_equal_string(token, "float"))
             {
                 token->type = TOKEN_FLOAT;
             }
-            else if (string_equal(&token->opt_value, "for"))
+            else if (token_equal_string(token, "for"))
             {
                 token->type = TOKEN_FOR;
             }
             break;
 
         case 'g':
-            if (string_equal(&token->opt_value, "goto"))
+            if (token_equal_string(token, "goto"))
             {
                 token->type = TOKEN_GOTO;
             }
             break;
 
         case 'i':
-            if (string_equal(&token->opt_value, "if"))
+            if (token_equal_string(token, "if"))
             {
                 token->type = TOKEN_IF;
             }
-            else if (string_equal(&token->opt_value, "inline"))
+            else if (token_equal_string(token, "inline"))
             {
                 token->type = TOKEN_INLINE;
             }
-            else if (string_equal(&token->opt_value, "int"))
+            else if (token_equal_string(token, "int"))
             {
                 token->type = TOKEN_INT;
             }
             break;
 
         case 'l':
-            if (string_equal(&token->opt_value, "long"))
+            if (token_equal_string(token, "long"))
             {
                 token->type = TOKEN_LONG;
             }
             break;
 
         case 'r':
-            if (string_equal(&token->opt_value, "register"))
+            if (token_equal_string(token, "register"))
             {
                 token->type = TOKEN_REGISTER;
             }
-            else if (string_equal(&token->opt_value, "restrict"))
+            else if (token_equal_string(token, "restrict"))
             {
                 token->type = TOKEN_RESTRICT;
             }
-            else if (string_equal(&token->opt_value, "return"))
+            else if (token_equal_string(token, "return"))
             {
                 token->type = TOKEN_RETURN;
             }
             break;
 
         case 's':
-            if (string_equal(&token->opt_value, "short"))
+            if (token_equal_string(token, "short"))
             {
                 token->type = TOKEN_SHORT;
             }
-            else if (string_equal(&token->opt_value, "signed"))
+            else if (token_equal_string(token, "signed"))
             {
                 token->type = TOKEN_SIGNED;
             }
-            else if (string_equal(&token->opt_value, "sizeof"))
+            else if (token_equal_string(token, "sizeof"))
             {
                 token->type = TOKEN_SIZEOF;
             }            
-            else if (string_equal(&token->opt_value, "static"))
+            else if (token_equal_string(token, "static"))
             {
                 token->type = TOKEN_STATIC;
             }
-            else if (string_equal(&token->opt_value, "struct"))
+            else if (token_equal_string(token, "struct"))
             {
                 token->type = TOKEN_STRUCT;
             }
-            else if (string_equal(&token->opt_value, "switch"))
+            else if (token_equal_string(token, "switch"))
             {
                 token->type = TOKEN_SWITCH;
             }
             break;
 
         case 't':
-            if (string_equal(&token->opt_value, "typedef"))
+            if (token_equal_string(token, "typedef"))
             {
                 token->type = TOKEN_TYPEDEF;
             }
             break;
 
         case 'u':
-            if (string_equal(&token->opt_value, "union"))
+            if (token_equal_string(token, "union"))
             {
                 token->type = TOKEN_UNION;
             }
-            else if (string_equal(&token->opt_value, "unsigned"))
+            else if (token_equal_string(token, "unsigned"))
             {
                 token->type = TOKEN_UNSIGNED;
             }
             break;
 
         case 'v':
-            if (string_equal(&token->opt_value, "volatile"))
+            if (token_equal_string(token, "volatile"))
             {
                 token->type = TOKEN_VOLATILE;
             }
-            else if (string_equal(&token->opt_value, "void"))
+            else if (token_equal_string(token, "void"))
             {
                 token->type = TOKEN_VOID;
             }
             break;
 
         case 'w':
-            if (string_equal(&token->opt_value, "while"))
+            if (token_equal_string(token, "while"))
             {
                 token->type = TOKEN_WHILE;
             }
             break;
 
         case '_':
-            if (string_equal(&token->opt_value, "_Bool"))
+            if (token_equal_string(token, "_Bool"))
             {
                 token->type = TOKEN__BOOL;
             }
-            else if (string_equal(&token->opt_value, "_Complex"))
+            else if (token_equal_string(token, "_Complex"))
             {
                 token->type = TOKEN__COMPLEX;
             }
-            else if (string_equal(&token->opt_value, "_Imaginary"))
+            else if (token_equal_string(token, "_Imaginary"))
             {
                 token->type = TOKEN__IMAGINARY;
             }
-            else if (string_equal(&token->opt_value, "__func__"))
+            else if (token_equal_string(token, "__func__"))
             {
                 token->type = TOKEN___FUNC__;
             }

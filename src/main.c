@@ -124,6 +124,7 @@ int main(int argc, char** argv)
     free(tokens.tokens);
             
     line_map_delete(&map);
+
                     
                     // // token_lexer_close(&lexer);
     // // line_map_free(&map);

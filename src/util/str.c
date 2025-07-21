@@ -111,19 +111,3 @@ bool string_starts_with(const String* str, const char* starting)
     return (strncmp(str->ptr, starting, starting_len) == 0);
 }
 
-uint32_t string_get_hash(const String* str)
-{
-    const uint32_t fnv_prime = 0x01000193;
-    const uint32_t fnv_offset = 0x811c9dc5;
-
-    const String* real_str = (const String*) str;
-
-    uint32_t hash = fnv_offset;
-    for (size_t i = 0; i < real_str->len; i++)
-    {
-        hash *= fnv_prime;
-        hash ^= string_get_ptr(real_str)[i];
-    }
-
-    return hash;
-}

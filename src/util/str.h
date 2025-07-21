@@ -35,6 +35,4 @@ bool string_equal(const String* str1, const char* str2);
 bool string_equal_string(const String* str1, const String* str2);
 bool string_starts_with(const String* str, const char* starting);
 
-uint32_t string_get_hash(const String* str);
-
 #endif /* STR_H */
