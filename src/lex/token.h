@@ -144,18 +144,33 @@ typedef enum TokenType {
     TOKEN_LAST
 } TokenType;
 
-// TODO: maybe turn opt value into a pointer if we want to save space???
-// TODO: should I add a flag which tells us if token is well formed or not?
-// TODO: that would mainly be used for characters and such...s
-typedef struct Token {
-    TokenType type;
-    Location loc;
+// TODO: eventually I would Like to use this structure within the token
+typedef struct IdentifierNode {
+    String value;
+    uint32_t hash;
+} IdentifierNode;
 
-    String opt_value;
+typedef struct LiteralNode {
+    String value;
+} LiteralNode;
+
+typedef union TokenData {
+    IdentifierNode* identifier;
+    LiteralNode* literal;
+} TokenData;
+
+// The structure of a token in order to capture all of the relavent information
+typedef struct Token {
+    Location loc; // the starting character in the token
+    Location end; // the ending character within the token
+
+    TokenType type; // The type of token
     
-    bool leading_space;
-    bool start_of_line;
-    bool disable_expand;
+    bool start_of_line; // it the token at the start of  a line
+    bool leading_space; // does the token have at least 1 leading whitepsace
+    bool disable_expand; // should the token not be expanded
+
+    TokenData data; // data the token needs
 } Token;
 
 typedef struct TokenList {
@@ -171,26 +186,31 @@ typedef struct TokenStream {
     size_t current_token;
 } TokenStream;
 
-void token_freshen_up(Token* tok);
+bool token_is_identifier(const Token* token);
+bool token_is_literal(const Token* token);
+
+TokenData token_create_identifier_node(String string);
+TokenData token_create_literal_node(String string);
+
 void token_free_data(Token* tok);
 void token_free(Token* tok);
 
 const char* token_type_get_name(TokenType type);
 
-bool token_has_opt_value(Token* tok);
+bool token_has_data(Token* tok);
 const char* token_get_name(Token* tok);
 const char* token_get_string(Token* tok);
 
 size_t token_get_length(Token* tok);
 
 bool token_equal_string(Token* tok, const char* str);
-bool token_equal_token(Token* tok1, Token* tok2);
 
-bool token_concatenate(Token* tok1, Token* tok2, Token* dest);
 
-bool token_stringize(Token* src, Token* dest);
 
-bool token_string_cat(Token* tok1, Token* tok2, Token* dest);
+
+
+
+
 
 TokenList token_list_allocate(void);
 void token_list_free(TokenList* list);

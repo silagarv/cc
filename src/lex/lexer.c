@@ -227,6 +227,12 @@ static Location get_curr_location(Lexer* lexer)
     return (lexer->start_loc + offset);
 }
 
+static Location get_ending_location(Lexer* lexer)
+{
+    const Location offset = lexer->current_ptr - lexer->buffer_start;
+    return (lexer->start_loc + offset - 1);
+}
+
 static void reset_token(Token* token)
 {
     *token = (Token) {0};
@@ -321,7 +327,7 @@ static bool lex_number(Lexer* lexer, Token* token, char* start)
     // Finish the number construction
     buffer_make_cstr(&number);
 
-    token->opt_value = string_from_buffer(&number);
+    token->data = token_create_literal_node(string_from_buffer(&number));
 
     return true;
 }
@@ -330,206 +336,206 @@ static bool lex_number(Lexer* lexer, Token* token, char* start)
 // language standards eventually...
 static void classify_identifier(Token* token)
 {
-    assert(token->type == TOKEN_IDENTIFIER);
-    assert(token->opt_value.len > 0);
+    assert(token_is_identifier(token));
 
-    switch (string_get(&token->opt_value, 0))
+    const String* string = &token->data.identifier->value;
+    switch (string_get(string, 0))
     {
         case 'a':
-            if (string_equal(&token->opt_value, "auto"))
+            if (token_equal_string(token, "auto"))
             {
                 token->type = TOKEN_AUTO;
             }
             break;
         
         case 'b':
-            if (string_equal(&token->opt_value, "break"))
+            if (token_equal_string(token, "break"))
             {
                 token->type = TOKEN_BREAK;
             }
             break;
 
         case 'c':
-            if (string_equal(&token->opt_value, "case"))
+            if (token_equal_string(token, "case"))
             {
                 token->type = TOKEN_CASE;
             }
-            else if (string_equal(&token->opt_value, "char"))
+            else if (token_equal_string(token, "char"))
             {
                 token->type = TOKEN_CHAR;
             }
-            else if (string_equal(&token->opt_value, "const"))
+            else if (token_equal_string(token, "const"))
             {
                 token->type = TOKEN_CONST;
             }
-            else if (string_equal(&token->opt_value, "continue"))
+            else if (token_equal_string(token, "continue"))
             {
                 token->type = TOKEN_CONTINUE;
             }
             break;
 
         case 'd':
-            if (string_equal(&token->opt_value, "default"))
+            if (token_equal_string(token, "default"))
             {
                 token->type = TOKEN_DEFAULT;
             }
-            else if (string_equal(&token->opt_value, "do"))
+            else if (token_equal_string(token, "do"))
             {
                 token->type = TOKEN_DO;
             }
-            else if (string_equal(&token->opt_value, "double"))
+            else if (token_equal_string(token, "double"))
             {
                 token->type = TOKEN_DOUBLE;
             }
             break;
 
         case 'e':
-            if (string_equal(&token->opt_value, "else"))
+            if (token_equal_string(token, "else"))
             {
                 token->type = TOKEN_ELSE;
             }
-            else if (string_equal(&token->opt_value, "enum"))
+            else if (token_equal_string(token, "enum"))
             {
                 token->type = TOKEN_ENUM;
             }
-            else if (string_equal(&token->opt_value, "extern"))
+            else if (token_equal_string(token, "extern"))
             {
                 token->type = TOKEN_EXTERN;
             }
             break;
 
         case 'f':
-            if (string_equal(&token->opt_value, "float"))
+            if (token_equal_string(token, "float"))
             {
                 token->type = TOKEN_FLOAT;
             }
-            else if (string_equal(&token->opt_value, "for"))
+            else if (token_equal_string(token, "for"))
             {
                 token->type = TOKEN_FOR;
             }
             break;
 
         case 'g':
-            if (string_equal(&token->opt_value, "goto"))
+            if (token_equal_string(token, "goto"))
             {
                 token->type = TOKEN_GOTO;
             }
             break;
 
         case 'i':
-            if (string_equal(&token->opt_value, "if"))
+            if (token_equal_string(token, "if"))
             {
                 token->type = TOKEN_IF;
             }
-            else if (string_equal(&token->opt_value, "inline"))
+            else if (token_equal_string(token, "inline"))
             {
                 token->type = TOKEN_INLINE;
             }
-            else if (string_equal(&token->opt_value, "int"))
+            else if (token_equal_string(token, "int"))
             {
                 token->type = TOKEN_INT;
             }
             break;
 
         case 'l':
-            if (string_equal(&token->opt_value, "long"))
+            if (token_equal_string(token, "long"))
             {
                 token->type = TOKEN_LONG;
             }
             break;
 
         case 'r':
-            if (string_equal(&token->opt_value, "register"))
+            if (token_equal_string(token, "register"))
             {
                 token->type = TOKEN_REGISTER;
             }
-            else if (string_equal(&token->opt_value, "restrict"))
+            else if (token_equal_string(token, "restrict"))
             {
                 token->type = TOKEN_RESTRICT;
             }
-            else if (string_equal(&token->opt_value, "return"))
+            else if (token_equal_string(token, "return"))
             {
                 token->type = TOKEN_RETURN;
             }
             break;
 
         case 's':
-            if (string_equal(&token->opt_value, "short"))
+            if (token_equal_string(token, "short"))
             {
                 token->type = TOKEN_SHORT;
             }
-            else if (string_equal(&token->opt_value, "signed"))
+            else if (token_equal_string(token, "signed"))
             {
                 token->type = TOKEN_SIGNED;
             }
-            else if (string_equal(&token->opt_value, "sizeof"))
+            else if (token_equal_string(token, "sizeof"))
             {
                 token->type = TOKEN_SIZEOF;
             }            
-            else if (string_equal(&token->opt_value, "static"))
+            else if (token_equal_string(token, "static"))
             {
                 token->type = TOKEN_STATIC;
             }
-            else if (string_equal(&token->opt_value, "struct"))
+            else if (token_equal_string(token, "struct"))
             {
                 token->type = TOKEN_STRUCT;
             }
-            else if (string_equal(&token->opt_value, "switch"))
+            else if (token_equal_string(token, "switch"))
             {
                 token->type = TOKEN_SWITCH;
             }
             break;
 
         case 't':
-            if (string_equal(&token->opt_value, "typedef"))
+            if (token_equal_string(token, "typedef"))
             {
                 token->type = TOKEN_TYPEDEF;
             }
             break;
 
         case 'u':
-            if (string_equal(&token->opt_value, "union"))
+            if (token_equal_string(token, "union"))
             {
                 token->type = TOKEN_UNION;
             }
-            else if (string_equal(&token->opt_value, "unsigned"))
+            else if (token_equal_string(token, "unsigned"))
             {
                 token->type = TOKEN_UNSIGNED;
             }
             break;
 
         case 'v':
-            if (string_equal(&token->opt_value, "volatile"))
+            if (token_equal_string(token, "volatile"))
             {
                 token->type = TOKEN_VOLATILE;
             }
-            else if (string_equal(&token->opt_value, "void"))
+            else if (token_equal_string(token, "void"))
             {
                 token->type = TOKEN_VOID;
             }
             break;
 
         case 'w':
-            if (string_equal(&token->opt_value, "while"))
+            if (token_equal_string(token, "while"))
             {
                 token->type = TOKEN_WHILE;
             }
             break;
 
         case '_':
-            if (string_equal(&token->opt_value, "_Bool"))
+            if (token_equal_string(token, "_Bool"))
             {
                 token->type = TOKEN__BOOL;
             }
-            else if (string_equal(&token->opt_value, "_Complex"))
+            else if (token_equal_string(token, "_Complex"))
             {
                 token->type = TOKEN__COMPLEX;
             }
-            else if (string_equal(&token->opt_value, "_Imaginary"))
+            else if (token_equal_string(token, "_Imaginary"))
             {
                 token->type = TOKEN__IMAGINARY;
             }
-            else if (string_equal(&token->opt_value, "__func__"))
+            else if (token_equal_string(token, "__func__"))
             {
                 token->type = TOKEN___FUNC__;
             }
@@ -537,12 +543,6 @@ static void classify_identifier(Token* token)
 
         default:
             break;
-    }
-
-    // We also want to remove the allocated memory if any so we don't leak
-    if (token->type != TOKEN_IDENTIFIER)
-    {
-        token_free_data(token);
     }
 }
 
@@ -572,7 +572,7 @@ static bool lex_identifier(Lexer* lexer, Token* token, char* start)
     // Finish building the identifier
     buffer_make_cstr(&identifier);
 
-    token->opt_value = string_from_buffer(&identifier);
+    token->data = token_create_identifier_node(string_from_buffer(&identifier));
 
     // TODO: classify the identifier into catagories
     classify_identifier(token);
@@ -678,11 +678,13 @@ static bool lex_string_like_literal(Lexer* lexer, Token* token, TokenType type)
         if (current == '\r' || current == '\n')
         {
             token->type = TOKEN_UNKNOWN;
+
             goto finish_string;
         } 
         else if (current == '\0' && at_eof(lexer))
         {
             token->type = TOKEN_UNKNOWN;
+
             goto finish_string;
         }
 
@@ -712,7 +714,7 @@ finish_string:
         }
     }
 
-    token->opt_value = string_from_buffer(&string);
+    token->data = token_create_literal_node(string_from_buffer(&string));
 
     return true;
 }
@@ -757,19 +759,23 @@ retry_lexing:;
         } while (is_horizontal_whitespace(get_curr_char_raw(lexer)));
     }
 
-    // Set up the token here
+    // Set up the token here...
     char* token_start = get_position(lexer);
 
     Location token_location = get_curr_location(lexer);
 
-    token->type = TOKEN_UNKNOWN;
     token->loc = token_location;
-    token->opt_value = (String) {0};
+    token->end = token_location;
+
+    token->type = TOKEN_UNKNOWN;
+
     token->leading_space = whitespace;
     token->start_of_line = lexer->start_of_line;
     token->disable_expand = false;
 
-    // Set it to false even if it was before
+    token->data = (TokenData) {0};
+
+    // Set it to false even if it was true before before
     lexer->start_of_line = false;
 
     // Here we will do our actual lexing
@@ -839,7 +845,9 @@ retry_lexing:;
         // Number cases
         case '0': case '1': case '2': case '3': case '4':
         case '5': case '6': case '7': case '8': case '9':
-            return lex_number(lexer, token, token_start);
+            lex_number(lexer, token, token_start);
+
+            break;
 
         case 'L':
             curr = get_curr_char(lexer);
@@ -847,13 +855,17 @@ retry_lexing:;
             {
                 consume_char(lexer);
 
-                return lex_wide_string_literal(lexer, token);
+                lex_wide_string_literal(lexer, token);
+
+                break;
             }
             else if (curr == '\'')
             {
                 consume_char(lexer);
 
-                return lex_wide_character_literal(lexer, token);
+                lex_wide_character_literal(lexer, token);
+
+                break;
             }
 
             /* FALLTHROUGH */
@@ -867,14 +879,20 @@ retry_lexing:;
         case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u':
         case 'v': case 'w': case 'x': case 'y': case 'z':
         case '_':
-            return lex_identifier(lexer, token, token_start);
+            lex_identifier(lexer, token, token_start);
+
+            break;
 
         // String and character literals
         case '"':
-            return lex_string_literal(lexer, token);
+            lex_string_literal(lexer, token);
+
+            break;
 
         case '\'':
-            return lex_character_literal(lexer, token);
+            lex_character_literal(lexer, token);
+
+            break;
         
         case '.':
             curr = get_curr_char(lexer);
@@ -1229,19 +1247,16 @@ retry_lexing:;
         case ',': token->type = TOKEN_COMMA; break;
         case '~': token->type = TOKEN_TILDE; break;
 
-        default: // Currently just create an unknown token and die
-        {
-            Buffer unknown = buffer_new_size(2);
-            
-            buffer_add_char(&unknown, curr);
-            buffer_make_cstr(&unknown);
+        default: // Create an unknown token
+            token->type = TOKEN_UNKNOWN;
 
-            token->opt_value = string_from_buffer(&unknown);
-
-            // TODO: maybe warn of an unknown token?
-        }
-        break;
+            Buffer unknown = buffer_from_format("%c", curr);
+            token->data = token_create_literal_node(string_from_buffer(&unknown));
+            break;
     }
+
+    // Here we need to get the final location of the token
+    token->end = get_ending_location(lexer);
 
     return true;
 }

@@ -228,7 +228,7 @@ bool parse_char_literal(CharValue* value, const Token* token)
     const int bit_width = is_wide ? get_wide_char_width() : get_char_width();
 
     // Get the string and it's length
-    const String to_convert = token->opt_value;
+    const String to_convert = token->data.literal->value;
     const size_t len = string_get_len(&to_convert);
     const size_t end = len - 1;
 

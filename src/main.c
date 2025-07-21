@@ -72,17 +72,16 @@ int main(int argc, char** argv)
     // while (lexer_get_next(&l, &tok))
     // {
     //     ResolvedLocation loc = line_map_resolve_location(&map, tok.loc);
+    //     ResolvedLocation loc_end = line_map_resolve_location(&map, tok.end);
 
     //     printf("%s:%u:%u\n", loc.name->path, loc.line, loc.col);
+    //     printf("%s:%u:%u\n", loc_end.name->path, loc_end.line, loc_end.col);
         
     //     printf("%s\n", token_get_string(&tok));
     //     printf("%s\n\n", token_type_get_name(tok.type));
-
-    //     if (token_has_opt_value(&tok))
-    //     {
-    //         free(tok.opt_value.ptr);
-    //     }
     // }
+
+    // panic("leave");
 
     TokenList tokens = (TokenList)
     {
@@ -116,14 +115,12 @@ int main(int argc, char** argv)
 
     for (size_t i = 0; i < tokens.used; i++)
     {
-        if (token_has_opt_value(&tokens.tokens[i]))
-        {
-            token_free_data(&tokens.tokens[i]);
-        }
+        token_free_data(&tokens.tokens[i]);
     }
     free(tokens.tokens);
             
     line_map_delete(&map);
+
                     
                     // // token_lexer_close(&lexer);
     // // line_map_free(&map);
