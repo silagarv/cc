@@ -227,6 +227,12 @@ static Location get_curr_location(Lexer* lexer)
     return (lexer->start_loc + offset);
 }
 
+static Location get_ending_location(Lexer* lexer)
+{
+    const Location offset = lexer->current_ptr - lexer->buffer_start;
+    return (lexer->start_loc + offset - 1);
+}
+
 static void reset_token(Token* token)
 {
     *token = (Token) {0};
@@ -672,11 +678,13 @@ static bool lex_string_like_literal(Lexer* lexer, Token* token, TokenType type)
         if (current == '\r' || current == '\n')
         {
             token->type = TOKEN_UNKNOWN;
+
             goto finish_string;
         } 
         else if (current == '\0' && at_eof(lexer))
         {
             token->type = TOKEN_UNKNOWN;
+
             goto finish_string;
         }
 
@@ -767,7 +775,7 @@ retry_lexing:;
 
     token->data = (TokenData) {0};
 
-    // Set it to false even if it was before
+    // Set it to false even if it was true before before
     lexer->start_of_line = false;
 
     // Here we will do our actual lexing
@@ -837,7 +845,9 @@ retry_lexing:;
         // Number cases
         case '0': case '1': case '2': case '3': case '4':
         case '5': case '6': case '7': case '8': case '9':
-            return lex_number(lexer, token, token_start);
+            lex_number(lexer, token, token_start);
+
+            break;
 
         case 'L':
             curr = get_curr_char(lexer);
@@ -845,13 +855,17 @@ retry_lexing:;
             {
                 consume_char(lexer);
 
-                return lex_wide_string_literal(lexer, token);
+                lex_wide_string_literal(lexer, token);
+
+                break;
             }
             else if (curr == '\'')
             {
                 consume_char(lexer);
 
-                return lex_wide_character_literal(lexer, token);
+                lex_wide_character_literal(lexer, token);
+
+                break;
             }
 
             /* FALLTHROUGH */
@@ -865,14 +879,20 @@ retry_lexing:;
         case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u':
         case 'v': case 'w': case 'x': case 'y': case 'z':
         case '_':
-            return lex_identifier(lexer, token, token_start);
+            lex_identifier(lexer, token, token_start);
+
+            break;
 
         // String and character literals
         case '"':
-            return lex_string_literal(lexer, token);
+            lex_string_literal(lexer, token);
+
+            break;
 
         case '\'':
-            return lex_character_literal(lexer, token);
+            lex_character_literal(lexer, token);
+
+            break;
         
         case '.':
             curr = get_curr_char(lexer);
@@ -1234,6 +1254,9 @@ retry_lexing:;
             token->data = token_create_literal_node(string_from_buffer(&unknown));
             break;
     }
+
+    // Here we need to get the final location of the token
+    token->end = get_ending_location(lexer);
 
     return true;
 }
