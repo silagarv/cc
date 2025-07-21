@@ -1163,7 +1163,7 @@ retry_lexing:;
             }
             else if (curr == '>')
             {
-                token->type = TOKEN_RBRACKET;
+                token->type = TOKEN_RCURLY;
 
                 consume_char(lexer);
             }
@@ -1370,7 +1370,7 @@ retry_lexing:;
             }
             else if (curr == '%')
             {
-                token->type = TOKEN_LBRACKET;
+                token->type = TOKEN_LCURLY;
 
                 consume_char(lexer);
             }
@@ -1437,6 +1437,13 @@ retry_lexing:;
         case '~': token->type = TOKEN_TILDE; break;
 
         default: // Create an unknown token
+            if (!is_ascii(curr))
+            {
+                printf("Non ascii character encountered\n");
+
+                panic("MEOW");
+            }
+
             token->type = TOKEN_UNKNOWN;
 
             Buffer unknown = buffer_from_format("%c", curr);
