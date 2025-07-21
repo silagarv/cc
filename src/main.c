@@ -116,10 +116,7 @@ int main(int argc, char** argv)
 
     for (size_t i = 0; i < tokens.used; i++)
     {
-        if (token_has_opt_value(&tokens.tokens[i]))
-        {
-            token_free_data(&tokens.tokens[i]);
-        }
+        token_free_data(&tokens.tokens[i]);
     }
     free(tokens.tokens);
             

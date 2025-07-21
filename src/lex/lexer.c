@@ -321,7 +321,7 @@ static bool lex_number(Lexer* lexer, Token* token, char* start)
     // Finish the number construction
     buffer_make_cstr(&number);
 
-    token->opt_value = string_from_buffer(&number);
+    token->data = token_create_literal_node(string_from_buffer(&number));
 
     return true;
 }
@@ -330,10 +330,10 @@ static bool lex_number(Lexer* lexer, Token* token, char* start)
 // language standards eventually...
 static void classify_identifier(Token* token)
 {
-    assert(token->type == TOKEN_IDENTIFIER);
-    assert(token->opt_value.len > 0);
+    assert(token_is_identifier(token));
 
-    switch (string_get(&token->opt_value, 0))
+    const String* string = &token->data.identifier->value;
+    switch (string_get(string, 0))
     {
         case 'a':
             if (token_equal_string(token, "auto"))
@@ -538,12 +538,6 @@ static void classify_identifier(Token* token)
         default:
             break;
     }
-
-    // We also want to remove the allocated memory if any so we don't leak
-    if (token->type != TOKEN_IDENTIFIER)
-    {
-        token_free_data(token);
-    }
 }
 
 static bool lex_identifier(Lexer* lexer, Token* token, char* start)
@@ -572,7 +566,7 @@ static bool lex_identifier(Lexer* lexer, Token* token, char* start)
     // Finish building the identifier
     buffer_make_cstr(&identifier);
 
-    token->opt_value = string_from_buffer(&identifier);
+    token->data = token_create_identifier_node(string_from_buffer(&identifier));
 
     // TODO: classify the identifier into catagories
     classify_identifier(token);
@@ -712,7 +706,7 @@ finish_string:
         }
     }
 
-    token->opt_value = string_from_buffer(&string);
+    token->data = token_create_literal_node(string_from_buffer(&string));
 
     return true;
 }
@@ -757,17 +751,21 @@ retry_lexing:;
         } while (is_horizontal_whitespace(get_curr_char_raw(lexer)));
     }
 
-    // Set up the token here
+    // Set up the token here...
     char* token_start = get_position(lexer);
 
     Location token_location = get_curr_location(lexer);
 
-    token->type = TOKEN_UNKNOWN;
     token->loc = token_location;
-    token->opt_value = (String) {0};
+    token->end = token_location;
+
+    token->type = TOKEN_UNKNOWN;
+
     token->leading_space = whitespace;
     token->start_of_line = lexer->start_of_line;
     token->disable_expand = false;
+
+    token->data = (TokenData) {0};
 
     // Set it to false even if it was before
     lexer->start_of_line = false;
@@ -1229,18 +1227,12 @@ retry_lexing:;
         case ',': token->type = TOKEN_COMMA; break;
         case '~': token->type = TOKEN_TILDE; break;
 
-        default: // Currently just create an unknown token and die
-        {
-            Buffer unknown = buffer_new_size(2);
-            
-            buffer_add_char(&unknown, curr);
-            buffer_make_cstr(&unknown);
+        default: // Create an unknown token
+            token->type = TOKEN_UNKNOWN;
 
-            token->opt_value = string_from_buffer(&unknown);
-
-            // TODO: maybe warn of an unknown token?
-        }
-        break;
+            Buffer unknown = buffer_from_format("%c", curr);
+            token->data = token_create_literal_node(string_from_buffer(&unknown));
+            break;
     }
 
     return true;

@@ -6,19 +6,94 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include <assert.h>
 
 #include "util/panic.h"
 #include "util/xmalloc.h"
 #include "util/str.h"
 #include "util/hash.h"
 
-TokenData token_create_identifier_node(String* string)
+bool token_is_identifier(const Token* token)
+{
+    switch (token->type) 
+    {
+        case TOKEN_AUTO:
+        case TOKEN_BREAK:
+        case TOKEN_CASE:
+        case TOKEN_CHAR:
+        case TOKEN_CONST:
+        case TOKEN_CONTINUE:
+        case TOKEN_DEFAULT:
+        case TOKEN_DO:
+        case TOKEN_DOUBLE:
+        case TOKEN_ELSE:
+        case TOKEN_ENUM:
+        case TOKEN_EXTERN:
+        case TOKEN_FLOAT:
+        case TOKEN_FOR:
+        case TOKEN_GOTO:
+        case TOKEN_IF:
+        case TOKEN_INLINE:
+        case TOKEN_INT:
+        case TOKEN_LONG:
+        case TOKEN_REGISTER:
+        case TOKEN_RESTRICT:
+        case TOKEN_RETURN:
+        case TOKEN_SHORT:
+        case TOKEN_SIGNED:
+        case TOKEN_SIZEOF:
+        case TOKEN_STATIC:
+        case TOKEN_STRUCT:
+        case TOKEN_SWITCH:
+        case TOKEN_TYPEDEF:
+        case TOKEN_UNION:
+        case TOKEN_UNSIGNED:
+        case TOKEN_VOID:
+        case TOKEN_VOLATILE:
+        case TOKEN_WHILE:
+        case TOKEN__BOOL:
+        case TOKEN__COMPLEX:
+        case TOKEN__IMAGINARY:
+        case TOKEN___FUNC__:
+        case TOKEN_IDENTIFIER:
+            return true;
+
+        default:
+            return false;
+    }
+
+    // TODO: we should implement this function for keywords
+    return (token->type == TOKEN_IDENTIFIER);
+}
+
+bool token_is_literal(const Token* token)
+{
+    switch (token->type)
+    {
+        case TOKEN_NUMBER:
+        case TOKEN_CHARACTER:
+        case TOKEN_WIDE_CHARACTER:
+        case TOKEN_STRING:
+        case TOKEN_WIDE_STRING:
+        
+        case TOKEN_PP_HEADER_NAME:
+            return true;
+
+        case TOKEN_UNKNOWN:
+            return true; // SPECIAL CASE HERE
+
+        default:
+            return false;
+    }
+}
+
+TokenData token_create_identifier_node(String string)
 {
     IdentifierNode* node = xmalloc(sizeof(IdentifierNode));
     *node = (IdentifierNode)
     {
-        .value = *string,
-        .hash = string_get_hash(string)
+        .value = string,
+        .hash = string_get_hash(&string)
     };
 
     TokenData data = { .identifier = node };
@@ -26,12 +101,12 @@ TokenData token_create_identifier_node(String* string)
     return data;
 }
 
-TokenData token_create_literal_node(String* string)
+TokenData token_create_literal_node(String string)
 {
     LiteralNode* node = xmalloc(sizeof(LiteralNode));
     *node = (LiteralNode)
     {
-        .value = *string,
+        .value = string,
     };
 
     TokenData data = { .literal = node };
@@ -60,9 +135,22 @@ bool token_has_opt_value(Token* tok)
     }
 }
 
-void token_free_data(Token* tok)
+void token_free_data(Token* token)
 {
-    free(tok->opt_value.ptr);
+    if (token_is_identifier(token))
+    {
+        IdentifierNode* node = token->data.identifier;
+
+        string_free(&node->value);
+        free(node);
+    }
+    else if (token_is_literal(token))
+    {
+        LiteralNode* node = token->data.literal;
+
+        string_free(&node->value);
+        free(node);
+    }
 }
 
 void token_free(Token* tok)
@@ -219,29 +307,66 @@ const char* token_get_string(Token* tok)
         return token_get_name(tok);
     }
 
-    return string_get_ptr(&tok->opt_value);
+    String* string;
+    if (token_is_identifier(tok))
+    {
+        IdentifierNode* node = tok->data.identifier;
+
+        string = &node->value;
+    }
+    else 
+    {
+        assert(token_is_literal(tok));
+
+        LiteralNode* node = tok->data.literal;
+
+        string = &node->value;
+    }
+    return string_get_ptr(string);
 }
 
 size_t token_get_length(Token* tok)
 {
     // Bit of a cheat here
     // TODO: maybe turn into switch??? or maybe not??
+    return (tok->end - tok->loc);
+}
+
+static size_t token_get_real_length(const Token* token)
+{
+    assert(token_is_identifier(token) || token_is_literal(token));
     
-    
-    return string_get_len(&tok->opt_value);
+    String* string;
+    if (token_is_identifier(token))
+    {
+        IdentifierNode* node = token->data.identifier;
+
+        string = &node->value;
+    }
+    else
+    {
+        assert(token_is_literal(token));
+
+        LiteralNode* node = token->data.literal;
+
+        string = &node->value;
+    }
+    return string_get_len(string);
 }
 
 bool token_equal_string(Token* tok, const char* str)
 {
+    assert(token_is_identifier(tok));
+
     const size_t str_length = strlen(str);
-    const size_t token_len = token_get_length(tok);
+    const size_t token_len = token_get_real_length(tok);
 
     if (str_length != token_len)
     {
         return false;
     }
 
-    const char* token_string = string_get_ptr(&tok->opt_value);
+    const char* token_string = token_get_string(tok);
 
     return (strncmp(str, token_string, str_length) == 0);
 }
