@@ -101,6 +101,11 @@ bool token_is_literal(const Token* token)
     }
 }
 
+bool token_is_string(const Token* token)
+{
+    return (token->type == TOKEN_STRING || token->type == TOKEN_WIDE_STRING);
+}
+
 TokenData token_create_identifier_node(String string)
 {
     IdentifierNode* node = xmalloc(sizeof(IdentifierNode));
