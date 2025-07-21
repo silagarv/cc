@@ -370,33 +370,50 @@ static bool lex_number(Lexer* lexer, Token* token, char* start)
     {
         char current = get_curr_char(lexer);
 
-        
-
-        // We know that the first character will always be a number or a dot
-        // and then subsequent characters can be identifiers or dots
-        if (!(is_identifier(current) || current == '.'))
+        if (is_identifier(current) || current == '.')
         {
-            break;
-        }
+            buffer_add_char(&number, current);
+            consume_char(lexer);
 
-        buffer_add_char(&number, current);
-        consume_char(lexer);
-
-        // If we get e+ or E- make sure that this is lexed correctly
-        if (current == 'e' || current == 'E' || current == 'p' || current == 'P')
-        {
-            current = get_curr_char(lexer);
-            if (current == '-' || current == '+')
+            if (current == 'e' || current == 'E' 
+                    || current == 'p' || current == 'P')
             {
-                buffer_add_char(&number, current);
-                consume_char(lexer);
+                current = get_curr_char(lexer);
+                if (current == '-' || current == '+')
+                {
+                    buffer_add_char(&number, current);
+                    consume_char(lexer);
+                }
             }
+
+            continue;
         }
+
+        if (current == '\\')
+        {
+            uint32_t value;
+            if (!try_lex_ucn(lexer, token, &number, &value))
+            {
+                break;
+            }
+
+            // If we got a correct ammount of numbers then we consider it well
+            // formed even if it fails the next check of the range being valid
+            // TODO: check ucn range
+            if (!is_valid_ucn(value))
+            {
+                // TODO: implement error on invalid ucn value...
+
+                // panic("invalid ucn value");
+            }
+            continue;
+        }
+
+        break;
     }
 
     // Finish the number construction
     buffer_make_cstr(&number);
-
     token->data = token_create_literal_node(string_from_buffer(&number));
 
     return true;
