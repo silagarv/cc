@@ -17,6 +17,21 @@ bool token_is_identifier(const Token* token)
 {
     switch (token->type) 
     {
+        // PP specific keywords but only in specific situations
+        case TOKEN_PP_DEFINE:
+        case TOKEN_PP_UNDEF:
+        case TOKEN_PP_INCLUDE:
+        case TOKEN_PP_IF:
+        case TOKEN_PP_IFDEF:
+        case TOKEN_PP_IFNDEF:
+        case TOKEN_PP_ELSE:
+        case TOKEN_PP_ELIF:
+        case TOKEN_PP_ENDIF:
+        case TOKEN_PP_LINE:
+        case TOKEN_PP_ERROR:
+        case TOKEN_PP_PRAGMA:
+
+        // Keywords
         case TOKEN_AUTO:
         case TOKEN_BREAK:
         case TOKEN_CASE:
@@ -55,15 +70,14 @@ bool token_is_identifier(const Token* token)
         case TOKEN__COMPLEX:
         case TOKEN__IMAGINARY:
         case TOKEN___FUNC__:
+
+        // Generic identifier
         case TOKEN_IDENTIFIER:
             return true;
 
         default:
             return false;
     }
-
-    // TODO: we should implement this function for keywords
-    return (token->type == TOKEN_IDENTIFIER);
 }
 
 bool token_is_literal(const Token* token)

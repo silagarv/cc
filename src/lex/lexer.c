@@ -419,6 +419,85 @@ static bool lex_number(Lexer* lexer, Token* token, char* start)
     return true;
 }
 
+static void classify_pp_identifier(Token* token)
+{
+    assert(token_is_identifier(token));
+
+    const String* string = &token->data.identifier->value;
+    switch (string_get(string, 0))
+    {
+        case 'd':
+            if (token_equal_string(token, "define"))
+            {
+                token->type = TOKEN_PP_DEFINE;
+            }
+            break;
+
+        case 'e':
+            if (token_equal_string(token, "elif"))
+            {
+                token->type= TOKEN_PP_ELIF;
+            }
+            else if (token_equal_string(token, "else"))
+            {
+                token->type= TOKEN_PP_ELSE;
+            }
+            else if (token_equal_string(token, "endif"))
+            {
+                token->type= TOKEN_PP_ENDIF;
+            }
+            else if (token_equal_string(token, "error"))
+            {
+                token->type= TOKEN_PP_ERROR;
+            }
+            break;
+
+        case 'i':
+            if (token_equal_string(token, "if"))
+            {
+                token->type= TOKEN_PP_IF;
+            }
+            else if (token_equal_string(token, "ifdef"))
+            {
+                token->type= TOKEN_PP_IFDEF;
+            }
+            else if (token_equal_string(token, "ifndef"))
+            {
+                token->type= TOKEN_PP_IFNDEF;
+            }
+            else if (token_equal_string(token, "include"))
+            {
+                token->type= TOKEN_PP_INCLUDE;
+            }
+            break;
+
+        case 'l':
+            if (token_equal_string(token, "line"))
+            {
+                token->type= TOKEN_PP_LINE;
+            }
+            break;
+        
+        case 'p':
+            if (token_equal_string(token, "pragma"))
+            {
+                token->type= TOKEN_PP_PRAGMA;
+            }
+            break;
+
+        case 'u':
+            if (token_equal_string(token, "undef"))
+            {
+                token->type= TOKEN_PP_UNDEF;
+            }
+            break;
+        
+        default:
+            break;
+    }
+
+}
+
 // TODO: I would like to make this more modular to better support older / newer
 // language standards eventually...
 static void classify_identifier(Token* token)

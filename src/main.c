@@ -23,9 +23,9 @@
 #include "lex/lexer.h"
 
 char test_pgm[] = {
-        // #embed "/usr/include/stdio.h"
+        #embed "/usr/include/stdio.h"
         // #embed "../../external/sqlite3/sqlite3.c"
-        #embed "test.c"
+        // #embed "test.c"
         // #embed "src/parse/parser.c"
 //         #embed "../../external/c-testsuite/tests/single-exec/00004.c"
     ,'\0'
@@ -81,6 +81,8 @@ int main(int argc, char** argv)
     //     printf("%s\n", token_get_string(&tok));
     //     printf("%s\n\n", token_type_get_name(tok.type));
     // }
+
+    // return 0;
 
     // panic("leave");
 
