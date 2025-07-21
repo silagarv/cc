@@ -370,6 +370,8 @@ static bool lex_number(Lexer* lexer, Token* token, char* start)
     {
         char current = get_curr_char(lexer);
 
+        
+
         // We know that the first character will always be a number or a dot
         // and then subsequent characters can be identifiers or dots
         if (!(is_identifier(current) || current == '.'))
@@ -651,7 +653,9 @@ static bool lex_identifier(Lexer* lexer, Token* token, char* start)
             // TODO: check ucn range
             if (!is_valid_ucn(value))
             {
-                panic("invalid ucn value");
+                // TODO: implement error on invalid ucn value...
+
+                // panic("invalid ucn value");
             }
             continue;
         }
