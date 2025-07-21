@@ -1,7 +1,8 @@
-#ifndef CHAR_TYPE_H
-#define CHAR_TYPE_H
+#ifndef CHAR_HELP_H
+#define CHAR_HELP_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 bool is_identifier_start(char c);
 bool is_identifier(char c);
@@ -15,4 +16,10 @@ bool is_whitespace(char c);
 
 bool is_ascii(char c);
 
-#endif /* CHAR_TYPE_H */
+unsigned int convert_octal(char c);
+unsigned int convert_decimal(char c);
+unsigned int convert_hexadecimal(char c);
+
+bool is_valid_ucn(uint32_t value);
+
+#endif /* CHAR_HELP_H */

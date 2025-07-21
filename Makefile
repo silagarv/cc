@@ -31,7 +31,7 @@ DRIVER = src/driver/diagnostic.c \
 
 LEX = src/lex/location_map.c \
 	src/lex/token.c \
-	src/lex/char_type.c \
+	src/lex/char_help.c \
 	src/lex/lexer.c
 
 PARSE = src/parse/type.c \

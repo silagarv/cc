@@ -26,6 +26,7 @@ char test_pgm[] = {
         // #embed "/usr/include/stdio.h"
         // #embed "../../external/sqlite3/sqlite3.c"
         #embed "test.c"
+        // #embed "src/parse/parser.c"
 //         #embed "../../external/c-testsuite/tests/single-exec/00004.c"
     ,'\0'
 };
@@ -68,20 +69,20 @@ int main(int argc, char** argv)
 
     Lexer l = lexer(test_pgm, test_pgm + sizeof(test_pgm) - 1, 0);
 
-    // Token tok;
-    // while (lexer_get_next(&l, &tok))
-    // {
-    //     ResolvedLocation loc = line_map_resolve_location(&map, tok.loc);
-    //     ResolvedLocation loc_end = line_map_resolve_location(&map, tok.end);
+    Token tok;
+    while (lexer_get_next(&l, &tok))
+    {
+        ResolvedLocation loc = line_map_resolve_location(&map, tok.loc);
+        ResolvedLocation loc_end = line_map_resolve_location(&map, tok.end);
 
-    //     printf("%s:%u:%u\n", loc.name->path, loc.line, loc.col);
-    //     printf("%s:%u:%u\n", loc_end.name->path, loc_end.line, loc_end.col);
+        printf("%s:%u:%u\n", loc.name->path, loc.line, loc.col);
+        printf("%s:%u:%u\n", loc_end.name->path, loc_end.line, loc_end.col);
         
-    //     printf("%s\n", token_get_string(&tok));
-    //     printf("%s\n\n", token_type_get_name(tok.type));
-    // }
+        printf("%s\n", token_get_string(&tok));
+        printf("%s\n\n", token_type_get_name(tok.type));
+    }
 
-    // panic("leave");
+    panic("leave");
 
     TokenList tokens = (TokenList)
     {
@@ -111,7 +112,7 @@ int main(int argc, char** argv)
     }
 
     TokenStream stream = token_list_to_stream(&tokens);
-    parse_translation_unit(&stream, &map);
+    // parse_translation_unit(&stream, &map);
 
     for (size_t i = 0; i < tokens.used; i++)
     {

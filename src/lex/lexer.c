@@ -1,19 +1,22 @@
 #include "lexer.h"
 
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <assert.h>
 
-#include "lex/token.h"
 #include "util/panic.h"
 #include "util/panic.h"
 #include "util/buffer.h"
-
-#include "lex/char_type.h"
-#include "lex/location.h"
 #include "util/str.h"
+
+#include "lex/char_help.h"
+#include "lex/location.h"
+#include "lex/token.h"
+
+#define MAX_UCN_LENGTH (8)
 
 #define IDENTIFIER_START_SIZE (10)
 #define NUMBER_START_SIZE (10)
@@ -287,6 +290,71 @@ static void skip_block_comment(Lexer* lexer)
     } while (true);
 }
 
+static bool try_lex_ucn(Lexer* lexer, Token* token, Buffer* buffer, uint32_t* value)
+{
+    assert(get_curr_char(lexer) == '\\');
+
+    // First save the current point in the case the ucn is invalid
+    char* save_point = get_position(lexer);
+
+    // Skip over the '\\'
+    consume_char(lexer);
+
+    // Now get the next character and check if it is a u
+    const char ucn_type = get_next_char(lexer);
+
+    // We didn't get a ucn. Restore the save point and continue
+    if (ucn_type != 'U' && ucn_type != 'u')
+    {
+        set_position(lexer, save_point);
+
+        return false;
+    }
+
+    // Now we know we want to lex a ucn so try and store the result in a temp
+    // buffer until we can confirm it is valid
+    const size_t required_digits = (ucn_type == 'U') ? 8 : 4;
+    char ucn_buffer[MAX_UCN_LENGTH];
+
+    size_t num_digits;
+    for (num_digits = 0; num_digits < required_digits; num_digits++)
+    {
+        char current = get_next_char(lexer);
+
+        // If we didn't get a hex digit we can just return and leave early
+        if (!is_hexadecimal(current))
+        {
+            set_position(lexer, save_point);
+
+            return false;
+        }
+
+        ucn_buffer[num_digits] = current;
+    }
+
+    assert(num_digits == required_digits);
+
+    // If were here we know we got the required number of digits so let's add
+    // them to our buffer along with the leading '\u' or '\U' :)
+    buffer_add_char(buffer, '\\');
+    buffer_add_char(buffer, ucn_type);  
+    for (size_t i = 0; i < required_digits; i++)
+    {
+        buffer_add_char(buffer, ucn_buffer[i]);
+    }
+
+    // Now we also need to calculate the value of the universal character to
+    // ensure that we get a valid ucn within an identifier
+    *value = 0;
+    for (size_t i = 0; i < required_digits; i++)
+    {
+        *value *= 16;
+        *value += convert_hexadecimal(ucn_buffer[i]);
+    }
+
+    return true;
+}
+
 static bool lex_number(Lexer* lexer, Token* token, char* start)
 {
     token->type = TOKEN_NUMBER;
@@ -558,20 +626,41 @@ static bool lex_identifier(Lexer* lexer, Token* token, char* start)
     // TODO: handle universal characters
     while (true)
     {
-        const char current = get_curr_char(lexer);
-
-        if (!is_identifier(current))
+        char current = get_curr_char(lexer);
+        
+        // Simple identifier like character
+        if (is_identifier(current))
         {
-            break;
+            buffer_add_char(&identifier, current);
+            consume_char(lexer);
+            continue;
         }
 
-        buffer_add_char(&identifier, current);
-        consume_char(lexer);
+        // Possible universal character but we need to check for it and if it is
+        // then we can continue
+        if (current == '\\')
+        {
+            uint32_t value;
+            if (!try_lex_ucn(lexer, token, &identifier, &value))
+            {
+                break;
+            }
+
+            // If we got a correct ammount of numbers then we consider it well
+            // formed even if it fails the next check of the range being valid
+            // TODO: check ucn range
+            if (!is_valid_ucn(value))
+            {
+                panic("invalid ucn value");
+            }
+            continue;
+        }
+
+        break;
     }
 
-    // Finish building the identifier
+    // Finish building the identifier and create the token data
     buffer_make_cstr(&identifier);
-
     token->data = token_create_identifier_node(string_from_buffer(&identifier));
 
     // TODO: classify the identifier into catagories
