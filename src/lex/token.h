@@ -154,14 +154,9 @@ typedef struct LiteralNode {
     String value;
 } LiteralNode;
 
-typedef struct UnknownNode {
-    String value;
-} UnknownNode;
-
 typedef union TokenData {
     IdentifierNode* identifier;
     LiteralNode* literal;
-    UnknownNode* unknown;
 } TokenData;
 
 // The structure of a token in order to capture all of the relavent information
