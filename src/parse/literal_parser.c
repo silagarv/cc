@@ -7,25 +7,30 @@
 #include <limits.h>
 #include <assert.h>
 
-#include "lex/token.h"
 #include "util/panic.h"
 #include "util/str.h"
 
 #include "lex/char_help.h"
+#include "lex/token.h"
+
+static IntegerValueType determine_integer_value_type(uint64_t value, IntegerValueSuffix suffix)
+{
+
+
+
+    return INTEGER_VALUE_ERROR;
+}
 
 // We will use a pointer to pos since it think it would be good to check that
 // we reached the end of the string
 static IntegerValueSuffix parse_integer_suffix(const String* string, size_t pos, size_t len)
 {
-    const size_t suffix_len = len - pos;
+    // Should never try to take the suffix of nothing
+    assert(len != pos);
 
+    const size_t suffix_len = len - pos;
     // We know we will never have a suffix bigger than ULL and its variants
-    if (suffix_len == 0)
-    {
-        // TODO: maybe handle this case before hand
-        return INTEGER_VALUE_SUFFIX_NONE;
-    }
-    else if (suffix_len > 3)
+    if (suffix_len > 3)
     {
         return INTEGER_VALUE_SUFFIX_INVALID;
     }
@@ -39,7 +44,7 @@ static IntegerValueSuffix parse_integer_suffix(const String* string, size_t pos,
     while (pos < len)
     {
         char current = string_get(string, pos);
-        pos += 1;
+        pos++;
 
         if ((current == 'u' || current == 'U') && !has_u)
         {
@@ -56,7 +61,7 @@ static IntegerValueSuffix parse_integer_suffix(const String* string, size_t pos,
             
             if (string_get(string, pos) == current)
             {
-                pos += 1;
+                pos++;
 
                 has_l2 = true;
             }
@@ -67,13 +72,42 @@ static IntegerValueSuffix parse_integer_suffix(const String* string, size_t pos,
         return INTEGER_VALUE_SUFFIX_INVALID;
     }
 
-    // TODO: this is untested code here that needs testing
-
     assert(pos == len);
 
-    bool is_ll = has_l1 && has_l2;
+    // Get if we're ll or l. We restict ourselves so that we can only be one
+    bool is_ll = has_l1 && has_l2; // were ll is we have both l1 and l2
+    bool is_l = has_l1 && !has_l2; // were l if we have l1 but not l2
 
-    printf("Here\n");
+    assert(is_l ? !has_l2 : true);
+
+    if (has_u)
+    {
+        if (is_l)
+        {
+            return INTEGER_VALUE_SUFFIX_UL;
+        }
+        else if (is_ll)
+        {
+            return INTEGER_VALUE_SUFFIX_ULL;
+        }
+        else
+        {
+            return INTEGER_VALUE_SUFFIX_U;
+        }
+    }
+    else
+    {
+        if (is_l)
+        {
+            return INTEGER_VALUE_SUFFIX_L;
+        }
+        else if (is_ll)
+        {
+            return INTEGER_VALUE_SUFFIX_LL;
+        }
+    }
+
+    panic("unreachable; we should have got some kind of suffix but didn't");
     
     return INTEGER_VALUE_SUFFIX_INVALID;
 }
@@ -89,7 +123,7 @@ static IntegerValueSuffix parse_integer_suffix(const String* string, size_t pos,
         decimal-constant digit
  
     octal-constant:
-       0
+        0
         octal-constant octal-digit
 
     hexadecimal-constant:
@@ -140,25 +174,65 @@ bool parse_integer_literal(IntegerValue* value, const Token* token)
     }
 
     uint64_t int_value = 0;
+    bool overflow = false;
     while (pos < len)
     {
         char current = string_get(to_convert, pos);
 
         if (!is_valid_character_in_base(current, base))
         {
-            printf("Invalid digit '%c' in contant\n\n", current);
+            // We got a bad character, we could possibly be very invalid here
+            // or we could be able to parse an integer suffix so figure that out
+            if (base == 8 && current == '9')
+            {
+                // This is the only BAD case all the others we defer any errors
+                // until we get to the suffix parsing
+                printf("Invalid digit '%c' in contant\n\n", current);
 
-            goto bad_conversion;
+                goto bad_conversion;
+            }
+            else
+            {
+                break;
+            }
         }
 
+        // TODO: issue diagnostic about overflow
+        if (int_value * base < int_value)
+        {
+            printf("Overflowed during conversion\n");
+
+            overflow = true;
+        }
         int_value *= base;
         int_value += convert_character_base(current, base);
 
         pos++;
     }
 
+    IntegerValueSuffix suffix = INTEGER_VALUE_SUFFIX_NONE;
+    if (pos != len)
+    {
+        suffix = parse_integer_suffix(to_convert, pos, len);
+        
+        if (suffix == INTEGER_VALUE_SUFFIX_INVALID)
+        {
+            printf("Bad integer suffix\n");
+
+            return false;
+        }
+    }
+
+    // TODO: we would like to also now determine the integer value type correctly
+    IntegerValueType type = determine_integer_value_type(int_value, suffix);
+
+    value->type = INTEGER_VALUE_ERROR;
+    value->suffix = suffix;
     value->value = int_value;
     value->base = base;
+    value->base = base;
+    
+    value->overflow = overflow;
 
     return true;
 
@@ -343,27 +417,23 @@ bool parse_char_literal(CharValue* value, const Token* token)
     const size_t len = string_get_len(&to_convert);
     const size_t end = len - 1;
 
-    size_t pos;
-
     // Validate start and end of string including it's length to ensure that what
     // we are about to process is actually a valid character token
+    size_t pos = 0;
     if (is_wide)
     {
-        assert(string_get(&to_convert, 0) == 'L');
-        assert(string_get(&to_convert, 1) == '\'');
-        assert(string_get(&to_convert, len - 1) == '\'');
+        assert(string_get(&to_convert, pos) == 'L');
         assert(len > 3);
 
-        pos = 2;
+        pos++;
     }
     else
     {
-        assert(string_get(&to_convert, 0) == '\'');
-        assert(string_get(&to_convert, len - 1) == '\'');
         assert(len > 2);
-
-        pos = 1;
     }
+    assert(string_get(&to_convert, pos) == '\'');
+    assert(string_get(&to_convert, len - 1) == '\'');
+    pos++;
 
     // Okay, now we know we have a well formed char literal the following applies
     // 1. Due to the way we formed tokens, we don't need to worry about trigraphs

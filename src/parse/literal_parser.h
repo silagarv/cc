@@ -24,7 +24,8 @@ typedef enum IntegerValueSuffix {
     INTEGER_VALUE_SUFFIX_U,
     INTEGER_VALUE_SUFFIX_L,
     INTEGER_VALUE_SUFFIX_UL,
-    INTEGER_VALUE_SUFFIX_ULL
+    INTEGER_VALUE_SUFFIX_ULL,
+    INTEGER_VALUE_SUFFIX_LL
 } IntegerValueSuffix;
 
 // Currently we only support integer values of up to 64 bits...
@@ -34,7 +35,6 @@ typedef struct IntegerValue {
     uint64_t value;
     size_t base;
 
-    bool error;
     bool overflow;
 } IntegerValue;
 
