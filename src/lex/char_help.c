@@ -61,6 +61,11 @@ bool is_octal(char c)
     return false;
 }
 
+bool is_decimal(char c)
+{
+    return is_numeric(c);
+}
+
 bool is_hexadecimal(char c)
 {
     if (is_numeric(c))
@@ -183,6 +188,28 @@ unsigned int convert_hexadecimal(char c)
         case 'E': case 'e': return 14;
         case 'F': case 'f': return 15;
         default: panic("invalid hexadecimal digit"); return 0;
+    }
+}
+
+bool is_valid_character_in_base(char c, int base)
+{
+    switch (base)
+    {
+        case 8:  return is_octal(c);
+        case 10: return is_decimal(c);
+        case 16: return is_hexadecimal(c);
+        default: panic("unknown base"); return false;
+    }
+}
+
+unsigned int convert_character_base(char c, int base)
+{
+    switch (base)
+    {
+        case 8:  return convert_octal(c);
+        case 10: return convert_decimal(c);
+        case 16: return convert_hexadecimal(c);
+        default: panic("unknown base"); return 0;
     }
 }
 

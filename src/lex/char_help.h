@@ -8,6 +8,7 @@ bool is_identifier_start(char c);
 bool is_identifier(char c);
 bool is_numeric(char c);
 bool is_octal(char c);
+bool is_decimal(char c);
 bool is_hexadecimal(char c);
 
 bool is_horizontal_whitespace(char c);
@@ -19,6 +20,9 @@ bool is_ascii(char c);
 unsigned int convert_octal(char c);
 unsigned int convert_decimal(char c);
 unsigned int convert_hexadecimal(char c);
+
+bool is_valid_character_in_base(char c, int base);
+unsigned int convert_character_base(char c, int base);
 
 bool is_valid_ucn(uint32_t value);
 

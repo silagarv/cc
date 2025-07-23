@@ -521,7 +521,19 @@ static Expression* parse_primary_expression(Parser* parser)
     }
     else if (is_match(parser, TOKEN_NUMBER))
     {
-        match(parser, TOKEN_NUMBER);
+        IntegerValue value = {0};
+        bool success = parse_integer_literal(&value, curr(parser->stream));
+
+        if (!success)
+        {
+            panic("bad integer conversion");
+        }
+        else
+        {
+            printf("'%s': %lu\n", token_get_string(curr(parser->stream)), value.value);
+        }
+
+        require(parser, TOKEN_NUMBER);
     }
     else if (has_match(parser, (TokenType[]) {TOKEN_STRING, TOKEN_WIDE_STRING}, 2))
     {

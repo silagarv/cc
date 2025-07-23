@@ -13,15 +13,156 @@
 
 #include "lex/char_help.h"
 
-bool parse_integer_value(IntegerValue* value, const Token* token)
+// We will use a pointer to pos since it think it would be good to check that
+// we reached the end of the string
+static IntegerValueSuffix parse_integer_suffix(const String* string, size_t pos, size_t len)
+{
+    const size_t suffix_len = len - pos;
+
+    // We know we will never have a suffix bigger than ULL and its variants
+    if (suffix_len == 0)
+    {
+        // TODO: maybe handle this case before hand
+        return INTEGER_VALUE_SUFFIX_NONE;
+    }
+    else if (suffix_len > 3)
+    {
+        return INTEGER_VALUE_SUFFIX_INVALID;
+    }
+
+    bool has_u = false;
+    bool has_l1 = false;
+    bool has_l2 = false;
+
+    // Note the below works since we can only ever have one of each of u, l, or
+    // ll suffix in an integer number so we check for it
+    while (pos < len)
+    {
+        char current = string_get(string, pos);
+        pos += 1;
+
+        if ((current == 'u' || current == 'U') && !has_u)
+        {
+            has_u = true;
+
+            continue;
+        }
+
+        // Here we check for l1 since it will be set if we get any l's
+        if ((current == 'l' || current == 'L') && !has_l1)
+        {
+            has_l1 = true;
+            const char l_type = current;
+            
+            if (string_get(string, pos) == current)
+            {
+                pos += 1;
+
+                has_l2 = true;
+            }
+
+            continue;
+        }
+
+        return INTEGER_VALUE_SUFFIX_INVALID;
+    }
+
+    // TODO: this is untested code here that needs testing
+
+    assert(pos == len);
+
+    bool is_ll = has_l1 && has_l2;
+
+    printf("Here\n");
+    
+    return INTEGER_VALUE_SUFFIX_INVALID;
+}
+
+/*
+    intteger-constant:
+        decimal-constant integer-suffix opt
+        octal-constant integer-suffix opt
+        hexadecimal-constant integer-suffix opt
+    
+    decimal-constant:
+        nonzero-digit
+        decimal-constant digit
+ 
+    octal-constant:
+       0
+        octal-constant octal-digit
+
+    hexadecimal-constant:
+        hexadecimal-prefix hexadecimal-digit
+        hexadecimal-constant hexadecimal-digit
+        hexadecimal-prefix: one of
+        0x 0X
+*/
+
+// TODO: implementing binary literals here could also be good and quite easy
+// to achieve. Would not be the hardest
+bool parse_integer_literal(IntegerValue* value, const Token* token)
 {
     assert(token_is_literal(token));
 
+    // Get the string we would like to convert
     const String* to_convert = &token->data.literal->value;
+    const size_t len = string_get_len(to_convert);
+
     size_t pos = 0;
 
-    
+    // Start with assuming the base is 10
+    size_t base = 10;
 
+    // Check the start to accurately determine the base of the number. The first
+    // digit will tell us if it is a specical case
+    if (string_get(to_convert, pos) == '0')
+    {
+        pos++;
+
+        // Now check if the next character. If it is an x, check for a hex digit
+        // afterwards, and if present then we got a Hex number. Otherwise we
+        // have an octal number even if it is an 'x' or 'X'
+        char current = string_get(to_convert, pos);
+        char next = string_get(to_convert, pos + 1);
+
+        if ((current == 'x' || current == 'X') && is_hexadecimal(next))
+        {   
+            // Skip over the 'x' or 'X' but do not skip the next digit
+            pos++;
+
+            base = 16;
+        }
+        else
+        {
+            base = 8;
+        }
+    }
+
+    uint64_t int_value = 0;
+    while (pos < len)
+    {
+        char current = string_get(to_convert, pos);
+
+        if (!is_valid_character_in_base(current, base))
+        {
+            printf("Invalid digit '%c' in contant\n\n", current);
+
+            goto bad_conversion;
+        }
+
+        int_value *= base;
+        int_value += convert_character_base(current, base);
+
+        pos++;
+    }
+
+    value->value = int_value;
+    value->base = base;
+
+    return true;
+
+bad_conversion: // TODO: maybe do some error reporting here...?
     return false;
 }
 

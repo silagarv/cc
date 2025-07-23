@@ -150,6 +150,8 @@ typedef struct IdentifierNode {
     uint32_t hash;
 } IdentifierNode;
 
+// TODO: add literal parsing into the lexing process so that we don't have to
+// do it in the parsing stage???
 typedef struct LiteralNode {
     String value;
 } LiteralNode;

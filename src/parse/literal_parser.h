@@ -17,10 +17,22 @@ typedef enum IntegerValueType {
     INTEGER_VALUE_UNSIGNED_LONG_LONG
 } IntegerValueType;
 
+// These are all of the valid integer value suffixes, 
+typedef enum IntegerValueSuffix {
+    INTEGER_VALUE_SUFFIX_INVALID,
+    INTEGER_VALUE_SUFFIX_NONE,
+    INTEGER_VALUE_SUFFIX_U,
+    INTEGER_VALUE_SUFFIX_L,
+    INTEGER_VALUE_SUFFIX_UL,
+    INTEGER_VALUE_SUFFIX_ULL
+} IntegerValueSuffix;
+
 // Currently we only support integer values of up to 64 bits...
 typedef struct IntegerValue {
     IntegerValueType type;
+    IntegerValueSuffix suffix;
     uint64_t value;
+    size_t base;
 
     bool error;
     bool overflow;
@@ -57,8 +69,8 @@ typedef struct StringLiteral {
     bool error;
 } StringLiteral;
 
-bool parse_integer_value(IntegerValue* value, const Token* token);
-bool parse_floating_value(FloatingValue* value, const Token* token);
+bool parse_integer_literal(IntegerValue* value, const Token* token);
+bool parse_floating_literal(FloatingValue* value, const Token* token);
 bool parse_preprocessing_number(const Token* token);
 
 bool parse_char_literal(CharValue* value, const Token* token);
