@@ -10,20 +10,35 @@
 #include "util/panic.h"
 #include "util/str.h"
 
+#include "driver/target.h"
+
 #include "lex/char_help.h"
 #include "lex/token.h"
 
-static IntegerValueType determine_integer_value_type(uint64_t value, IntegerValueSuffix suffix)
+
+// Determining the type of value is quite important I think and simply comes
+// down to interpreting the table in 6.4.4.1 whilst taking into account what
+// values can be represented in the target... So I will need to develop the target
+// thing eventually but for now we will REQUIRE x86-64-linux.
+// The sizes it assumes are below
+//
+static IntegerValueType determine_integer_value_type(uint64_t value, size_t base, 
+        IntegerValueSuffix suffix)
 {
+    // We need to know target information here... Should we retroactively fit
+    // this onto the compiler or like what?
 
 
+    // We should probably never return error here
+    panic("integer value type underterimined");
 
     return INTEGER_VALUE_ERROR;
 }
 
 // We will use a pointer to pos since it think it would be good to check that
 // we reached the end of the string
-static IntegerValueSuffix parse_integer_suffix(const String* string, size_t pos, size_t len)
+static IntegerValueSuffix parse_integer_suffix(const String* string, size_t pos, 
+        size_t len)
 {
     // Should never try to take the suffix of nothing
     assert(len != pos);
@@ -45,6 +60,8 @@ static IntegerValueSuffix parse_integer_suffix(const String* string, size_t pos,
     {
         char current = string_get(string, pos);
         pos++;
+        
+        // TODO: would a switch make the code below cleaner??
 
         if ((current == 'u' || current == 'U') && !has_u)
         {
@@ -69,6 +86,7 @@ static IntegerValueSuffix parse_integer_suffix(const String* string, size_t pos,
             continue;
         }
 
+        // We have got a digit that can never be part of a suffix
         return INTEGER_VALUE_SUFFIX_INVALID;
     }
 
@@ -80,6 +98,7 @@ static IntegerValueSuffix parse_integer_suffix(const String* string, size_t pos,
 
     assert(is_l ? !has_l2 : true);
 
+    // TODO: this could be a bit cleaner but will work for now...
     if (has_u)
     {
         if (is_l)
@@ -183,6 +202,8 @@ bool parse_integer_literal(IntegerValue* value, const Token* token)
         {
             // We got a bad character, we could possibly be very invalid here
             // or we could be able to parse an integer suffix so figure that out
+            // TODO: this will not work if I add binary. maybe instead do:
+            //      if (base == 8 && is_decimal(current)) ????
             if (base == 8 && current == '9')
             {
                 // This is the only BAD case all the others we defer any errors
@@ -193,7 +214,7 @@ bool parse_integer_literal(IntegerValue* value, const Token* token)
             }
             else
             {
-                break;
+                break; // We now want to parse a suffix (or try)
             }
         }
 
@@ -217,14 +238,14 @@ bool parse_integer_literal(IntegerValue* value, const Token* token)
         
         if (suffix == INTEGER_VALUE_SUFFIX_INVALID)
         {
-            printf("Bad integer suffix\n");
+            printf("Bad integer suffix; cannot continue parsing integer\n");
 
             return false;
         }
     }
 
     // TODO: we would like to also now determine the integer value type correctly
-    IntegerValueType type = determine_integer_value_type(int_value, suffix);
+    IntegerValueType type = determine_integer_value_type(int_value, base, suffix);
 
     value->type = INTEGER_VALUE_ERROR;
     value->suffix = suffix;
@@ -382,7 +403,7 @@ static unsigned int decode_escape_sequence(const String* to_convert, size_t* pos
 
             *pos += 1;
         } while (num_digits < 3 && is_octal(string_get(to_convert, *pos)));
-        *pos -= 1;
+        *pos -= 1; // TODO: I wan't to remove this by fixing decode char function
 
         // Check the limits on character conversion
         if (!is_wide && value > get_char_max_value())
@@ -399,7 +420,7 @@ static unsigned int decode_escape_sequence(const String* to_convert, size_t* pos
     }
 
     // TODO: here do we diagnose a bad escape???
-    // TODO: yes and just return the value and it is a warning in clang
+    // TODO: yes and just return the value and it is a warning in clang / gcc
 
     return current;
 }

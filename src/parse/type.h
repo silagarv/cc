@@ -6,6 +6,8 @@
 
 #include "util/str.h"
 
+#include "driver/target.h"
+
 typedef enum TypeKind {
     TYPE_ERROR,
     TYPE_VOID,
@@ -51,6 +53,9 @@ typedef struct TypeQualifiers {
 typedef struct TypeBase {
     TypeKind type;
     TypeQualifiers qualifiers;
+
+    size_t type_size;
+    size_t type_alignment;
 } TypeBase;
 
 // Both imaginairy and complex types have an underlying type which is either

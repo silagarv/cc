@@ -22,6 +22,7 @@ UTIL = src/util/panic.c \
 	src/util/hash.c
 
 DRIVER = src/driver/diagnostic.c \
+	src/driver/target.c \
 	#src/driver/options.c \
 	src/driver/command_line.c \
 	src/driver/translation_unit.c \
