@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 
 typedef enum TargetByteOrder {
     TARGET_BYTE_ORDER_LITTLE_ENDIAN,
@@ -47,8 +48,8 @@ typedef struct Target {
     TargetByteOrder order;
 } Target;
 
-// Get the max value based on the size (in bytes)
-uint64_t get_max_value(size_t bytes);
+size_t get_bool_size(const Target* target);
+size_t get_bool_align(const Target* target);
 
 // Create a compiler target for x86-64-linux
 Target target_create_x86_64_linux(void);

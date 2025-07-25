@@ -31,6 +31,8 @@ char test_pgm[] = {
     ,'\0'
 };
 
+#include "driver/target.h"
+
 #include "lex/preprocessor.h"
 
 #include <assert.h>
@@ -57,6 +59,8 @@ int main(int argc, char** argv)
     //     "meow\n"
     //     ".\\\n.\\\n.\n"
     //     "%:include";
+
+    const Target t = target_create_x86_64_linux();
 
     Filepath path = FILEPATH_STATIC_INIT("test_pgm.c");
 

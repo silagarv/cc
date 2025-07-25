@@ -13,11 +13,12 @@ typedef struct SourceFile {
 
     Filepath name;
 
+    // The contents of the file
     char* contents;
     char* end_contents;
-
     size_t contents_size;
 
+    
 } SourceFile;
 
 #endif /* SOURCE_FILE_H */

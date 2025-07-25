@@ -43,12 +43,13 @@ typedef enum FloatingValueType {
     FLOATING_VALUE_ERROR,
     FLOATING_VALUE_FLOAT,
     FLOATING_VALUE_DOUBLE,
+    FLOATING_VALUE_LONG_DOUBLE
 } FloatingValueType;
 
 // Structure to hold a floating point value
 typedef struct FloatingValue {
     FloatingValueType type;
-    double value;
+    long double value;
 
     bool error;
     bool overflow;
