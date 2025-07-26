@@ -521,19 +521,27 @@ static Expression* parse_primary_expression(Parser* parser)
     }
     else if (is_match(parser, TOKEN_NUMBER))
     {
-        IntegerValue value = {0};
-        bool success = parse_integer_literal(&value, curr(parser->stream));
+        const Token* token = curr(parser->stream);
+        require(parser, TOKEN_NUMBER);
 
+        IntegerValue value = {0};
+        const bool success = parse_integer_literal(&value, token);
         if (!success)
         {
             panic("bad integer conversion");
+
+            return NULL;
+
+            return create_error_expression(token);
         }
         else
         {
+            return NULL;
+
+            return create_integer_expression(token, &value);
+
             // printf("'%s': %lu\n", token_get_string(curr(parser->stream)), value.value);
         }
-
-        require(parser, TOKEN_NUMBER);
     }
     else if (has_match(parser, (TokenType[]) {TOKEN_STRING, TOKEN_WIDE_STRING}, 2))
     {
@@ -541,6 +549,7 @@ static Expression* parse_primary_expression(Parser* parser)
         // so that we can then combine all of these into one string
         const Token* start_token = curr(parser->stream);
         size_t count = 0;
+
         while (has_match(parser, (TokenType[]) {TOKEN_STRING, TOKEN_WIDE_STRING}, 2))
         {
             if (is_match(parser, TOKEN_WIDE_STRING))
@@ -548,7 +557,7 @@ static Expression* parse_primary_expression(Parser* parser)
                 panic("cannot convert wide string literals yet");
             }
 
-            match(parser, TOKEN_STRING);
+            require(parser, TOKEN_STRING);
 
             count++;
         }
@@ -558,29 +567,44 @@ static Expression* parse_primary_expression(Parser* parser)
         if (!success)
         {
             panic("bad string literal conversion");
+
+            return NULL;
+
+            return create_error_expression(start_token);
         }
         else
         {
-            printf("matched string\n");
-            printf("%s\n", string.string.ptr);
-            printf("string end\n");
+            free(string.string.ptr);
+
+            return NULL;
+
+            return create_string_expression(start_token, &string);
         }
     }
     else if (is_match(parser, TOKEN_CHARACTER))
     {
-        CharValue value = {0};
-        bool success = parse_char_literal(&value, curr(parser->stream));
+        // Get and match the token
+        const Token* token = curr(parser->stream);
+        require(parser, TOKEN_CHARACTER);
 
+        CharValue value = {0};
+        bool success = parse_char_literal(&value, token);
+
+        Expression* expr = NULL;
         if (!success)
         {
             panic("bad char conversion");
+
+            return NULL;
+
+            return create_error_expression(token);
         }
         else
         {
-            // printf("'%s': %lu\n", token_get_string(curr(parser->stream)), value.value);
-        }
+            return NULL;
 
-        match(parser, TOKEN_CHARACTER);
+            return create_character_expression(token, &value);
+        }
     }
     else
     {

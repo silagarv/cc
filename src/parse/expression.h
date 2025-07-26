@@ -4,21 +4,19 @@
 #include "lex/location.h"
 
 #include "parse/type.h"
+#include "parse/literal_parser.h"
 
 typedef enum ExpressionType {
     EXPRESSION_ERROR,
 
     EXPRESSION_REFERENCE, // an identifier in the symbol table
-    
-    EXPRESSION_INTEGER_CONSTANT,
-    
-    EXPRESSION_FLOATING_CONSTANT,
 
     EXPRESSION_ENUMERATION_CONSTANT,
+    
+    EXPRESSION_INTEGER_CONSTANT,    
+    EXPRESSION_FLOATING_CONSTANT,
     EXPRESSION_CHARACTER_CONSTANT,
-    EXPRESSION_WIDE_CHARACTER_CONSTANT,
     EXPRESSION_STRING_LITERAL,
-    EXPRESSION_WIDE_STRING_LITERAL,
 
     EXPRESSION_ARRAY_ACCESS,
     EXPRESSION_FUNCTION_CALL,
@@ -91,7 +89,7 @@ typedef struct ExpressionReference {
 
 typedef struct ExpressionInteger {
     ExpressionBase base;
-    
+    IntegerValue value;
 } ExpressionInteger;
 
 typedef struct ExpressionFloat ExpressionFloat;
@@ -103,11 +101,13 @@ typedef struct ExpressionEnumeration {
 // 6.4.4.4 (Characters have type int)
 typedef struct ExpressionCharacter {
     ExpressionBase base;
-    int value;
-    bool multibyte;
+    CharValue value;
 } ExpressionCharacter;
 
-typedef struct ExpressionStringLiteral ExpressionStringLiteral;
+typedef struct ExpressionStringLiteral {
+    ExpressionBase base;
+    StringLiteral value;
+}ExpressionStringLiteral;
 
 typedef struct ExpressionArrayAccess ExpressionArrayAccess;
 typedef struct ExpressionFunctionCall ExpressionFunctionCall;
@@ -145,13 +145,19 @@ union Expression {
     ExpressionBase base;
 
     ExpressionInteger integer;
-
     ExpressionCharacter character;
+    ExpressionStringLiteral string;
 
     ExpressionUnary unary;
     ExpressionBinary binary;
     ExpressionConditional conditional;
 };
+
+Expression* create_error_expression(const Token* token);
+
+Expression* create_integer_expression(const Token* token, IntegerValue* value);
+Expression* create_character_expression(const Token* token, CharValue* value);
+Expression* create_string_expression(const Token* token, StringLiteral* value);
 
 Expression* expression_unary(Expression* expr, ExpressionType type, Location loc);
 Expression* expression_binary(Expression* lhs, Expression* rhs, ExpressionType type, Location loc);
