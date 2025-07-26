@@ -16,6 +16,22 @@
 #include "lex/char_help.h"
 #include "lex/token.h"
 
+static IntegerValueType determine_integer_type_no_suffix(uint64_t value, size_t base)
+{
+    switch (base)
+    {
+        case 10:
+            return INTEGER_VALUE_INTEGER;
+
+        case 8:
+        case 16:
+            return INTEGER_VALUE_INTEGER;
+
+        default:
+            panic("unhandled base");
+            return INTEGER_VALUE_ERROR;
+    }
+}
 
 // Determining the type of value is quite important I think and simply comes
 // down to interpreting the table in 6.4.4.1 whilst taking into account what
@@ -23,17 +39,16 @@
 // thing eventually but for now we will REQUIRE x86-64-linux.
 // The sizes it assumes are below
 //
-static IntegerValueType determine_integer_value_type(uint64_t value, size_t base, 
+// TODO: eventually fix this so we can determine the type for an arbitrary target
+static IntegerValueType determine_integer_type(uint64_t value, size_t base, 
         IntegerValueSuffix suffix)
 {
     // We need to know target information here... Should we retroactively fit
     // this onto the compiler or like what?
-
+    
 
     // We should probably never return error here
-    panic("integer value type underterimined");
-
-    return INTEGER_VALUE_ERROR;
+    return determine_integer_type_no_suffix(value, base);
 }
 
 // We will use a pointer to pos since it think it would be good to check that
@@ -211,7 +226,7 @@ bool parse_integer_literal(IntegerValue* value, const Token* token)
                 // until we get to the suffix parsing
                 printf("Invalid digit '%c' in contant\n\n", current);
 
-                goto bad_conversion;
+                return false;
             }
             else
             {
@@ -246,9 +261,15 @@ bool parse_integer_literal(IntegerValue* value, const Token* token)
     }
 
     // TODO: we would like to also now determine the integer value type correctly
-    IntegerValueType type = determine_integer_value_type(int_value, base, suffix);
+    IntegerValueType type = determine_integer_type(int_value, base, suffix);
+    if (type == INTEGER_VALUE_ERROR)
+    {
+        printf("Error determining integer value type\n");
 
-    value->type = INTEGER_VALUE_ERROR;
+        return false;
+    }
+
+    value->type = type;
     value->suffix = suffix;
     value->value = int_value;
     value->base = base;
@@ -257,9 +278,6 @@ bool parse_integer_literal(IntegerValue* value, const Token* token)
     value->overflow = overflow;
 
     return true;
-
-bad_conversion: // TODO: maybe do some error reporting here...?
-    return false;
 }
 
 // Check if the character given is a simple escape. Otherwise return false
