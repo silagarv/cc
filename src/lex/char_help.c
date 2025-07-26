@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <assert.h>
 
 #include "util/panic.h"
 
@@ -126,6 +127,54 @@ bool is_ascii(char c)
     }
 
     return false;
+}
+
+// Check if the character given is a simple escape. Otherwise return false
+bool is_simple_escape(char c)
+{
+    switch (c)
+    {
+        case '\'':
+        case '"':
+        case '?':
+        case '\\':
+        case 'a':
+        case 'b':
+        case 'f':
+        case 'n':
+        case 'r':
+        case 't':
+        case 'v':
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+// Convert the second character in a simple escape sequence to it's corrospoing
+// value. This is used by our string and character parsers
+unsigned int convert_simple_escape(char c)
+{
+    assert(is_simple_escape(c));
+
+    // Trusting trust :)
+    switch (c)
+    {
+        case '\'': return '\'';
+        case '"':  return '\"';
+        case '?':  return '\?';
+        case '\\': return '\\';
+        case 'a':  return '\a';
+        case 'b':  return '\b';
+        case 'f':  return '\f';
+        case 'n':  return '\n';
+        case 'r':  return '\r';
+        case 't':  return '\t';
+        case 'v':  return '\v';
+
+        default: panic("unreachable"); return '\0'; // Default unreachable value
+    }
 }
 
 // Convert an octal character to it's corrosponding numeric value. Note that

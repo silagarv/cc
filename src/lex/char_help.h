@@ -17,6 +17,9 @@ bool is_whitespace(char c);
 
 bool is_ascii(char c);
 
+bool is_simple_escape(char c);
+unsigned int convert_simple_escape(char c);
+
 unsigned int convert_octal(char c);
 unsigned int convert_decimal(char c);
 unsigned int convert_hexadecimal(char c);

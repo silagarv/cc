@@ -1,5 +1,6 @@
 #include "literal_parser.h"
 
+#include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -280,54 +281,6 @@ bool parse_integer_literal(IntegerValue* value, const Token* token)
     return true;
 }
 
-// Check if the character given is a simple escape. Otherwise return false
-static bool is_simple_escape(char c)
-{
-    switch (c)
-    {
-        case '\'':
-        case '"':
-        case '?':
-        case '\\':
-        case 'a':
-        case 'b':
-        case 'f':
-        case 'n':
-        case 'r':
-        case 't':
-        case 'v':
-            return true;
-
-        default:
-            return false;
-    }
-}
-
-// Convert the second character in a simple escape sequence to it's corrospoing
-// value. This is used by our string and character parsers
-static unsigned int convert_simple_escape(char c)
-{
-    assert(is_simple_escape(c));
-
-    // Trusting trust :)
-    switch (c)
-    {
-        case '\'': return '\'';
-        case '"':  return '\"';
-        case '?':  return '\?';
-        case '\\': return '\\';
-        case 'a':  return '\a';
-        case 'b':  return '\b';
-        case 'f':  return '\f';
-        case 'n':  return '\n';
-        case 'r':  return '\r';
-        case 't':  return '\t';
-        case 'v':  return '\v';
-
-        default: panic("unreachable"); return '\0'; // Default unreachable value
-    }
-}
-
 // The maximum value we can fit in a char size
 static unsigned int get_char_max_value(void)
 {
@@ -401,6 +354,14 @@ static unsigned int decode_escape_sequence(const String* to_convert, size_t* pos
         if (overflow)
         {
             panic("hexadecimal escape overflow");
+        }
+
+        // TODO: check if itll fit into the type
+        // TODO: make this check better instead of just using some random
+        // magic numbers...
+        if (!is_wide && value > 255)
+        {
+            panic("Hex escape out of range");
         }
 
         return value;
@@ -485,6 +446,7 @@ bool parse_char_literal(CharValue* value, const Token* token)
 
     uint64_t char_value = 0;
     size_t num_bytes = 0; // We want to test for multibyte constants
+    // TODO: maybe change to pos < end
     while (pos != end)
     {
         unsigned int current = string_get(&to_convert, pos);
@@ -519,5 +481,68 @@ bool parse_char_literal(CharValue* value, const Token* token)
 // Note that decode escape sequence can probably be reused in parsing our
 // string literals to reduce code size
 
+static void parse_string_literal_internal(Buffer* buffer, const Token* token)
+{
+    assert(token->type == TOKEN_STRING);
 
+    const String to_convert = token->data.literal->value;
+    const size_t len = string_get_len(&to_convert);
+    const size_t end = len - 1;
+
+    // Assertions to make sure we formed a valid string during tokenisation
+    assert(string_get(&to_convert, 0) == '"');
+    assert(string_get(&to_convert, end) == '"');
+
+    // Here we actually convert the string
+    size_t pos = 1;
+    while (pos < end)
+    {
+        char current = string_get(&to_convert, pos);
+
+        if (current == '\\')
+        {
+            current = decode_escape_sequence(&to_convert, &pos, false);
+        }
+
+        // Add the character to the buffer
+        buffer_add_char(buffer, current);
+
+        // Increment the position
+        pos++;
+    }
+}
+
+bool parse_string_literal(StringLiteral* value, const Token* tokens, size_t num_tokens)
+{
+    bool have_wide = false;
+    size_t maximum_size = 0;
+    for (size_t i = 0; i < num_tokens; i++)
+    {
+        const Token token = tokens[i];
+
+        if (token.type == TOKEN_WIDE_STRING)
+        {
+            have_wide = true;
+        }
+    }
+
+    if (have_wide)
+    {
+        panic("cannot convert a wide string literal");
+
+        return false;
+    }
+
+    Buffer buffer = buffer_new();
+    for (size_t i = 0; i < num_tokens; i++)
+    {
+        parse_string_literal_internal(&buffer, &tokens[i]);
+    }
+
+    value->string = string_from_buffer(&buffer);
+    value->wide = false;
+    value->error = false;
+
+    return true;
+}
 

@@ -63,10 +63,9 @@ typedef struct CharValue {
 
 // Structures to represent string and wide string literal values
 typedef struct StringLiteral {
-    char* value;
-    size_t length;
-    size_t capacity;
+    String string;
 
+    bool wide; // is the string wide
     bool error;
 } StringLiteral;
 
@@ -75,6 +74,6 @@ bool parse_floating_literal(FloatingValue* value, const Token* token);
 bool parse_preprocessing_number(const Token* token);
 
 bool parse_char_literal(CharValue* value, const Token* token);
-bool parse_string_literals(const Token* tokens, size_t num_tokens);
+bool parse_string_literal(StringLiteral* value, const Token* tokens, size_t num_tokens);
 
 #endif /* LITERAL_PARSER_H */

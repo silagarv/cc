@@ -530,19 +530,41 @@ static Expression* parse_primary_expression(Parser* parser)
         }
         else
         {
-            printf("'%s': %lu\n", token_get_string(curr(parser->stream)), value.value);
+            // printf("'%s': %lu\n", token_get_string(curr(parser->stream)), value.value);
         }
 
         require(parser, TOKEN_NUMBER);
     }
     else if (has_match(parser, (TokenType[]) {TOKEN_STRING, TOKEN_WIDE_STRING}, 2))
     {
+        // Here we want to collect all of the string literals into one vector
+        // so that we can then combine all of these into one string
+        const Token* start_token = curr(parser->stream);
+        size_t count = 0;
         while (has_match(parser, (TokenType[]) {TOKEN_STRING, TOKEN_WIDE_STRING}, 2))
         {
+            if (is_match(parser, TOKEN_WIDE_STRING))
+            {
+                panic("cannot convert wide string literals yet");
+            }
+
             match(parser, TOKEN_STRING);
+
+            count++;
         }
 
-        printf("matched string\n");
+        StringLiteral string = {0};
+        const bool success = parse_string_literal(&string, start_token, count);
+        if (!success)
+        {
+            panic("bad string literal conversion");
+        }
+        else
+        {
+            printf("matched string\n");
+            printf("%s\n", string.string.ptr);
+            printf("string end\n");
+        }
     }
     else if (is_match(parser, TOKEN_CHARACTER))
     {
@@ -555,13 +577,15 @@ static Expression* parse_primary_expression(Parser* parser)
         }
         else
         {
-            printf("'%s': %lu\n", token_get_string(curr(parser->stream)), value.value);
+            // printf("'%s': %lu\n", token_get_string(curr(parser->stream)), value.value);
         }
 
         match(parser, TOKEN_CHARACTER);
     }
     else
     {
+        match(parser, TOKEN_EOF);
+
         panic("expected expression");
     }
 
