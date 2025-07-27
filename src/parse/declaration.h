@@ -24,7 +24,8 @@ typedef enum DeclarationType {
 typedef struct DeclarationBase {
     DeclarationType decl_type; /* what type of declaration is this? */
     Location loc; /* where is this declaraiton located */
-    Type* type; /* the overall type of the declaration */
+    QualifiedType type; /* the overall type of the declaration */
+    TypeStorageSpecifier storage_class; /* the storage of the declaration */
 } DeclarationBase;
 
 typedef struct DeclarationVariable {

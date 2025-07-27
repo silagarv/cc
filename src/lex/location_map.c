@@ -114,7 +114,7 @@ ResolvedLocation line_map_resolve_location(const LineMap* map, Location loc)
     }
 
     // First we need to find the range that contains the line
-    LocationRange* range = & (LocationRange) {0, 0};
+    LocationRange* range = NULL;
     size_t range_index;
 
     // Currently just linear search through each of the ranges but later it would

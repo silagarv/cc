@@ -9,6 +9,9 @@
 
 #include "lex/location.h"
 
+// TODO: What to do for line maps when there are multiple files and we need
+// to handle #line directives and such
+
 // A range representing the line we are on
 typedef struct LocationRange {
     Location start;

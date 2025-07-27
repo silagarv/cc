@@ -3,22 +3,28 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #include "files/filepath.h"
 
 typedef uint32_t SourceFileId;
 
 typedef struct SourceFile {
-    SourceFileId id;
+    SourceFileId id; // the id of the source file
 
-    Filepath name;
+    Filepath name; // exact path of the file
 
-    // The contents of the file
-    char* contents;
-    char* end_contents;
-    size_t contents_size;
+    char* contents; // File contents
+    char* end_contents; // the end of the file contents
+    size_t contents_size; // length of the file
+} SourceFile;
+
+typedef struct FileManager {
+    Filepath current_path; // the current path so we know where to look
 
     
-} SourceFile;
+} FileManager;
+
+bool source_file(SourceFile* file, Filepath* path);
 
 #endif /* SOURCE_FILE_H */

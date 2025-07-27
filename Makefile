@@ -4,7 +4,7 @@ CFLAGS += -Wshadow -Wno-unused-parameter -Wno-unused-function \
 	-Wno-unused-variable 
 CFLAGS += -x c
 # CFLAGS += -fanalyzer
-CFLAGS += -flto
+# CFLAGS += -flto
 
 IFLAGS = -Isrc
 CFLAGS += $(IFLAGS)
@@ -20,6 +20,8 @@ UTIL = src/util/panic.c \
 	src/util/str_view.c \
 	src/util/arena.c \
 	src/util/hash.c
+
+FILES = src/files/filepath.c
 
 DRIVER = src/driver/diagnostic.c \
 	src/driver/target.c \

@@ -17,6 +17,7 @@
 #include "lex/location_map.h"
 
 #include "parse/literal_parser.h"
+#include "parse/type.h"
 #include "parse/expression.h"
 #include "parse/declaration.h"
 #include "parse/statement.h"
@@ -235,6 +236,8 @@ static void eat_until_recover(Parser* parser)
     {
         TokenType curr = curr_type(parser->stream);
 
+        // Note: since we put EOF in our recover set this will never eat past
+        // the end
         if (is_in_recover_set(parser, curr))
         {
             break;
@@ -380,7 +383,7 @@ static Declaration* parse_initializer_list(Parser* parser);
 static Declaration* parse_declarator(Parser* parser);
 static Declaration* parse_init_declarator(Parser* parser);
 static Declaration* parse_init_declarator_list(Parser* parser);
-static Declaration* parse_function_specificer(Parser* parser);
+
 static Declaration* parse_typedef_name(Parser* parser);
 static Declaration* parse_enumerator_list(Parser* parser);
 static Declaration* parse_enum_specificer(Parser* parser);
@@ -394,7 +397,14 @@ static Declaration* parse_paramater_declaration(Parser* parser);
 static Declaration* parse_paramater_list(Parser* parser);
 static Declaration* parse_paramater_type_list(Parser* parser);
 static Declaration* parse_type_specificer(Parser* parser);
-static Declaration* parse_type_qualifier(Parser* parser);
+
+static bool has_declaration_specifier(Parser* parser);
+static Declaration* parse_declaration_specifiers(Parser* parser);
+
+static TypeFunctionSpecifier parse_function_specificer(Parser* parser);
+static TypeQualifiers parse_type_qualifier(Parser* parser);
+static TypeStorageSpecifier parse_storage_class_specifier(Parser* parser);
+
 static Declaration* parse_type_qualifier_list(Parser* parser);
 static Declaration* parse_specifier_qualifier_list(Parser* parser);
 static Declaration* parse_struct_declarator(Parser* parser);
@@ -404,8 +414,8 @@ static Declaration* parse_struct_declaration_list(Parser* parser);
 static Declaration* parse_struct_or_union(Parser* parser);
 static Declaration* parse_struct_or_union_specifier(Parser* parser);
 static Declaration* parse_type_specifier(Parser* parser);
-static Declaration* parse_storage_class_specifier(Parser* parser);
-static Declaration* parse_declaration_specifiers(Parser* parser);
+
+
 static Declaration* parse_declaration(Parser* parser);
 
 static void* parse_type_name(Parser* parser);
@@ -475,27 +485,6 @@ static bool is_expression_start(Parser* parser, const Token* tok)
         default:
             return false;
     }
-}
-
-static Expression* parse_integer_constant(Parser *parser);
-static Expression* parse_floating_constant(Parser *parser);
-static Expression* parse_number_constant(Parser* parser);
-static Expression* parse_enumeration_constant(Parser *parser);
-static Expression* parse_character_constant(Parser *parser);
-
-static Expression* parse_constant(Parser *parser)
-{
-    switch (curr_type(parser->stream))
-    {
-
-
-
-        default:
-            panic("not a valid constant type");
-
-    }
-
-    return NULL;
 }
 
 static Expression* parse_primary_expression(Parser* parser)
@@ -568,16 +557,10 @@ static Expression* parse_primary_expression(Parser* parser)
         {
             panic("bad string literal conversion");
 
-            return NULL;
-
             return create_error_expression(start_token);
         }
         else
         {
-            free(string.string.ptr);
-
-            return NULL;
-
             return create_string_expression(start_token, &string);
         }
     }
@@ -590,19 +573,14 @@ static Expression* parse_primary_expression(Parser* parser)
         CharValue value = {0};
         bool success = parse_char_literal(&value, token);
 
-        Expression* expr = NULL;
         if (!success)
         {
             panic("bad char conversion");
-
-            return NULL;
 
             return create_error_expression(token);
         }
         else
         {
-            return NULL;
-
             return create_character_expression(token, &value);
         }
     }
@@ -1413,11 +1391,8 @@ case_expression_statement:
             {
                 stmt = parse_expression_statement(parser);    
             }
-            else if (is_typename_start(parser, get_curr_token(parser)))
+            else if (has_declaration_specifier(parser))
             {
-            // TODO: e.g. const char* str ... will fail since atm we don't 
-            // see const as starting a type declaration
-
                 parse_declaration(parser);
 
                 stmt = NULL;
@@ -2081,24 +2056,54 @@ static Declaration* parse_struct_or_union_specifier(Parser* parser)
     return NULL;
 }
 
-static Declaration* parse_function_specificer(Parser* parser)
+static TypeFunctionSpecifier parse_function_specificer(Parser* parser)
 {
-    // Nothing else to do here
-    match(parser, curr_type(parser->stream));
+    assert(has_match(parser, function_specificer, function_specificer_count));
+
+    require(parser, TOKEN_INLINE);
  
-    return NULL;
+    return TYPE_FUNCTION_SPECIFIER_INLINE;
 }
 
-static Declaration* parse_type_qualifier(Parser* parser)
+static TypeQualifiers parse_type_qualifier(Parser* parser)
 {
     assert(has_match(parser, type_qualifier, type_qualifier_count));
 
-    // Nothing else to do here
-    match(parser, curr_type(parser->stream));
- 
-    return NULL;
+    TokenType type = get_curr_token(parser)->type;
+
+    require(parser, type);
+
+    switch (type) 
+    {
+        case TOKEN_CONST: return TYPE_QUALIFIER_CONST;
+        case TOKEN_RESTRICT: return TYPE_QUALIFIER_RESTRICT;
+        case TOKEN_VOLATILE: return TYPE_QUALIFIER_VOLATILE;
+
+        default: panic("unreachable"); return TYPE_QUALIFIER_NONE;
+    }
 }
 
+static TypeStorageSpecifier parse_storage_class_specifier(Parser* parser)
+{
+    assert(has_match(parser, storage_class, storage_class_count));
+
+    TokenType type = get_curr_token(parser)->type;
+
+    require(parser, type);
+
+    switch (type)
+    {
+        case TOKEN_TYPEDEF: return TYPE_STORAGE_SPECIFIER_TYPEDEF;
+        case TOKEN_EXTERN: return TYPE_STORAGE_SPECIFIER_EXTERN;
+        case TOKEN_STATIC: return TYPE_STORAGE_SPECIFIER_STATIC;
+        case TOKEN_AUTO: return TYPE_STORAGE_SPECIFIER_AUTO;
+        case TOKEN_REGISTER: return TYPE_STORAGE_SPECIFIER_REGISTER;
+        
+        default: panic("unreachable"); return TYPE_STORAGE_SPECIFIER_NONE;
+    }
+ }
+
+// TODO: I think this here should return a type
 static Declaration* parse_type_specifier(Parser* parser)
 {
     if (has_match(parser, (TokenType[]) {TOKEN_STRUCT, TOKEN_UNION}, 2))
@@ -2117,46 +2122,77 @@ static Declaration* parse_type_specifier(Parser* parser)
     return NULL;
 }
 
-static Declaration* parse_storage_class_specifier(Parser* parser)
+static bool has_declaration_specifier(Parser* parser)
 {
-    // Nothing else to do here
-    match(parser, curr_type(parser->stream));
- 
-    return NULL;
+    return has_match(parser, storage_class, storage_class_count)
+            || has_match(parser, type_specifier, type_specifier_count)
+            || has_match(parser, type_qualifier, type_qualifier_count)
+            || has_match(parser, function_specificer, function_specificer_count);
 }
 
 static Declaration* parse_declaration_specifiers(Parser* parser)
 {
-    while (true)
+    TypeStorageSpecifier storage_spec = TYPE_STORAGE_SPECIFIER_NONE;
+    TypeQualifiers qualifiers = TYPE_QUALIFIER_NONE;
+    TypeFunctionSpecifier function_spec = TYPE_FUNCTION_SPECIFIER_NONE;
+    Type* type = NULL;
+
+    while (has_declaration_specifier(parser))
     {
+        const Token* curr = get_curr_token(parser);
+
         if (has_match(parser, storage_class, storage_class_count))
         {
-            parse_storage_class_specifier(parser);
+            // Get the specifier then we will do some checks on it
+            TypeStorageSpecifier new_spec = parse_storage_class_specifier(parser);
+            
+            // Check if we got any specificers already
+            if (storage_spec == TYPE_STORAGE_SPECIFIER_NONE)
+            {
+                storage_spec = new_spec;
+            }
+            else
+            {
+                // TODO: what to do with the speicifiers? do we keep the previous
+                // or should we override it?
 
-            continue;
+                // TODO: ignore duplicate of the same specifier
+                diag_error("already have a type specifier in decl");
+            }
         }
         else if (has_match(parser, type_specifier, type_specifier_count))
         {
-            parse_type_specifier(parser);
+            // TODO: get the actual type type shit
 
-            continue;
+            parse_type_specifier(parser);
         }
         else if (has_match(parser, type_qualifier, type_qualifier_count))
         {
-            parse_type_qualifier(parser);
+            TypeQualifiers new_qualifier = parse_type_qualifier(parser);
 
-            continue;
+            if (!type_qualifier_already_has(qualifiers, new_qualifier))
+            {
+                qualifiers |= new_qualifier;
+            }
+            else
+            {
+                diag_error("already have qualifier got a double up");
+            }
         }
         else if (has_match(parser, function_specificer, function_specificer_count))
         {
-            parse_function_specificer(parser);
+            TypeFunctionSpecifier new_spec =  parse_function_specificer(parser);
 
-            continue;
+            if (function_spec == TYPE_FUNCTION_SPECIFIER_NONE)
+            {
+               function_spec = TYPE_FUNCTION_SPECIFIER_INLINE; 
+            }
+            else
+            {
+                diag_error("already have 'inline' specifier");
+            }
         }
-
-        break;
     }
-
 
     return NULL;
 }

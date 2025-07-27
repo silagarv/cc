@@ -39,20 +39,9 @@ typedef enum TypeKind {
 
 typedef union Type Type;
 
-// TODO: should I make a qualified type a type itself and have that recurse???
-
-// Type qualifiers note that only a pointer type has the possibility to have
-// the restrict section set
-typedef struct TypeQualifiers {
-    bool is_const;
-    bool is_restrict;
-    bool is_volatile;
-} TypeQualifiers;
-
 // The base type telling us how to interpret it
 typedef struct TypeBase {
     TypeKind type;
-    TypeQualifiers qualifiers;
 
     size_t type_size;
     size_t type_alignment;
@@ -166,15 +155,37 @@ union Type {
     TypeTypedef type_typedef;
 };
 
-// Could possibly remove later once we have the type??? as this is more for
-// how a declaration works
-typedef struct TypeStorageSpecifier {
-    bool is_typedef;
-    bool is_extern;
-    bool is_static;
-    bool is_auto;
-    bool is_register;
+typedef enum TypeQualifiers {
+    TYPE_QUALIFIER_NONE = 0,
+    TYPE_QUALIFIER_CONST = 1 << 0,
+    TYPE_QUALIFIER_RESTRICT = 1 << 1,
+    TYPE_QUALIFIER_VOLATILE = 1 << 2
+} TypeQualifiers;
+
+// Only one storage specifier can be applied to a variable
+typedef enum TypeStorageSpecifier {
+    TYPE_STORAGE_SPECIFIER_NONE,
+    TYPE_STORAGE_SPECIFIER_TYPEDEF,
+    TYPE_STORAGE_SPECIFIER_EXTERN,
+    TYPE_STORAGE_SPECIFIER_STATIC,
+    TYPE_STORAGE_SPECIFIER_AUTO,
+    TYPE_STORAGE_SPECIFIER_REGISTER
 } TypeStorageSpecifier;
+
+typedef enum TypeFunctionSpecifier {
+    TYPE_FUNCTION_SPECIFIER_NONE,
+    TYPE_FUNCTION_SPECIFIER_INLINE
+} TypeFunctionSpecifier;
+
+typedef struct QualifiedType {
+    TypeQualifiers qualifiers;
+    Type* type;
+} QualifiedType;
+
+bool type_qualifier_is_const(TypeQualifiers qualifiers);
+bool type_qualifier_is_restrict(TypeQualifiers qualifiers);
+bool type_qualifier_is_volatile(TypeQualifiers qualifiers);
+bool type_qualifier_already_has(TypeQualifiers qualifiers, TypeQualifiers has);
 
 // Functions to create our basic types
 Type* type_create_error(void);

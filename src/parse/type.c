@@ -7,10 +7,29 @@
 #include "util/str.h"
 #include "util/xmalloc.h"
 
+bool type_qualifier_is_const(TypeQualifiers qualifiers)
+{
+    return (qualifiers & TYPE_QUALIFIER_CONST) != 0;
+}
+
+bool type_qualifier_is_restrict(TypeQualifiers qualifiers)
+{
+    return (qualifiers & TYPE_QUALIFIER_RESTRICT) != 0;
+}
+
+bool type_qualifier_is_volatile(TypeQualifiers qualifiers)
+{
+    return (qualifiers & TYPE_QUALIFIER_VOLATILE) != 0;
+}
+
+bool type_qualifier_already_has(TypeQualifiers qualifiers, TypeQualifiers has)
+{
+    return (qualifiers & has) != 0;
+}
+
 static Type* type_create_simple(TypeKind kind)
 {
     Type* t = xmalloc(sizeof(Type));
-    t->type_base.qualifiers = (TypeQualifiers) {0};
     t->type_base.type = kind;
 
     return t;
@@ -158,19 +177,19 @@ static void type_to_string_internal(Type* type, Buffer* buff);
 //      -> const
 //      -> volatile
 //      -> restrict
-static void type_print_qualifiers(TypeQualifiers* qualifiers, Buffer* buff)
+static void type_print_qualifiers(TypeQualifiers qualifiers, Buffer* buff)
 {
-    if (qualifiers->is_const)
+    if (type_qualifier_is_const(qualifiers))
     {
         buffer_printf(buff, "const ");
     }
 
-    if (qualifiers->is_volatile)
+    if (type_qualifier_is_volatile(qualifiers))
     {
         buffer_printf(buff, "volatile ");
     }
 
-    if (qualifiers->is_restrict)
+    if (type_qualifier_is_restrict(qualifiers))
     {
         buffer_printf(buff, "restrict ");
     }
@@ -270,7 +289,7 @@ static void type_print_rest(Type* type, Buffer* buff)
 
 static void type_to_string_internal(Type* type, Buffer* buff)
 {
-    type_print_qualifiers(&type->type_base.qualifiers, buff);
+    // type_print_qualifiers(&type->type_base.qualifiers, buff);
 
     type_print_rest(type, buff);
 }

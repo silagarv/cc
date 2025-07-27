@@ -36,6 +36,7 @@ char test_pgm[] = {
 #include "lex/preprocessor.h"
 
 #include <assert.h>
+#include "files/filepath.h"
 
 int main(int argc, char** argv)
 {
@@ -126,6 +127,10 @@ int main(int argc, char** argv)
             
     line_map_delete(&map);
 
+    // Filepath cwd;
+    // filepath_get_current_path(&cwd);
+
+    // printf("%s\n", cwd.path);
                     
                     // // token_lexer_close(&lexer);
     // // line_map_free(&map);
