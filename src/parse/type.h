@@ -37,6 +37,27 @@ typedef enum TypeKind {
     TYPE_TYPEDEF
 } TypeKind;
 
+typedef enum TypeQualifiers {
+    TYPE_QUALIFIER_NONE = 0,
+    TYPE_QUALIFIER_CONST = 1 << 0,
+    TYPE_QUALIFIER_RESTRICT = 1 << 1,
+    TYPE_QUALIFIER_VOLATILE = 1 << 2
+} TypeQualifiers;
+
+typedef enum TypeStorageSpecifier {
+    TYPE_STORAGE_SPECIFIER_NONE,
+    TYPE_STORAGE_SPECIFIER_TYPEDEF,
+    TYPE_STORAGE_SPECIFIER_EXTERN,
+    TYPE_STORAGE_SPECIFIER_STATIC,
+    TYPE_STORAGE_SPECIFIER_AUTO,
+    TYPE_STORAGE_SPECIFIER_REGISTER
+} TypeStorageSpecifier;
+
+typedef enum TypeFunctionSpecifier {
+    TYPE_FUNCTION_SPECIFIER_NONE,
+    TYPE_FUNCTION_SPECIFIER_INLINE
+} TypeFunctionSpecifier;
+
 typedef union Type Type;
 
 // The base type telling us how to interpret it
@@ -154,28 +175,6 @@ union Type {
     TypePointer type_pointer;
     TypeTypedef type_typedef;
 };
-
-typedef enum TypeQualifiers {
-    TYPE_QUALIFIER_NONE = 0,
-    TYPE_QUALIFIER_CONST = 1 << 0,
-    TYPE_QUALIFIER_RESTRICT = 1 << 1,
-    TYPE_QUALIFIER_VOLATILE = 1 << 2
-} TypeQualifiers;
-
-// Only one storage specifier can be applied to a variable
-typedef enum TypeStorageSpecifier {
-    TYPE_STORAGE_SPECIFIER_NONE,
-    TYPE_STORAGE_SPECIFIER_TYPEDEF,
-    TYPE_STORAGE_SPECIFIER_EXTERN,
-    TYPE_STORAGE_SPECIFIER_STATIC,
-    TYPE_STORAGE_SPECIFIER_AUTO,
-    TYPE_STORAGE_SPECIFIER_REGISTER
-} TypeStorageSpecifier;
-
-typedef enum TypeFunctionSpecifier {
-    TYPE_FUNCTION_SPECIFIER_NONE,
-    TYPE_FUNCTION_SPECIFIER_INLINE
-} TypeFunctionSpecifier;
 
 typedef struct QualifiedType {
     TypeQualifiers qualifiers;

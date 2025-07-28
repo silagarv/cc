@@ -1,6 +1,8 @@
 #ifndef LEXER_H
 #define LEXER_H
 
+#include "util/buffer.h"
+
 #include "lex/location.h"
 #include "lex/token.h"
 
@@ -22,6 +24,7 @@ typedef struct Lexer {
  * buffer given).
  */
 Lexer lexer(const char* buffer_start, const char* buffer_end, Location start_loc);
+Lexer lexer_from_buffer(Buffer buffer, Location start_loc);
 
 bool lexer_get_next(Lexer* lexer, Token* tok);
 

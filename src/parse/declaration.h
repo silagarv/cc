@@ -1,11 +1,20 @@
 #ifndef DECLARATION_H
 #define DECLARATION_H
 
+#include <stddef.h>
+
 #include "lex/location.h"
 
 #include "parse/expression.h"
 #include "parse/type.h"
-#include <stddef.h>
+
+// A struct to hold all of our declaration specifiers
+typedef struct DeclarationSpecifiers {
+    TypeStorageSpecifier storage_spec;
+    TypeQualifiers qualifiers;
+    TypeFunctionSpecifier function_spec;
+    Type* type;
+} DeclarationSpecifiers;
 
 typedef enum DeclarationType {
     DECLARATION_ERROR = -1, /* an error in a declaration */

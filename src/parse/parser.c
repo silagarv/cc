@@ -398,12 +398,14 @@ static Declaration* parse_paramater_list(Parser* parser);
 static Declaration* parse_paramater_type_list(Parser* parser);
 static Declaration* parse_type_specificer(Parser* parser);
 
-static bool has_declaration_specifier(Parser* parser);
-static Declaration* parse_declaration_specifiers(Parser* parser);
-
+// Functions for us getting our declaration specifiers
 static TypeFunctionSpecifier parse_function_specificer(Parser* parser);
 static TypeQualifiers parse_type_qualifier(Parser* parser);
 static TypeStorageSpecifier parse_storage_class_specifier(Parser* parser);
+static Type* parse_type_specifier(Parser* parser);
+
+static bool has_declaration_specifier(Parser* parser, const Token* tok);
+static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser);
 
 static Declaration* parse_type_qualifier_list(Parser* parser);
 static Declaration* parse_specifier_qualifier_list(Parser* parser);
@@ -413,8 +415,6 @@ static Declaration* parse_struct_declaration(Parser* parser);
 static Declaration* parse_struct_declaration_list(Parser* parser);
 static Declaration* parse_struct_or_union(Parser* parser);
 static Declaration* parse_struct_or_union_specifier(Parser* parser);
-static Declaration* parse_type_specifier(Parser* parser);
-
 
 static Declaration* parse_declaration(Parser* parser);
 
@@ -1391,7 +1391,7 @@ case_expression_statement:
             {
                 stmt = parse_expression_statement(parser);    
             }
-            else if (has_declaration_specifier(parser))
+            else if (has_declaration_specifier(parser, get_curr_token(parser)))
             {
                 parse_declaration(parser);
 
@@ -1862,7 +1862,7 @@ static Declaration* parse_paramater_declaration(Parser* parser)
 
     // TODO: determine how to do the above
 
-    parse_declaration_specifiers(parser);
+    DeclarationSpecifiers decl_spec = parse_declaration_specifiers(parser);
 
     // TODO: in the case of 'void' this parses the declaration specifiers then
     // has to kill itself since there is only ')' after it. So make the next
@@ -2104,7 +2104,7 @@ static TypeStorageSpecifier parse_storage_class_specifier(Parser* parser)
  }
 
 // TODO: I think this here should return a type
-static Declaration* parse_type_specifier(Parser* parser)
+static Type* parse_type_specifier(Parser* parser)
 {
     if (has_match(parser, (TokenType[]) {TOKEN_STRUCT, TOKEN_UNION}, 2))
     {
@@ -2114,32 +2114,41 @@ static Declaration* parse_type_specifier(Parser* parser)
     {
         parse_enum_specificer(parser);
     }
+    else if (is_match(parser, TOKEN_IDENTIFIER))
+    {
+        // TODO: at the moment this will never be true!
+
+        panic("currently unreachable...");
+    }
     else
     {
+        // TODO: we will need to properly parse the type here
         match(parser, curr_type(parser->stream));
+
+        
     }
 
     return NULL;
 }
 
-static bool has_declaration_specifier(Parser* parser)
+static bool has_declaration_specifier(Parser* parser, const Token* tok)
 {
     return has_match(parser, storage_class, storage_class_count)
-            || has_match(parser, type_specifier, type_specifier_count)
             || has_match(parser, type_qualifier, type_qualifier_count)
-            || has_match(parser, function_specificer, function_specificer_count);
+            || has_match(parser, function_specificer, function_specificer_count)
+            || is_typename_start(parser, tok);
 }
 
-static Declaration* parse_declaration_specifiers(Parser* parser)
+static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser)
 {
     TypeStorageSpecifier storage_spec = TYPE_STORAGE_SPECIFIER_NONE;
     TypeQualifiers qualifiers = TYPE_QUALIFIER_NONE;
     TypeFunctionSpecifier function_spec = TYPE_FUNCTION_SPECIFIER_NONE;
     Type* type = NULL;
 
-    while (has_declaration_specifier(parser))
+    while (has_declaration_specifier(parser, get_curr_token(parser)))
     {
-        const Token* curr = get_curr_token(parser);
+        const Token* token = get_curr_token(parser);
 
         if (has_match(parser, storage_class, storage_class_count))
         {
@@ -2159,12 +2168,6 @@ static Declaration* parse_declaration_specifiers(Parser* parser)
                 // TODO: ignore duplicate of the same specifier
                 diag_error("already have a type specifier in decl");
             }
-        }
-        else if (has_match(parser, type_specifier, type_specifier_count))
-        {
-            // TODO: get the actual type type shit
-
-            parse_type_specifier(parser);
         }
         else if (has_match(parser, type_qualifier, type_qualifier_count))
         {
@@ -2192,18 +2195,38 @@ static Declaration* parse_declaration_specifiers(Parser* parser)
                 diag_error("already have 'inline' specifier");
             }
         }
+        else if (is_typename_start(parser, token))
+        {
+            // TODO: add checks to ensure we get a valid type
+
+            type = parse_type_specifier(parser);
+        }
     }
 
-    return NULL;
+    // Here we finally build and return our declaration specifiers
+    DeclarationSpecifiers specifiers = 
+    {
+        .function_spec = function_spec,
+        .storage_spec = storage_spec,
+        .qualifiers = qualifiers,
+        .type = type
+    };
+
+    return specifiers;
 }
 
 static Declaration* parse_declaration(Parser* parser)
 {
-    parse_declaration_specifiers(parser);
+    // First we need to get our declaration specifiers here
+    DeclarationSpecifiers decl_spec = parse_declaration_specifiers(parser);
 
     if (!is_match(parser, TOKEN_SEMI))
     {
         parse_init_declarator_list(parser);
+    }
+    else
+    {
+        // TODO: maybe a warning about how we didn't really declare anything
     }
 
     return NULL;
