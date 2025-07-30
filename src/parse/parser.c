@@ -402,7 +402,7 @@ static Declaration* parse_type_specificer(Parser* parser);
 static TypeFunctionSpecifier parse_function_specificer(Parser* parser);
 static TypeQualifiers parse_type_qualifier(Parser* parser);
 static TypeStorageSpecifier parse_storage_class_specifier(Parser* parser);
-static Type* parse_type_specifier(Parser* parser);
+static TypeSpecifier parse_type_specifier(Parser* parser);
 
 static bool has_declaration_specifier(Parser* parser, const Token* tok);
 static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser);
@@ -2101,32 +2101,163 @@ static TypeStorageSpecifier parse_storage_class_specifier(Parser* parser)
         
         default: panic("unreachable"); return TYPE_STORAGE_SPECIFIER_NONE;
     }
- }
+}
+
+static const TokenType builtin_type_tokens[] =
+{
+    TOKEN_VOID,
+    TOKEN_CHAR,
+    TOKEN_SHORT,
+    TOKEN_INT,
+    TOKEN_LONG,
+    TOKEN_FLOAT,
+    TOKEN_DOUBLE,
+    TOKEN_SIGNED,
+    TOKEN_UNSIGNED,
+    TOKEN__BOOL,
+    TOKEN__COMPLEX,
+    TOKEN__IMAGINARY
+};
+
+const size_t builtin_type_tokens_size = countof(builtin_type_tokens);
+
+static bool is_builtin_type_token(Parser* parser)
+{
+    return has_match(parser, builtin_type_tokens, builtin_type_tokens_size);
+}
+
+static Type* parse_builtin_type(Parser* parser)
+{
+    TokenType type_unsigned;
+
+    while (is_builtin_type_token(parser))
+    {
+        match(parser, get_curr_token(parser)->type);
+    }
+
+    return NULL;
+}
 
 // TODO: I think this here should return a type
-static Type* parse_type_specifier(Parser* parser)
+static TypeSpecifier parse_type_specifier(Parser* parser)
 {
-    if (has_match(parser, (TokenType[]) {TOKEN_STRUCT, TOKEN_UNION}, 2))
-    {
-        parse_struct_or_union_specifier(parser);
-    }
-    else if (is_match(parser, TOKEN_ENUM))
-    {
-        parse_enum_specificer(parser);
-    }
-    else if (is_match(parser, TOKEN_IDENTIFIER))
-    {
-        // TODO: at the moment this will never be true!
+    assert(is_typename_start(parser, get_curr_token(parser)));
 
-        panic("currently unreachable...");
-    }
-    else
-    {
-        // TODO: we will need to properly parse the type here
-        match(parser, curr_type(parser->stream));
+    TokenType type = get_curr_token(parser)->type;
 
+    require(parser, type);
+
+    switch (type)
+    {
+        case TOKEN_VOID: return TYPE_SPECIFIER_VOID;
+        case TOKEN_CHAR: return TYPE_SPECIFIER_CHAR;
+        case TOKEN_SHORT: return TYPE_SPECIFIER_SHORT;
+        case TOKEN_INT: return TYPE_SPECIFIER_INT;
+        case TOKEN_LONG: return TYPE_SPECIFIER_LONG;
+        case TOKEN_FLOAT: return TYPE_SPECIFIER_FLOAT;
+        case TOKEN_DOUBLE: return TYPE_SPECIFIER_DOUBLE;
+        case TOKEN_SIGNED: return TYPE_SPECIFIER_SIGNED;
+        case TOKEN_UNSIGNED: return TYPE_SPECIFIER_UNSIGNED;
+        case TOKEN__BOOL: return TYPE_SPECIFIER_BOOL;
+        case TOKEN__COMPLEX: return TYPE_SPECIFIER_COMPLEX;
+        case TOKEN__IMAGINARY: return TYPE_SPECIFIER_IMAGINAIRY;
+
+        default: panic("unreachable"); return TYPE_SPECIFIER_NONE;
+    }   
+}
+
+// Temporaily turn off -Wswitch diagnostic...
+// TODO: i don't like this but I don't know a nicer way to do what I want
+// to do below that doesn't involve alot of if's since they can be in any order
+// and or have for example a const in between
+// e.g. unsigned const int ... is valid
+
+static TypeKind determine_type_kind(TypeSpecifier specifiers)
+{
+    // TODO: what do we do about _Complex and _Imaginairy
+    switch (specifiers) 
+    {
+        case TYPE_SPECIFIER_VOID:
+            return TYPE_VOID;
+
+        case TYPE_SPECIFIER_CHAR:
+            return TYPE_CHAR;
+
+        case TYPE_SPECIFIER_CHAR | TYPE_SPECIFIER_SIGNED:
+            return TYPE_S_CHAR;
+
+        case TYPE_SPECIFIER_CHAR | TYPE_SPECIFIER_UNSIGNED:
+            return TYPE_U_CHAR;
+
+        case TYPE_SPECIFIER_SHORT:
+        case TYPE_SPECIFIER_SHORT | TYPE_SPECIFIER_SIGNED:
+        case TYPE_SPECIFIER_SHORT | TYPE_SPECIFIER_INT:
+        case TYPE_SPECIFIER_SHORT | TYPE_SPECIFIER_SIGNED | TYPE_SPECIFIER_INT:
+            return TYPE_S_SHORT;
+
+        case TYPE_SPECIFIER_SHORT | TYPE_SPECIFIER_UNSIGNED:
+        case TYPE_SPECIFIER_SHORT | TYPE_SPECIFIER_UNSIGNED | TYPE_SPECIFIER_INT:
+            return TYPE_U_SHORT;
+
+        case TYPE_SPECIFIER_INT:
+        case TYPE_SPECIFIER_SIGNED:
+        case TYPE_SPECIFIER_INT | TYPE_SPECIFIER_SIGNED:
+            return TYPE_S_INT;
         
+        case TYPE_SPECIFIER_UNSIGNED:
+        case TYPE_SPECIFIER_INT | TYPE_SPECIFIER_UNSIGNED:
+            return TYPE_U_INT;
+
+        case TYPE_SPECIFIER_LONG:
+        case TYPE_SPECIFIER_LONG | TYPE_SPECIFIER_SIGNED:
+        case TYPE_SPECIFIER_LONG | TYPE_SPECIFIER_INT:
+        case TYPE_SPECIFIER_LONG | TYPE_SPECIFIER_SIGNED | TYPE_SPECIFIER_INT:
+            return TYPE_S_LONG;
+
+        case TYPE_SPECIFIER_LONG | TYPE_SPECIFIER_UNSIGNED:
+        case TYPE_SPECIFIER_LONG | TYPE_SPECIFIER_UNSIGNED | TYPE_SPECIFIER_INT:
+            return TYPE_U_LONG;
+
+        // NOTE: for both ll and ull types we need the long part at the end
+        // since we will need to give accurate error messages too!
+        case TYPE_SPECIFIER_LONG_LONG | TYPE_SPECIFIER_LONG:
+        case TYPE_SPECIFIER_LONG_LONG | TYPE_SPECIFIER_SIGNED | TYPE_SPECIFIER_LONG:
+        case TYPE_SPECIFIER_LONG_LONG | TYPE_SPECIFIER_INT | TYPE_SPECIFIER_LONG:
+        case TYPE_SPECIFIER_LONG_LONG | TYPE_SPECIFIER_INT | TYPE_SPECIFIER_SIGNED
+                | TYPE_SPECIFIER_LONG:
+            return TYPE_S_LONG_LONG;
+
+        case TYPE_SPECIFIER_LONG_LONG | TYPE_SPECIFIER_UNSIGNED | TYPE_SPECIFIER_LONG:
+        case TYPE_SPECIFIER_LONG_LONG | TYPE_SPECIFIER_UNSIGNED | TYPE_SPECIFIER_INT
+                | TYPE_SPECIFIER_LONG:
+            return TYPE_U_LONG_LONG;
+
+        case TYPE_SPECIFIER_FLOAT:
+            return TYPE_FLOAT;
+
+        case TYPE_SPECIFIER_DOUBLE:
+            return TYPE_DOUBLE;
+
+        case TYPE_SPECIFIER_LONG | TYPE_SPECIFIER_DOUBLE:
+            return TYPE_LONG_DOUBLE;
+
+        case TYPE_SPECIFIER_BOOL:
+            return TYPE_BOOL;
+
+        default:
+            // TODO: basically unlimited ammount of error messages we could
+            // create but lets not do that just yet
+            diag_error("invalid type specifier combination");
+
+            return TYPE_ERROR;
     }
+}
+
+static Type* type_from_declaration_specifiers(Parser* parser, TypeSpecifier specifiers)
+{
+    TypeKind kind = determine_type_kind(specifiers);
+    
+    // TODO: we will need to get the type fro mthe typekind
 
     return NULL;
 }
@@ -2141,67 +2272,150 @@ static bool has_declaration_specifier(Parser* parser, const Token* tok)
 
 static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser)
 {
+    // Variables to help us build the declaration specifiers
     TypeStorageSpecifier storage_spec = TYPE_STORAGE_SPECIFIER_NONE;
     TypeQualifiers qualifiers = TYPE_QUALIFIER_NONE;
     TypeFunctionSpecifier function_spec = TYPE_FUNCTION_SPECIFIER_NONE;
+    TypeSpecifier type_spec = TYPE_SPECIFIER_NONE;
+
+    // This is the final type we will use
     Type* type = NULL;
 
+    // TODO: should this be converted into a switch to be faster?
     while (has_declaration_specifier(parser, get_curr_token(parser)))
     {
         const Token* token = get_curr_token(parser);
 
         if (has_match(parser, storage_class, storage_class_count))
         {
-            // Get the specifier then we will do some checks on it
             TypeStorageSpecifier new_spec = parse_storage_class_specifier(parser);
-            
-            // Check if we got any specificers already
-            if (storage_spec == TYPE_STORAGE_SPECIFIER_NONE)
-            {
-                storage_spec = new_spec;
-            }
-            else
-            {
-                // TODO: what to do with the speicifiers? do we keep the previous
-                // or should we override it?
 
-                // TODO: ignore duplicate of the same specifier
-                diag_error("already have a type specifier in decl");
+            if (storage_spec != TYPE_STORAGE_SPECIFIER_NONE)
+            {
+                diag_error("already have a storage specifier in declaration");
+
+                continue;
             }
+            
+            storage_spec = new_spec;            
+
+            continue;
         }
         else if (has_match(parser, type_qualifier, type_qualifier_count))
         {
             TypeQualifiers new_qualifier = parse_type_qualifier(parser);
 
-            if (!type_qualifier_already_has(qualifiers, new_qualifier))
+            if (type_qualifier_already_has(qualifiers, new_qualifier))
             {
-                qualifiers |= new_qualifier;
+                diag_warning("already have qualifier got a double up");
             }
-            else
-            {
-                diag_error("already have qualifier got a double up");
-            }
+
+            qualifiers |= new_qualifier;
+
+            continue;
         }
         else if (has_match(parser, function_specificer, function_specificer_count))
         {
             TypeFunctionSpecifier new_spec =  parse_function_specificer(parser);
 
-            if (function_spec == TYPE_FUNCTION_SPECIFIER_NONE)
-            {
-               function_spec = TYPE_FUNCTION_SPECIFIER_INLINE; 
-            }
-            else
+            if (function_spec != TYPE_FUNCTION_SPECIFIER_NONE)
             {
                 diag_error("already have 'inline' specifier");
+
+                continue;
             }
+
+            function_spec = TYPE_FUNCTION_SPECIFIER_INLINE;
+            
+            continue;
         }
         else if (is_typename_start(parser, token))
         {
-            // TODO: add checks to ensure we get a valid type
+            // If we have a enum, struct, or union we will want to parse those
+            // sepereately. Otherwise we will want to get the 
+            if (has_match(parser, (TokenType[]) {TOKEN_UNION, TOKEN_STRUCT}, 2))
+            {
+                // Parse a compound type here
+                parse_struct_or_union_specifier(parser);
+            }
+            else if (is_match(parser, TOKEN_ENUM))
+            {
+                parse_enum_specificer(parser);
+            }
+            else if (is_match(parser, TOKEN_IDENTIFIER))
+            {
+                // TODO: here we will eventually want some system to look ahead
+                // here and check maybe if were done or not if we don't get
+                // a typedef name
 
-            type = parse_type_specifier(parser);
+                // TODO: also adding a check here for if we already have 
+                // specifiers or not...
+
+                panic("currently unreachable");
+            }
+            else
+            {
+                TypeSpecifier new_spec = parse_type_specifier(parser);
+
+                // Here we we have a type specifier and it isn't a long specifier
+                if (type_specifier_has(type_spec, new_spec)
+                        && (new_spec != TYPE_SPECIFIER_LONG))
+                {
+                    diag_error("already recieved type specifier");
+
+                    continue;
+                }
+                else if (new_spec == TYPE_SPECIFIER_LONG)
+                {
+                    // Check for 2 cases:
+                    // 1. we don't have it so just add it
+                    // 2. We already have the specifier long to upgrade it to
+                    //    long long
+                    // 3. we have long long already so make an error
+                    if (!(type_spec & TYPE_SPECIFIER_LONG))
+                    {
+                        type_spec |= new_spec;
+                    }
+                    else if (type_spec & TYPE_SPECIFIER_LONG 
+                            && !(type_spec & TYPE_SPECIFIER_LONG_LONG))
+                    {
+                        type_spec |= TYPE_SPECIFIER_LONG_LONG;
+                    }
+                    else
+                    {
+                        assert(type_specifier_has(type_spec, TYPE_SPECIFIER_LONG_LONG));
+
+                        diag_error("long long long is was too long!");
+                    }
+
+                    continue;
+                }
+
+                // Otherwise just add the specifier and continue
+                type_spec |= new_spec;
+
+                continue;
+            }
+        }
+        else
+        {
+            panic("unreachable");
         }
     }
+
+    // TODO: here if we have no type yet but have type specifiers we will need
+    // to deal with that and determine the type
+    if (!type && (type_spec != TYPE_SPECIFIER_NONE))
+    {
+        type = type_from_declaration_specifiers(parser, type_spec);
+    }
+    else if (!type && (type_spec == TYPE_SPECIFIER_NONE))
+    {
+        diag_error("not type specifiers; not assuming int just yet");
+
+        // TODO: make type int
+    }
+    // TODO: add check here for if we have specifiers AND a type...
 
     // Here we finally build and return our declaration specifiers
     DeclarationSpecifiers specifiers = 

@@ -24,7 +24,7 @@
 
 char test_pgm[] = {
         // #embed "/usr/include/stdio.h"
-        // #embed "../../external/sqlite3/sqlite3.c"
+        // #embed "../../external/sqlite3/sqlite3.i"
         #embed "test.c"
         // #embed "src/parse/parser.c"
 //         #embed "../../external/c-testsuite/tests/single-exec/00004.c"

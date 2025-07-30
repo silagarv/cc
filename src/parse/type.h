@@ -58,6 +58,27 @@ typedef enum TypeFunctionSpecifier {
     TYPE_FUNCTION_SPECIFIER_INLINE
 } TypeFunctionSpecifier;
 
+// This is only used while parsing a declaration with an inbuilt type
+typedef enum TypeSpecifier {
+    // All of the base specifiers are listed here
+    TYPE_SPECIFIER_NONE = 0,
+    TYPE_SPECIFIER_VOID = 1 << 0,
+    TYPE_SPECIFIER_CHAR = 1 << 1,
+    TYPE_SPECIFIER_SHORT = 1 << 2,
+    TYPE_SPECIFIER_INT = 1 << 3,
+    TYPE_SPECIFIER_LONG = 1 << 4,
+    TYPE_SPECIFIER_FLOAT = 1 << 5,
+    TYPE_SPECIFIER_DOUBLE = 1 << 6,
+    TYPE_SPECIFIER_SIGNED = 1 << 7,
+    TYPE_SPECIFIER_UNSIGNED = 1 << 8,
+    TYPE_SPECIFIER_BOOL = 1 << 9,
+    TYPE_SPECIFIER_COMPLEX = 1 << 10,
+    TYPE_SPECIFIER_IMAGINAIRY = 1 << 11,
+
+    // These are ones which we need to actually be able to use the information
+    TYPE_SPECIFIER_LONG_LONG = 1 << 12,
+} TypeSpecifier;
+
 typedef union Type Type;
 
 // The base type telling us how to interpret it
@@ -185,6 +206,9 @@ bool type_qualifier_is_const(TypeQualifiers qualifiers);
 bool type_qualifier_is_restrict(TypeQualifiers qualifiers);
 bool type_qualifier_is_volatile(TypeQualifiers qualifiers);
 bool type_qualifier_already_has(TypeQualifiers qualifiers, TypeQualifiers has);
+
+// Some logic here on how type specifiers can combine
+bool type_specifier_has(TypeSpecifier current, TypeSpecifier new);
 
 // Functions to create our basic types
 Type* type_create_error(void);

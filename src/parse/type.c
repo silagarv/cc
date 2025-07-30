@@ -27,6 +27,11 @@ bool type_qualifier_already_has(TypeQualifiers qualifiers, TypeQualifiers has)
     return (qualifiers & has) != 0;
 }
 
+bool type_specifier_has(TypeSpecifier current, TypeSpecifier new)
+{
+    return (current & new) != 0;
+}
+
 static Type* type_create_simple(TypeKind kind)
 {
     Type* t = xmalloc(sizeof(Type));
