@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "util/panic.h"
+#include "util/str.h"
 #include "util/xmalloc.h"
 
 #include "driver/diagnostic.h"
@@ -1147,15 +1148,6 @@ static Statement* parse_compound_statement(Parser* parser)
 {
     match(parser, TOKEN_LCURLY);
 
-    // TODO: can either be a declarations or a statement
-    // TODO: so we will need some way to easily differentiate between the two
-    // TODO: idk maybe statement start set or declarations start set
-
-    // for now we will just parse a statement
-
-    // TODO: this may not work later so we will need to change this to
-    // TODO: check for statements startings...
-
     while (!is_match(parser, TOKEN_RCURLY))
     {
         parse_statement(parser);
@@ -1183,141 +1175,184 @@ static Statement* parse_expression_statement(Parser* parser)
 
     return NULL;
 }
-static Statement* parse_selection_statement(Parser* parser)
+
+static Statement* parse_if_statement(Parser* parser)
 {
-    switch (curr_type(parser->stream))
+    const Token* if_token = get_curr_token(parser);
+    
+    require(parser, TOKEN_IF);
+
+    match(parser, TOKEN_LPAREN);
+
+    Expression* cond = parse_expression(parser);
+
+    match(parser, TOKEN_RPAREN);
+
+    Statement* if_body = parse_statement(parser);
+
+    if (is_match(parser, TOKEN_ELSE))
     {
-        case TOKEN_IF:
-            match(parser, TOKEN_IF);
-            match(parser, TOKEN_LPAREN);
-            parse_expression(parser);
-            match(parser, TOKEN_RPAREN);
-            parse_statement(parser);
-            // This will take care of matching the else to the closest if...
-            if (is_match(parser, TOKEN_ELSE))
-            {
-                match(parser, TOKEN_ELSE);
-                parse_statement(parser);
-            }
-            break;
+        require(parser, TOKEN_ELSE);
 
-        case TOKEN_SWITCH:
-            match(parser, TOKEN_SWITCH);
-            match(parser, TOKEN_LPAREN);
-            parse_expression(parser);
-            match(parser, TOKEN_RPAREN);
-            parse_statement(parser);
-            break;
-
-        default:
-            panic("bad selection statement start");
-            break;
+        Statement* else_body = parse_statement(parser);
     }
+
+    // TODO: build the if statement fully here
 
     return NULL;
 }
-static Statement* parse_iteration_statement(Parser* parser)
+
+static Statement* parse_switch_statement(Parser* parser)
 {
-    switch (curr_type(parser->stream))
-    {
-        case TOKEN_WHILE:
-            match(parser, TOKEN_WHILE);
-            match(parser, TOKEN_LPAREN);
-            parse_expression(parser);
-            match(parser, TOKEN_RPAREN);
-            parse_statement(parser);
-            break;
+    const Token* switch_token = get_curr_token(parser);
 
-        case TOKEN_DO:
-            match(parser, TOKEN_DO);
-            parse_statement(parser);
-            match(parser, TOKEN_WHILE);
-            match(parser, TOKEN_LPAREN);
-            parse_expression(parser);
-            match(parser, TOKEN_RPAREN);
-            match(parser, TOKEN_SEMI);
-            break;
+    require(parser, TOKEN_SWITCH);
 
-        case TOKEN_FOR:
-            match(parser, TOKEN_FOR);
-            match(parser, TOKEN_LPAREN);
+    match(parser, TOKEN_LPAREN);
 
-            // TODO: for now we will assume that we have 3 expressions just
-            // TODO: because I can but this will need to be redone later
+    Expression* expr = parse_expression(parser);
 
-            // TODO: additionally like below some distinction of declaration
-            // vs expression start is needed
+    match(parser, TOKEN_RPAREN);
 
-            // TODO: this first one should also handle a declaration
-            // TODO: but im not sure how to do that just yet
-            if (!is_match(parser, TOKEN_SEMI))
-            {
-                parse_expression(parser);
-            }
-
-            match(parser, TOKEN_SEMI);
-
-            if (!is_match(parser, TOKEN_SEMI))
-            {
-                parse_expression(parser);
-            }
-            match(parser, TOKEN_SEMI);
-
-            if (!is_match(parser, TOKEN_RPAREN))
-            {
-                parse_expression(parser);
-            }
-            match(parser, TOKEN_RPAREN);
-
-            parse_statement(parser);
-            break;
-
-        default:
-            panic("bad iteration statement value");
-            break;
-    }
+    Statement* body = parse_statement(parser);
 
     return NULL;
 }
-static Statement* parse_jump_statement(Parser* parser)
+
+static Statement* parse_while_statement(Parser* parser)
 {
-    switch (curr_type(parser->stream))
+    const Token* while_token = get_curr_token(parser);
+
+    require(parser, TOKEN_WHILE);
+
+    match(parser, TOKEN_LPAREN);
+
+    Expression* cond = parse_expression(parser);
+
+    match(parser, TOKEN_RPAREN);
+
+    Statement* body = parse_statement(parser);
+
+    return NULL;
+}
+
+static Statement* parse_do_while_statement(Parser* parser)
+{
+    const Token* do_token = get_curr_token(parser);
+
+    require(parser, TOKEN_DO);
+
+    Statement* body = parse_statement(parser);
+
+    match(parser, TOKEN_WHILE);
+
+    match(parser, TOKEN_LPAREN);
+
+    Expression* cond = parse_expression(parser);
+
+    match(parser, TOKEN_RPAREN);
+
+    match(parser, TOKEN_SEMI);
+
+    return NULL;
+}
+
+static Statement* parse_for_statement(Parser* parser)
+{
+    const Token* for_token = get_curr_token(parser);
+
+    require(parser, TOKEN_FOR);
+
+    match(parser, TOKEN_LPAREN);
+
+    // Below if where it gets a little tricky :)
+    if (!is_match(parser, TOKEN_SEMI))
     {
-        case TOKEN_GOTO:
-            match(parser, TOKEN_GOTO);
-            match(parser, TOKEN_IDENTIFIER);
-            match(parser, TOKEN_SEMI);
-            break;
-
-        case TOKEN_CONTINUE:
-            match(parser, TOKEN_CONTINUE);
-            match(parser, TOKEN_SEMI);
-            break;
-
-        case TOKEN_BREAK:
-            match(parser, TOKEN_BREAK);
-            match(parser, TOKEN_SEMI);
-            break;
-
-        case TOKEN_RETURN:
-            match(parser, TOKEN_RETURN);
-            // TODO: this is hacky way of doing this would be much cleaner
-            // TODO: to check if we're about to start an expression instead
-            if (is_match(parser, TOKEN_SEMI))
-            {
-                // DO NOTHING
-            }
-            else
-            {
-                parse_expression(parser);
-            }
-            match(parser, TOKEN_SEMI);
-            break;
-
-        default:
-            panic("bad jump statement token");
-            break;
+        if (is_typename_start(parser, get_curr_token(parser)))
+        {
+            // TODO: how do I deal with this?
+            parse_declaration(parser);
+            
+            // MASSIVE TODO: there is a but while parsing a declaration where
+            // we do not eat a semi-colon and this needs to be fixed for this
+            // to work properly but I'm not sure where this is just yet :)
+            // goto skip_semi;
+        }
+        else
+        {
+            Expression* expr1 = parse_expression(parser);
+        }
     }
+
+    match(parser, TOKEN_SEMI);
+
+// skip_semi:
+    if (!is_match(parser, TOKEN_SEMI))
+    {
+        Expression* expr2 = parse_expression(parser);
+    }
+
+    match(parser, TOKEN_SEMI);
+
+    if (!is_match(parser, TOKEN_RPAREN))
+    {
+        Expression* expr3 = parse_expression(parser);
+    }
+
+    match(parser, TOKEN_RPAREN);
+
+    return NULL;
+}
+
+static Statement* parse_goto_statement(Parser* parser)
+{
+    const Token* goto_token = get_curr_token(parser);
+
+    require(parser, TOKEN_GOTO);
+
+    const Token* label_name = get_curr_token(parser);
+
+    match(parser, TOKEN_IDENTIFIER);
+
+    match(parser, TOKEN_SEMI);
+
+    return NULL;
+}
+
+static Statement* parse_continue_statement(Parser* parser)
+{
+    const Token* continue_token = get_curr_token(parser);
+
+    require(parser, TOKEN_CONTINUE);
+
+    match(parser, TOKEN_SEMI);
+
+    return NULL;
+}
+
+static Statement* parse_break_statement(Parser* parser)
+{
+    const Token* break_token = get_curr_token(parser);
+
+    require(parser, TOKEN_BREAK);
+
+    match(parser, TOKEN_SEMI);
+
+    return NULL;
+}
+
+static Statement* parser_return_statement(Parser* parser)
+{
+    const Token* return_token = get_curr_token(parser);
+
+    require(parser, TOKEN_RETURN);
+
+    if (!is_match(parser, TOKEN_SEMI))
+    {
+        Expression* expr = parse_expression(parser);
+    }
+
+    match(parser, TOKEN_SEMI);
 
     return NULL;
 }
@@ -1325,7 +1360,6 @@ static Statement* parse_jump_statement(Parser* parser)
 static Statement* parse_statement(Parser* parser)
 {
     Statement* stmt;
-
     switch(curr_type(parser->stream))
     {
         // Here we are specifically looking for a label
@@ -1335,7 +1369,7 @@ static Statement* parse_statement(Parser* parser)
         case TOKEN_IDENTIFIER:
             if (next_type(parser->stream) != TOKEN_COLON)
             {
-                goto case_expression_statement;
+                goto expression_statement;
             }
             stmt = parse_label_statement(parser);
             break;
@@ -1361,32 +1395,43 @@ static Statement* parse_statement(Parser* parser)
             break;
 
         case TOKEN_IF:
+            stmt = parse_if_statement(parser);
+            break;
+
         case TOKEN_SWITCH:
-            stmt = parse_selection_statement(parser);
+            stmt = parse_switch_statement(parser);
             break;
 
         case TOKEN_WHILE:
+            stmt = parse_while_statement(parser);
+            break;
+
         case TOKEN_DO:
+            stmt = parse_do_while_statement(parser);
+            break;
+
         case TOKEN_FOR:
-            stmt = parse_iteration_statement(parser);
+            stmt = parse_for_statement(parser);
             break;
 
         case TOKEN_GOTO:
+            stmt = parse_goto_statement(parser);
+            break;
+
         case TOKEN_CONTINUE:
+            stmt = parse_continue_statement(parser);
+            break;
+
         case TOKEN_BREAK:
+            stmt = parse_break_statement(parser);
+            break;
+
         case TOKEN_RETURN:
-            stmt = parse_jump_statement(parser);
+            stmt = parser_return_statement(parser);
             break;
 
         default:
-            // For now we should just try to parse an expression statement
-            // even if that might not be right
-            
-            // TODO: eventually we want to change this to make an error statement
-            // TODO: and will move the logic of parsing an expression to elsewhere
-
-            // TODO: improve the logic here to handle this case better
-case_expression_statement:
+expression_statement:
             if (is_expression_start(parser, get_curr_token(parser)))
             {
                 stmt = parse_expression_statement(parser);    
@@ -1399,6 +1444,7 @@ case_expression_statement:
             }
             else
             {
+                // TODO: make an error statement here?
                 stmt = NULL;
 
                 match(parser, TOKEN_EOF);
@@ -1409,13 +1455,10 @@ case_expression_statement:
             break;
     }
 
-    if (stmt != NULL)
-    {
-        panic("random test");
-    }
-
-    return NULL;
+    return stmt;
 }
+
+// Below is things for declarations
 
 static Declaration* parse_designation(Parser* parser)
 {
