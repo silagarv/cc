@@ -327,6 +327,7 @@ static bool has_match(Parser* parser, const TokenType* types, size_t count)
 
 // TODO: we definitely want to add methods like for example the below
 static bool is_typename_start(Parser* parser, const Token* tok);
+
 static bool is_expression_start(Parser* parser, const Token* tok);
 // TODO: however I think we will need a symbol table and stuff for the next part
 // TODO: for sure though
@@ -488,111 +489,122 @@ static bool is_expression_start(Parser* parser, const Token* tok)
     }
 }
 
+static bool is_string_token(Parser* parser, const Token* tok)
+{
+    (void) parser;
+
+    switch (tok->type)
+    {
+        case TOKEN_STRING:
+        case TOKEN_WIDE_STRING:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
 static Expression* parse_primary_expression(Parser* parser)
 {
-    // TODO: make sure we handle wide strings, stirngs, wide chars, and chars
-    // TODO: propeperly
-
-    /* for now just match numbers */
-    if (is_match(parser, TOKEN_LPAREN))
+    const Token* current_token = get_curr_token(parser);
+    switch (current_token->type)
     {
-        // TODO: here when we create the expression make sure it is set to
-        // TODO: be in parens
-
-        match(parser, TOKEN_LPAREN);
-
-        parse_expression(parser);
-
-        match(parser, TOKEN_RPAREN);
-    }
-    else if (is_match(parser, TOKEN_IDENTIFIER))
-    {
-        match(parser, TOKEN_IDENTIFIER);
-    }
-    else if (is_match(parser, TOKEN_NUMBER))
-    {
-        const Token* token = curr(parser->stream);
-        require(parser, TOKEN_NUMBER);
-
-        IntegerValue value = {0};
-        const bool success = parse_integer_literal(&value, token);
-        if (!success)
+        case TOKEN_LPAREN: 
         {
-            panic("bad integer conversion");
+            require(parser, TOKEN_LPAREN);
+
+            Expression* expr = parse_expression(parser);
+
+            match(parser, TOKEN_RPAREN);
+
+            return expr;
+        }
+        
+        case TOKEN_IDENTIFIER:
+        {
+            require(parser, TOKEN_IDENTIFIER);
 
             return NULL;
-
-            return create_error_expression(token);
         }
-        else
+
+        case TOKEN_NUMBER:
         {
-            return NULL;
+            require(parser, TOKEN_NUMBER);
 
-            return create_integer_expression(token, &value);
+            IntegerValue value = {0};
+            const bool success = parse_integer_literal(&value, current_token);
 
-            // printf("'%s': %lu\n", token_get_string(curr(parser->stream)), value.value);
-        }
-    }
-    else if (has_match(parser, (TokenType[]) {TOKEN_STRING, TOKEN_WIDE_STRING}, 2))
-    {
-        // Here we want to collect all of the string literals into one vector
-        // so that we can then combine all of these into one string
-        const Token* start_token = curr(parser->stream);
-        size_t count = 0;
-
-        while (has_match(parser, (TokenType[]) {TOKEN_STRING, TOKEN_WIDE_STRING}, 2))
-        {
-            if (is_match(parser, TOKEN_WIDE_STRING))
+            Expression* expr;
+            if (!success)
             {
-                panic("cannot convert wide string literals yet");
+                diag_error("integer literal conversion failed");
+
+                expr = create_error_expression(current_token);
+            }
+            else
+            {
+                expr = create_integer_expression(current_token, &value);
             }
 
-            require(parser, TOKEN_STRING);
-
-            count++;
+            return expr;
         }
 
-        StringLiteral string = {0};
-        const bool success = parse_string_literal(&string, start_token, count);
-        if (!success)
+        case TOKEN_STRING:
+        case TOKEN_WIDE_STRING:
         {
-            panic("bad string literal conversion");
+            size_t string_count = 0;
+            while (is_string_token(parser, get_curr_token(parser)))
+            {
+                require(parser, get_curr_token(parser)->type);
 
-            return create_error_expression(start_token);
+                string_count++;
+            }
+
+            StringLiteral string = {0};
+            const bool success = parse_string_literal(&string, current_token, string_count);
+
+            Expression* expr;
+            if (!success)
+            {
+                diag_error("string concatenation and conversion failed");
+
+                expr = create_error_expression(current_token);
+            }
+            else
+            {
+                expr = create_string_expression(current_token, &string);
+            }
+
+            return expr;
         }
-        else
+        
+        case TOKEN_CHARACTER:
         {
-            return create_string_expression(start_token, &string);
+            require(parser, TOKEN_CHARACTER);
+
+            CharValue value = {0};
+            const bool success = parse_char_literal(&value, current_token);
+
+            Expression* expr;
+            if (!success)
+            {
+                diag_error("character conversion failed");
+
+                expr = create_error_expression(current_token);
+            }
+            else
+            {
+                expr = create_character_expression(current_token, &value);
+            }
+
+            return expr;
         }
+
+        default:
+            diag_error("expected expression");
+
+            return create_error_expression(current_token);
     }
-    else if (is_match(parser, TOKEN_CHARACTER))
-    {
-        // Get and match the token
-        const Token* token = curr(parser->stream);
-        require(parser, TOKEN_CHARACTER);
-
-        CharValue value = {0};
-        bool success = parse_char_literal(&value, token);
-
-        if (!success)
-        {
-            panic("bad char conversion");
-
-            return create_error_expression(token);
-        }
-        else
-        {
-            return create_character_expression(token, &value);
-        }
-    }
-    else
-    {
-        match(parser, TOKEN_EOF);
-
-        panic("expected expression");
-    }
-
-    return NULL;
 }
 
 static Expression* parse_postfix_expression(Parser* parser)
@@ -603,7 +615,7 @@ static Expression* parse_postfix_expression(Parser* parser)
      * that function for details
      */
 
-    parse_primary_expression(parser);
+    Expression* primary_expr = parse_primary_expression(parser);
 
     while (has_match(parser, (TokenType[]) {TOKEN_LBRACKET, TOKEN_LPAREN,
             TOKEN_DOT, TOKEN_ARROW, TOKEN_PLUS_PLUS, TOKEN_MINUS_MINUS}, 6))
