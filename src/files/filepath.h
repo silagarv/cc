@@ -21,5 +21,6 @@ bool filepath_get_current_path(Filepath* path);
 Filepath filepath_from_cstring(const char* path);
 
 bool filepath_is_absolute(const Filepath* path);
+bool filepath_is_directory(const Filepath* path);
 
 #endif /* FILEPATH_H */

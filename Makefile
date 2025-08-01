@@ -21,7 +21,8 @@ UTIL = src/util/panic.c \
 	src/util/arena.c \
 	src/util/hash.c
 
-FILES = src/files/filepath.c
+FILES = src/files/filepath.c \
+	src/files/source_file.c
 
 DRIVER = src/driver/diagnostic.c \
 	src/driver/target.c \

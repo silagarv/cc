@@ -1,5 +1,6 @@
 #include "parser.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -74,6 +75,8 @@ static bool is_valid_stream_position(TokenStream* stream)
 {
     return (stream->current_token < stream->count);
 }
+
+void* malloc(size_t);
 
 // Return the type of the current token in a token stream
 static TokenType curr_type(TokenStream* stream)
@@ -752,9 +755,7 @@ static Expression* parse_cast_expression(Parser* parser)
     {
         require(parser, TOKEN_LPAREN);
 
-
-        Declaration* decl = parse_type_name(parser);
-        
+        Type* type = parse_type_name(parser);
         
         match(parser, TOKEN_RPAREN);
 
@@ -781,7 +782,7 @@ static Expression* parse_cast_expression(Parser* parser)
         }
     }
 
-    parse_unary_expression(parser);
+    Expression* expr = parse_unary_expression(parser);
 
     return NULL;
 }
