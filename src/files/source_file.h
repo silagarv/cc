@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "util/buffer.h"
 #include "files/filepath.h"
 #include "lex/location.h"
 
@@ -38,7 +39,7 @@ typedef struct FileManager {
     size_t cap_files;
 
 
-
+    
     
 } FileManager;
 
@@ -46,5 +47,12 @@ typedef struct FileManager {
 // is not a valid file. This will help us to cache results even if they are
 // invalid
 SourceFile* source_file_try_create(Filepath* path);
+
+// This will be used to create a user made buffer either through commmand line
+// defines and includes (or builtin defines and that kind of thing) or through
+// token concatenation and pasting
+SourceFile* source_file_from_buffer(Filepath* name, Buffer buffer);
+
+
 
 #endif /* SOURCE_FILE_H */

@@ -42,25 +42,6 @@ int main(int argc, char** argv)
 {
     diag_init();
 
-    // char test_pgm[] =
-    //     "L\"m\?eow\"\\\n"
-    //     "L'a\n"
-    //     "   \t const int;\\\n"
-    //     "meow poo poo\n"
-    //     "\\\n"
-    //     "inc\\\n"
-    //     "lude stdio h\n"
-    //     "a\\\n"
-    //     "\\\n"
-    //     "\\\n"
-    //     "b\n"
-    //     "meow meow 123.123.12.34.1aE+12\n"
-    //     "a?\?/\n"
-    //     "b\n"
-    //     "meow\n"
-    //     ".\\\n.\\\n.\n"
-    //     "%:include";
-
     const Target t = target_create_x86_64_linux();
 
     Filepath path = FILEPATH_STATIC_INIT("test_pgm.c");

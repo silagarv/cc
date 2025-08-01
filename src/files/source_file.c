@@ -63,3 +63,19 @@ SourceFile* source_file_try_create(Filepath* path)
     return file;
 }
 
+SourceFile* source_file_from_buffer(Filepath* name, Buffer buffer)
+{
+    SourceFile* file = xmalloc(sizeof(SourceFile));
+    *file = (SourceFile) { .name = *name };
+
+    // We need to extract the contents of the buffer and put then into the source
+    // file now
+    file->contents = buffer.buffer;
+    file->end_contents = buffer.buffer + buffer.len;
+    file->contents_size = buffer.len;
+
+    file->has_contents = true;
+
+    return file;
+}
+
