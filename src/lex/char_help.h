@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+typedef uint32_t utf32;
+
 bool is_identifier_start(char c);
 bool is_identifier(char c);
 bool is_numeric(char c);
@@ -27,6 +29,6 @@ unsigned int convert_hexadecimal(char c);
 bool is_valid_character_in_base(char c, int base);
 unsigned int convert_character_base(char c, int base);
 
-bool is_valid_ucn(uint32_t value);
+bool is_valid_ucn(utf32 value);
 
 #endif /* CHAR_HELP_H */

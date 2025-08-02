@@ -582,8 +582,9 @@ static Expression* parse_primary_expression(Parser* parser)
         }
         
         case TOKEN_CHARACTER:
+        case TOKEN_WIDE_CHARACTER:
         {
-            require(parser, TOKEN_CHARACTER);
+            require(parser, current_token->type);
 
             CharValue value = {0};
             const bool success = parse_char_literal(&value, current_token);

@@ -117,16 +117,12 @@ bool is_vertical_whitespace(char c)
 
 bool is_ascii(char c)
 {
-    unsigned char uc = (unsigned char) c;
-
-    // TODO: change to 'uc' since this is a bug lol... but this function is
-    // unused for now though
-    if (uc <= 127)
+    if (c & 0x80)
     {
-        return true;
+        return false;
     }
 
-    return false;
+    return true;
 }
 
 // Check if the character given is a simple escape. Otherwise return false
@@ -262,7 +258,7 @@ unsigned int convert_character_base(char c, int base)
     }
 }
 
-bool is_valid_ucn(uint32_t value)
+bool is_valid_ucn(utf32 value)
 {
     // Stolen directly from CParser preprocessor.c :) from function
     // 'static bool is_universal_char_valid_identifier_c99(utf32 const v)'

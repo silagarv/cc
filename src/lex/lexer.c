@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <assert.h>
 
+#include "lex/unicode.h"
 #include "util/panic.h"
 #include "util/panic.h"
 #include "util/buffer.h"
@@ -1439,9 +1440,14 @@ retry_lexing:;
         default: // Create an unknown token
             if (!is_ascii(curr))
             {
-                printf("Non ascii character encountered\n");
+                utf32 value;
+                bool conversion_success = utf8_to_utf32((unsigned char**) &token_start, 
+                        (unsigned char*) lexer->buffer_end, &value);
+                
+                // TODO: figure out what to do with the value once we have it
+                printf("%lc", value);
 
-                panic("MEOW");
+                panic("Non ascii character encountered");
             }
 
             token->type = TOKEN_UNKNOWN;
