@@ -1166,6 +1166,8 @@ retry_lexing:;
             {
                 token->type = TOKEN_RCURLY;
 
+                token->digraph = true;
+
                 consume_char(lexer);
             }
             else if (curr == ':')
@@ -1178,12 +1180,16 @@ retry_lexing:;
                 {
                     token->type = TOKEN_HASH_HASH;
 
+                    token->digraph = true;
+
                     consume_char(lexer);
                     consume_char(lexer);
                 }
                 else
                 {
                     token->type = TOKEN_HASH;
+
+                    token->digraph = true;
                 }
             }
             else
@@ -1367,11 +1373,15 @@ retry_lexing:;
             {
                 token->type = TOKEN_LBRACKET;
 
+                token->digraph = true;
+
                 consume_char(lexer);
             }
             else if (curr == '%')
             {
                 token->type = TOKEN_LCURLY;
+
+                token->digraph = true;
 
                 consume_char(lexer);
             }
@@ -1416,6 +1426,8 @@ retry_lexing:;
             if (curr == '>')
             {
                 token->type = TOKEN_RBRACKET;
+
+                token->digraph = true;
 
                 consume_char(lexer);
             } 

@@ -171,6 +171,7 @@ typedef struct Token {
     bool start_of_line; // it the token at the start of  a line
     bool leading_space; // does the token have at least 1 leading whitepsace
     bool disable_expand; // should the token not be expanded
+    bool digraph; // Is this a digraph token (stringification is different)
 
     TokenData data; // data the token needs
 } Token;
