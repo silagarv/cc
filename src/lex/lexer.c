@@ -284,6 +284,7 @@ static void skip_block_comment(Lexer* lexer)
         if (current == '\0' && at_eof(lexer))
         {
             /* TODO: issue warning about unterminated comment */
+
             break;
         }
 
@@ -291,7 +292,7 @@ static void skip_block_comment(Lexer* lexer)
     } while (true);
 }
 
-static bool try_lex_ucn(Lexer* lexer, Token* token, Buffer* buffer, uint32_t* value)
+static bool try_lex_ucn(Lexer* lexer, Token* token, Buffer* buffer, utf32* value)
 {
     assert(get_curr_char(lexer) == '\\');
 
@@ -334,6 +335,10 @@ static bool try_lex_ucn(Lexer* lexer, Token* token, Buffer* buffer, uint32_t* va
     }
 
     assert(num_digits == required_digits);
+
+    // TODO: we actually want to convert to utf8 and add the the buffer instead
+    // TODO: we also need to make the lexing of identifiers a bit different
+    // since we are going to do this as well
 
     // If were here we know we got the required number of digits so let's add
     // them to our buffer along with the leading '\u' or '\U' :)
@@ -739,7 +744,7 @@ static bool lex_identifier(Lexer* lexer, Token* token, char* start)
         // then we can continue
         if (current == '\\')
         {
-            uint32_t value;
+            utf32 value;
             if (!try_lex_ucn(lexer, token, &identifier, &value))
             {
                 break;
