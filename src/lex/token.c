@@ -13,6 +13,21 @@
 #include "util/str.h"
 #include "util/hash.h"
 
+void token_set_flag(Token* token, TokenFlags flag)
+{
+    token->flags |= flag;
+}
+
+void token_unset_flag(Token* token, TokenFlags flag)
+{
+    token->flags &= ~flag;
+}
+
+bool token_has_flag(const Token* token, TokenFlags flag)
+{
+    return (token->flags & flag) != 0;
+}
+
 bool token_is_identifier(const Token* token)
 {
     switch (token->type) 

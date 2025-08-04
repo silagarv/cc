@@ -141,3 +141,10 @@ bool utf8_to_utf32(unsigned char** current_ptr, const unsigned char* end, utf32*
 
     return true;
 }
+
+bool ucn_add_to_buffer(utf32 value, Buffer to_add)
+{
+    // TODO: implement this
+
+    return false;
+}

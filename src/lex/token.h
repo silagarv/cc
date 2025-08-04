@@ -161,6 +161,16 @@ typedef union TokenData {
     LiteralNode* literal;
 } TokenData;
 
+// Different flags for our token to store
+typedef enum TokenFlags {
+    TOKEN_FLAG_NONE = 0, // Represents no flag
+    TOKEN_FLAG_BOL = 1 << 0, // Beginning of line
+    TOKEN_FLAG_WHITESPACE = 1 << 1, // leading space
+    TOKEN_FLAG_DISABLE_EXPAND = 1 << 2, // disable expand
+    TOKEN_FLAG_DIGRAPH = 1 << 3, // Are we a digraph
+    TOKEN_FLAG_4 = 1 << 4, // 
+} TokenFlags;
+
 // The structure of a token in order to capture all of the relavent information
 typedef struct Token {
     Location loc; // the starting character in the token
@@ -168,13 +178,26 @@ typedef struct Token {
 
     TokenType type; // The type of token
     
-    bool start_of_line; // it the token at the start of  a line
-    bool leading_space; // does the token have at least 1 leading whitepsace
-    bool disable_expand; // should the token not be expanded
-    bool digraph; // Is this a digraph token (stringification is different)
+    TokenFlags flags; // the flags of the token
 
     TokenData data; // data the token needs
 } Token;
+
+void token_set_flag(Token* token, TokenFlags flag);
+void token_unset_flag(Token* token, TokenFlags flag);
+bool token_has_flag(const Token* token, TokenFlags flag);
+
+bool token_is_identifier(const Token* token);
+bool token_is_literal(const Token* token);
+bool token_is_string(const Token* token);
+
+TokenData token_create_identifier_node(String string);
+TokenData token_create_literal_node(String string);
+
+void token_free_data(Token* tok);
+void token_free(Token* tok);
+
+size_t token_get_length(Token* tok);
 
 typedef struct TokenList {
     Token* tokens;
@@ -189,23 +212,11 @@ typedef struct TokenStream {
     size_t current_token;
 } TokenStream;
 
-bool token_is_identifier(const Token* token);
-bool token_is_literal(const Token* token);
-bool token_is_string(const Token* token);
-
-TokenData token_create_identifier_node(String string);
-TokenData token_create_literal_node(String string);
-
-void token_free_data(Token* tok);
-void token_free(Token* tok);
-
 const char* token_type_get_name(TokenType type);
 
 bool token_has_data(Token* tok);
 const char* token_get_name(Token* tok);
 const char* token_get_string(Token* tok);
-
-size_t token_get_length(Token* tok);
 
 bool token_equal_string(Token* tok, const char* str);
 

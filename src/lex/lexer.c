@@ -964,9 +964,10 @@ retry_lexing:;
 
     token->type = TOKEN_UNKNOWN;
 
-    token->leading_space = whitespace;
-    token->start_of_line = lexer->start_of_line;
-    token->disable_expand = false;
+    // Make sure our token flags are correctly set up
+    token_set_flag(token, whitespace ? TOKEN_FLAG_WHITESPACE : TOKEN_FLAG_NONE);
+    token_set_flag(token, lexer->start_of_line ? TOKEN_FLAG_BOL: TOKEN_FLAG_NONE);
+    token_unset_flag(token, TOKEN_FLAG_DISABLE_EXPAND);
 
     token->data = (TokenData) {0};
 
@@ -1171,7 +1172,7 @@ retry_lexing:;
             {
                 token->type = TOKEN_RCURLY;
 
-                token->digraph = true;
+                token_set_flag(token, TOKEN_FLAG_DIGRAPH);
 
                 consume_char(lexer);
             }
@@ -1185,7 +1186,7 @@ retry_lexing:;
                 {
                     token->type = TOKEN_HASH_HASH;
 
-                    token->digraph = true;
+                    token_set_flag(token, TOKEN_FLAG_DIGRAPH);
 
                     consume_char(lexer);
                     consume_char(lexer);
@@ -1194,7 +1195,7 @@ retry_lexing:;
                 {
                     token->type = TOKEN_HASH;
 
-                    token->digraph = true;
+                    token_set_flag(token, TOKEN_FLAG_DIGRAPH);
                 }
             }
             else
@@ -1378,7 +1379,7 @@ retry_lexing:;
             {
                 token->type = TOKEN_LBRACKET;
 
-                token->digraph = true;
+                token_set_flag(token, TOKEN_FLAG_DIGRAPH);
 
                 consume_char(lexer);
             }
@@ -1386,7 +1387,7 @@ retry_lexing:;
             {
                 token->type = TOKEN_LCURLY;
 
-                token->digraph = true;
+                token_set_flag(token, TOKEN_FLAG_DIGRAPH);
 
                 consume_char(lexer);
             }
@@ -1432,7 +1433,7 @@ retry_lexing:;
             {
                 token->type = TOKEN_RBRACKET;
 
-                token->digraph = true;
+                token_set_flag(token, TOKEN_FLAG_DIGRAPH);
 
                 consume_char(lexer);
             } 

@@ -26,6 +26,8 @@ typedef struct Lexer {
 Lexer lexer(const char* buffer_start, const char* buffer_end, Location start_loc);
 Lexer lexer_from_buffer(Buffer buffer, Location start_loc);
 
+
+
 bool lexer_get_next(Lexer* lexer, Token* tok);
 
 #endif /* LEXER_H */
