@@ -26,6 +26,7 @@ char test_pgm[] = {
         // #embed "/usr/include/stdio.h"
         // #embed "../../external/sqlite3/sqlite3.i"
         #embed "test.c"
+        // #embed "../sqlite-autoconf-3490100/sqlite3.c"
         // #embed "src/parse/parser.c"
 //         #embed "../../external/c-testsuite/tests/single-exec/00004.c"
     ,'\0'
@@ -96,6 +97,8 @@ int main(int argc, char** argv)
             break;
         }
     }
+
+    return 0;
 
     TokenStream stream = token_list_to_stream(&tokens);
     parse_translation_unit(&stream, &map);

@@ -62,6 +62,11 @@ static void set_position(Lexer* lexer, char* pos)
     lexer->current_ptr = pos;
 }
 
+static char get_char_fast(Lexer* lexer)
+{
+    return *lexer->current_ptr;
+}
+
 static char get_trigraph(char c)
 {
     switch (c)
@@ -89,13 +94,18 @@ static bool is_simple_char(char c)
     return true;   
 }
 
-static char get_char_and_size_slow(const Lexer* lexer, size_t* peek, char curr);
-static char get_char_and_size(const Lexer* lexer, size_t* peek);
+// note that these functions are nice enough that hopefully they can be
+// inlined into the non-raw versions. Also note that these are here to enable
+// us to get the spelling of the token
+static char get_char_and_size_slow_raw(const char* curr_ptr, const char* end_ptr, 
+        size_t* peek, char curr);
+static char get_char_and_size_raw(const char* curr_ptr, const char* end_ptr,
+        size_t* peek);
 
-// Get a the next character and the number of char's it took to get to it 
-static char get_char_and_size(const Lexer* lexer, size_t* peek)
+static char get_char_and_size_raw(const char* curr_ptr, const char* end_ptr,
+        size_t* peek)
 {
-    const char current = lexer->current_ptr[*peek];
+    const char current = curr_ptr[*peek];
 
     if (is_simple_char(current))
     {
@@ -103,16 +113,15 @@ static char get_char_and_size(const Lexer* lexer, size_t* peek)
         return current;
     }
     
-    return get_char_and_size_slow(lexer, peek, current);
+    return get_char_and_size_slow_raw(curr_ptr, end_ptr, peek, current);
 }
 
-// Note this is strict on the rules in the c standard. Maybe we don't want
-// to be this strict in the future. So this method could be subject to change.
-static char get_char_and_size_slow(const Lexer* lexer, size_t* peek, char curr)
+static char get_char_and_size_slow_raw(const char* curr_ptr, const char* end_ptr, 
+        size_t* peek, char curr)
 {
     assert(!is_simple_char(curr));
 
-    const char next = lexer->current_ptr[*peek + 1];
+    const char next = curr_ptr[*peek + 1];
 
     if (curr == '\\' && next == '\n')
     {
@@ -122,17 +131,17 @@ static char get_char_and_size_slow(const Lexer* lexer, size_t* peek, char curr)
         // possibly add a warning here in the future. This is necessary to
         // prevent peek increasing by another and then the possible later call
         // to function 'seek' failing.
-        if (lexer->current_ptr + *peek == lexer->buffer_end)
+        if (curr_ptr + *peek == end_ptr)
         {
             return '\0';
         }
 
-        return get_char_and_size(lexer, peek);
+        return get_char_and_size_raw(curr_ptr, end_ptr, peek);
     }
 
     if (curr == '?' && next == '?')
     {
-        const char trigraph = get_trigraph(lexer->current_ptr[*peek + 2]);
+        const char trigraph = get_trigraph(curr_ptr[*peek + 2]);
         const bool has_trigraph = (trigraph != '\0');
 
         if (!has_trigraph)
@@ -144,10 +153,10 @@ static char get_char_and_size_slow(const Lexer* lexer, size_t* peek, char curr)
         // In the future we may want to diagnose the use of a trigraph in souce
         // but for now we will just leave this here.
 
-        if (trigraph == '\\' && lexer->current_ptr[*peek + 3] == '\n') 
+        if (trigraph == '\\' && curr_ptr[*peek + 3] == '\n') 
         {
             *peek += 4;
-            return get_char_and_size(lexer, peek);
+            return get_char_and_size_raw(curr_ptr, end_ptr, peek);
         } 
         else 
         {
@@ -159,6 +168,23 @@ static char get_char_and_size_slow(const Lexer* lexer, size_t* peek, char curr)
     // Not a trigraph or bs newline
     *peek += 1;
     return curr;
+}
+
+static char get_char_and_size_slow(const Lexer* lexer, size_t* peek, char curr);
+static char get_char_and_size(const Lexer* lexer, size_t* peek);
+
+// Get a the next character and the number of char's it took to get to it 
+static char get_char_and_size(const Lexer* lexer, size_t* peek)
+{
+    return get_char_and_size_raw(lexer->current_ptr, lexer->buffer_end, peek);
+}
+
+// Note this is strict on the rules in the c standard. Maybe we don't want
+// to be this strict in the future. So this method could be subject to change.
+static char get_char_and_size_slow(const Lexer* lexer, size_t* peek, char curr)
+{
+    return get_char_and_size_slow_raw(lexer->current_ptr, lexer->buffer_end, 
+            peek, curr);
 }
 
 // Get the current raw character from the stream designed to be as fast as
@@ -198,24 +224,13 @@ static void consume_char(Lexer* lexer)
     seek(lexer, len);
 }
 
-// A hacky way to peek a char. Will leave this here since it is only used in one
-// spot test if we got an elipsis
+// Peek a char by calling get_char_and_size twice whilst retaining the peek in
+// between the calls. A much better solution then before
 static char peek_char(Lexer* lexer)
 {
-    // Get the save point
-    char* pos = get_position(lexer);
-
-    // Consume a char
-    consume_char(lexer);
-
-    // Get the 'current' char i.e. really the next one
-    char peek = get_curr_char(lexer);
-
-    // Reset the position
-    set_position(lexer, pos);
-
-    // Return the char
-    return peek;
+    size_t peek = 0;
+    (void) get_char_and_size(lexer, &peek);
+    return get_char_and_size(lexer, &peek);
 }
 
 // Are we at eof
@@ -974,6 +989,12 @@ retry_lexing:;
     // Set it to false even if it was true before before
     lexer->start_of_line = false;
 
+    // TODO: we should convert all get_next_char / get_curr_char calls into
+    // get_char_and_size calls, then we might have a faster lexer??? since
+    // currently we are forcing the lexer to redo alot of the work which might
+    // not be noticeable on small files but on longer files it might definitely
+    // add up
+
     // Here we will do our actual lexing
     char curr = get_next_char(lexer);
 
@@ -1455,6 +1476,19 @@ retry_lexing:;
         case ',': token->type = TOKEN_COMMA; break;
         case '~': token->type = TOKEN_TILDE; break;
 
+        case '\\': // TODO: ucn starting an identifier
+            curr = get_curr_char(lexer);
+
+            if (curr == 'u')
+            {
+                panic("currently an identifier cannot start a ucn");
+            }
+
+            // RESET TO '\\' FOR NOW ONLY TO CREATE AN UNKNOWN TOKEN TYPE
+            curr = '\\';
+
+            /* FALLTHROUGH */
+
         default: // Create an unknown token
             if (!is_ascii(curr))
             {
@@ -1463,7 +1497,8 @@ retry_lexing:;
                         (unsigned char*) lexer->buffer_end, &value);
                 
                 // TODO: figure out what to do with the value once we have it
-                printf("%lc", value);
+                // probably use the c99 status of if a codepoint is a valid
+                // identifier an go from there
 
                 panic("Non ascii character encountered");
             }
@@ -1486,4 +1521,14 @@ bool lexer_get_next(Lexer* lexer, Token* token)
     reset_token(token);
 
     return lex_internal(lexer, token);
+}
+
+void token_get_spelling(const Token* token, Buffer buff)
+{
+    return;
+}
+
+void token_stringify(const Token* token, Buffer buffer)
+{
+    return;
 }

@@ -144,21 +144,24 @@ typedef enum TokenType {
     TOKEN_LAST
 } TokenType;
 
-// TODO: eventually I would Like to use this structure within the token
+
+
 typedef struct IdentifierNode {
     String value;
     uint32_t hash;
+    char* starting_ptr;
 } IdentifierNode;
 
-// TODO: add literal parsing into the lexing process so that we don't have to
-// do it in the parsing stage???
 typedef struct LiteralNode {
     String value;
+    char* starting_ptr;
 } LiteralNode;
 
+// From TokenData we should always be able to retrieve the token spelling back
 typedef union TokenData {
     IdentifierNode* identifier;
     LiteralNode* literal;
+    char* starting_ptr;
 } TokenData;
 
 // Different flags for our token to store
@@ -167,8 +170,7 @@ typedef enum TokenFlags {
     TOKEN_FLAG_BOL = 1 << 0, // Beginning of line
     TOKEN_FLAG_WHITESPACE = 1 << 1, // leading space
     TOKEN_FLAG_DISABLE_EXPAND = 1 << 2, // disable expand
-    TOKEN_FLAG_DIGRAPH = 1 << 3, // Are we a digraph
-    TOKEN_FLAG_4 = 1 << 4, // 
+    TOKEN_FLAG_DIGRAPH = 1 << 3, // Are we a digraph // TODO: should I get rid of this
 } TokenFlags;
 
 // The structure of a token in order to capture all of the relavent information

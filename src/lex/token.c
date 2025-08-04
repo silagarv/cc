@@ -359,11 +359,10 @@ const char* token_get_string(Token* tok)
     return string_get_ptr(string);
 }
 
+// Get the length of the token as represented within the source
 size_t token_get_length(Token* tok)
 {
-    // Bit of a cheat here
-    // TODO: maybe turn into switch??? or maybe not??
-    return (tok->end - tok->loc);
+    return (tok->end - tok->loc + 1);
 }
 
 static size_t token_get_real_length(const Token* token)

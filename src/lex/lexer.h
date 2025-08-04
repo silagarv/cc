@@ -19,15 +19,18 @@ typedef struct Lexer {
     bool can_lex_header;
 } Lexer;
 
-/* create a lexer. No heap allocations needed, so can just fade away into the
- * stack once we are done with it. (Since we do not take ownership of the 
- * buffer given).
- */
+
+// Create a lexer on the stack, no heap allocations needed for it at all
 Lexer lexer(const char* buffer_start, const char* buffer_end, Location start_loc);
 Lexer lexer_from_buffer(Buffer buffer, Location start_loc);
 
-
-
+// Get the next token from the lexer advancing it's position
 bool lexer_get_next(Lexer* lexer, Token* tok);
+
+// Get the spelling of token and add it to the buffer given
+void token_get_spelling(const Token* token, Buffer buffer);
+
+// Stringify the given token adding it to the buffer
+void token_stringify(const Token* token, Buffer buffer);
 
 #endif /* LEXER_H */
