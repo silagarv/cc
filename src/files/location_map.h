@@ -6,8 +6,7 @@
 #include <stdbool.h>
 
 #include "files/source_file.h"
-
-#include "lex/location.h"
+#include "files/location.h"
 
 // TODO: What to do for line maps when there are multiple files and we need
 // to handle #line directives and such

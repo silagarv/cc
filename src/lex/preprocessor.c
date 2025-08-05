@@ -8,7 +8,8 @@
 #include "util/buffer.h"
 #include "util/str.h"
 
-#include "lex/location.h"
+#include "files/location.h"
+
 #include "lex/token.h"
 
 // A routine to destringize a string literal token that was put in the _Pragma

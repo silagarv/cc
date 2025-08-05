@@ -6,7 +6,7 @@
 
 #include "util/str.h"
 
-#include "lex/location.h"
+#include "files/location.h"
 
 // Our token types here
 // Note that we use the pp definitions of tokens mainly which are then converted

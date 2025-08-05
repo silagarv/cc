@@ -3,7 +3,8 @@
 
 #include "util/buffer.h"
 
-#include "lex/location.h"
+#include "files/location.h"
+
 #include "lex/token.h"
 
 typedef struct Lexer {

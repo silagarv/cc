@@ -1,7 +1,7 @@
 #ifndef EXPRESSION_H
 #define EXPRESSION_H
 
-#include "lex/location.h"
+#include "files/location.h"
 
 #include "parse/type.h"
 #include "parse/literal_parser.h"

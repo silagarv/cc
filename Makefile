@@ -22,7 +22,9 @@ UTIL = src/util/panic.c \
 	src/util/hash.c
 
 FILES = src/files/filepath.c \
-	src/files/source_file.c
+	src/files/file_buffer.c \
+	src/files/source_file.c \
+	src/files/location_map.c \
 
 DRIVER = src/driver/diagnostic.c \
 	src/driver/target.c \
@@ -31,10 +33,7 @@ DRIVER = src/driver/diagnostic.c \
 	src/driver/translation_unit.c \
 	src/driver/driver.c
 
-# FILES = src/files/file_entry.c
-
-LEX = src/lex/location_map.c \
-	src/lex/token.c \
+LEX = src/lex/token.c \
 	src/lex/char_help.c \
 	src/lex/unicode.c \
 	src/lex/lexer.c \

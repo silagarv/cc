@@ -6,14 +6,14 @@
 
 #include "driver/diagnostic.h"
 #include "files/source_file.h"
-#include "lex/location.h"
+#include "files/location.h"
 #include "util/panic.h"
 #include "util/buffer.h"
 #include "util/str.h"
 #include "util/xmalloc.h"
 
 #include "lex/token.h"
-#include "lex/location_map.h"
+#include "files/location_map.h"
 
 #include "parse/parser.h"
 #include "lex/token.h"

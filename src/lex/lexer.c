@@ -7,14 +7,15 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#include "lex/unicode.h"
 #include "util/panic.h"
 #include "util/panic.h"
 #include "util/buffer.h"
 #include "util/str.h"
 
+#include "files/location.h"
+
 #include "lex/char_help.h"
-#include "lex/location.h"
+#include "lex/unicode.h"
 #include "lex/token.h"
 
 #define MAX_UCN_LENGTH (8)

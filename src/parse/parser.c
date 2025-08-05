@@ -15,8 +15,9 @@
 
 #include "driver/diagnostic.h"
 
+#include "files/location_map.h"
+
 #include "lex/token.h"
-#include "lex/location_map.h"
 
 #include "parse/literal_parser.h"
 #include "parse/type.h"

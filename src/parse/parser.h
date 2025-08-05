@@ -4,9 +4,10 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+#include "files/location.h"
+#include "files/location_map.h"
+
 #include "lex/token.h"
-// #include "lex/location.h"
-#include "lex/location_map.h"
 
 // #include "parse/scope.h"
 

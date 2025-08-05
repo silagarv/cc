@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-#include "lex/location.h"
+#include "files/location.h"
 
 #include "parse/expression.h"
 #include "parse/type.h"

@@ -37,8 +37,6 @@ static void source_file_open_and_read(SourceFile* file)
 
     // Close the file
     fclose(f);
-
-    file->has_contents = true;
 }
 
 SourceFile* source_file_try_create(Filepath* path)
@@ -73,8 +71,6 @@ SourceFile* source_file_from_buffer(Filepath* name, Buffer buffer)
     file->contents = buffer.buffer;
     file->end_contents = buffer.buffer + buffer.len;
     file->contents_size = buffer.len;
-
-    file->has_contents = true;
 
     return file;
 }

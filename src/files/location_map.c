@@ -10,7 +10,7 @@
 #include "util/panic.h"
 #include "util/xmalloc.h"
 
-#include "lex/location.h"
+#include "files/location.h"
 
 // TODO: track down bug for end of files location for a well formed file which
 // ends with a newline. (It works fine when the file doesn't end with a newline)
