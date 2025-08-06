@@ -21,6 +21,9 @@ FileBuffer* file_buffer_try_get(Filepath path);
 // Create a file buffer from a buffer with a given name
 FileBuffer* file_buffer_from_buffer(Filepath name, Buffer buffer);
 
+// Free a file buffer structure
+void file_buffer_free(FileBuffer* buffer);
+
 // Get the name give to the FileBuffer object
 const Filepath* file_buffer_get_name(const FileBuffer* buffer);
 

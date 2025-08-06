@@ -1,5 +1,6 @@
 #include "file_buffer.h"
 
+#include <stdlib.h>
 #include <assert.h>
 
 #include "util/buffer.h"
@@ -23,6 +24,13 @@ FileBuffer* file_buffer_from_buffer(Filepath name, Buffer buffer)
     assert(*file->buffer_end == '\0');
 
     return file;
+}
+
+// Free a file buffer structure
+void file_buffer_free(FileBuffer* buffer)
+{
+    free(buffer->buffer_start);
+    free(buffer);
 }
 
 // Get the name give to the FileBuffer object

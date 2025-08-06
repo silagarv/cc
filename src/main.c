@@ -5,6 +5,7 @@
 #include <stdlib.h>
 
 #include "driver/diagnostic.h"
+#include "files/file_buffer.h"
 #include "files/source_file.h"
 #include "files/location.h"
 #include "util/panic.h"
@@ -97,7 +98,7 @@ int main(int argc, char** argv)
 
 
     TokenStream stream = token_list_to_stream(&tokens);
-    parse_translation_unit(&stream, &map);
+    // parse_translation_unit(&stream, &map);
 
     for (size_t i = 0; i < tokens.used; i++)
     {
@@ -106,6 +107,9 @@ int main(int argc, char** argv)
     free(tokens.tokens);
             
     line_map_delete(&map);
+
+    file_buffer_free(file->file_buffer);
+    source_file_free(file);
 
     // Filepath cwd;
     // filepath_get_current_path(&cwd);

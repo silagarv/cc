@@ -32,4 +32,7 @@ typedef struct SourceFile {
 // token concatenation and pasting
 SourceFile* source_file_from_buffer(Filepath name, Buffer buffer, Location include);
 
+// Free a source file structure not including the filebuffer
+void source_file_free(SourceFile* file);
+
 #endif /* SOURCE_FILE_H */

@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <assert.h>
+#include <stdlib.h>
 
 #include "files/file_buffer.h"
 #include "files/location.h"
@@ -73,5 +74,11 @@ SourceFile* source_file_from_buffer(Filepath name, Buffer buffer, Location inclu
     };
 
     return file;
+}
+
+// Free a source file structure not including the filebuffer
+void source_file_free(SourceFile* file)
+{
+    free(file);
 }
 
