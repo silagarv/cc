@@ -2,15 +2,17 @@
 #define LOCATION_H
 
 #include <stdint.h>
-
-#include "files/filepath.h"
+#include <stdbool.h>
 
 typedef uint32_t Location;
 
-typedef struct ResolvedLocation {
-    Filepath* name;
-    uint32_t line;
-    uint32_t col;
-} ResolvedLocation;
+// A simple structure which holds 2 values the starting and ending locations
+typedef struct LocationRange {
+    Location start;
+    Location end;
+} LocationRange;
+
+// Check if a location range contains a specific location
+bool location_range_contains(const LocationRange* range, Location loc);
 
 #endif /* LOCATION_H */

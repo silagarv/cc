@@ -15,7 +15,7 @@
 
 #include "driver/diagnostic.h"
 
-#include "files/location_map.h"
+#include "files/line_map.h"
 
 #include "lex/token.h"
 
@@ -157,8 +157,8 @@ static void parse_error(Parser* parser, const char* fmt, ...)
 {
     Token* tok = get_curr_token(parser);   
 
-    ResolvedLocation loc = line_map_resolve_location(parser->map, tok->loc);
-    fprintf(stderr, "%s:%u:%u\n", loc.name->path, loc.line, loc.col);
+    LocationTriplet loc = line_map_resolve_location(parser->map, tok->loc);
+    fprintf(stderr, "%u:%u:%u\n", loc.id, loc.line, loc.col);
     va_list args;
     va_start(args, fmt);
     diag_verror(fmt, args);

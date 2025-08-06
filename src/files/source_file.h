@@ -14,10 +14,11 @@
 typedef uint32_t SourceFileId;
 
 // A structure representing a source that we are going to use in compilation
+// this structure is made to be nice and lean and contains pointers to data that
+// we are wanting to store elsewhere mainly
 typedef struct SourceFile {
     SourceFileId id; // the id of the source file we got
-    Location start_location; // the starting location of the file
-
+    Location included_location; // where the file was included from (if needed)
     FileBuffer* file_buffer; // the underlying file that we have
 
     // TODO: we want to get rid of all of the below eventually

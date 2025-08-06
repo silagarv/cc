@@ -1,5 +1,7 @@
 #include "file_buffer.h"
 
+#include <assert.h>
+
 #include "util/buffer.h"
 #include "util/xmalloc.h"
 
@@ -17,6 +19,8 @@ FileBuffer* file_buffer_from_buffer(Filepath name, Buffer buffer)
         .buffer_start = buffer_get_ptr(&buffer),
         .buffer_end = buffer_get_ptr(&buffer) + buffer_get_len(&buffer)
     };
+
+    assert(*file->buffer_end == '\0');
 
     return file;
 }

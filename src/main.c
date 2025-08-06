@@ -13,7 +13,7 @@
 #include "util/xmalloc.h"
 
 #include "lex/token.h"
-#include "files/location_map.h"
+#include "files/line_map.h"
 
 #include "parse/parser.h"
 #include "lex/token.h"
@@ -98,7 +98,6 @@ int main(int argc, char** argv)
         }
     }
 
-    return 0;
 
     TokenStream stream = token_list_to_stream(&tokens);
     parse_translation_unit(&stream, &map);

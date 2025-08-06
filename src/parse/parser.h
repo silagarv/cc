@@ -5,7 +5,7 @@
 #include <stdbool.h>
 
 #include "files/location.h"
-#include "files/location_map.h"
+#include "files/line_map.h"
 
 #include "lex/token.h"
 

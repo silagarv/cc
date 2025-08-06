@@ -24,7 +24,9 @@ UTIL = src/util/panic.c \
 FILES = src/files/filepath.c \
 	src/files/file_buffer.c \
 	src/files/source_file.c \
-	src/files/location_map.c \
+	src/files/location.c \
+	src/files/line_map.c \
+	src/files/location_manager.c \
 
 DRIVER = src/driver/diagnostic.c \
 	src/driver/target.c \
