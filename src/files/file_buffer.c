@@ -45,5 +45,5 @@ const char* file_buffer_get_end(const FileBuffer* buffer)
 // Get the length of a filebuffer object
 size_t file_buffer_get_length(const FileBuffer* buffer)
 {
-    return buffer->buffer_end - buffer->buffer_start;
+    return (buffer->buffer_end - buffer->buffer_start + 1);
 }

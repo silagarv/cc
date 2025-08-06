@@ -20,23 +20,16 @@ typedef struct SourceFile {
     SourceFileId id; // the id of the source file we got
     Location included_location; // where the file was included from (if needed)
     FileBuffer* file_buffer; // the underlying file that we have
-
-    // TODO: we want to get rid of all of the below eventually
-    Filepath name; // The exact path to the file
-
-    char* contents; // the start contents of the file
-    char* end_contents; // the end contents of the file
-    size_t contents_size; // the exact size of the file
 } SourceFile;
 
 // Try to create a source file from an absolute path and return it even if it
 // is not a valid file. This will help us to cache results even if they are
 // invalid
-SourceFile* source_file_try_create(Filepath* path);
+// SourceFile* source_file_try_create(Filepath* path);
 
 // This will be used to create a user made buffer either through commmand line
 // defines and includes (or builtin defines and that kind of thing) or through
 // token concatenation and pasting
-SourceFile* source_file_from_buffer(Filepath* name, Buffer buffer);
+SourceFile* source_file_from_buffer(Filepath name, Buffer buffer, Location include);
 
 #endif /* SOURCE_FILE_H */

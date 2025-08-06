@@ -27,14 +27,10 @@ static void line_map_calculate(LineMap* map, SourceFile* file)
     const Location base = map->range.start;
 
     // TODO: we want to change it to this
-    // const char* start = file->file_buffer->buffer_start;
-    // const char* end = file->file_buffer->buffer_end;
-    // char current = file->file_buffer->buffer_start;
+    const char* start = file->file_buffer->buffer_start;
+    const char* end = file->file_buffer->buffer_end;
 
-    const char* start = file->contents;
-    const char* end = file->end_contents;
-
-    char* current = file->contents;
+    char* current = file->file_buffer->buffer_start;
 
     while (current != end)
     {
@@ -88,16 +84,23 @@ void line_map(LineMap* map, SourceFile* file, Location base_location)
 {
     map->file_id = file->id;
     
+    // The starting and ending pointers for the map
+    const char* start = file->file_buffer->buffer_start;
+    const char* end = file->file_buffer->buffer_end;
+
+    // Set up the overall range
     map->range = (LocationRange) 
     {
         .start = base_location, 
-        .end = base_location + (file->end_contents - file->contents) + 1
+        .end = base_location + (start - end) + 1
     };
 
+    // Zero out the ranges for now
     map->ranges = NULL;
     map->num_ranges = 0;
     map->cap_ranges = 0;
 
+    // Calculate the line map
     line_map_calculate(map, file);
 }
 

@@ -47,14 +47,11 @@ int main(int argc, char** argv)
 
     Filepath path = FILEPATH_STATIC_INIT("test_pgm.c");
 
-    SourceFile file;
-    file.contents = test_pgm;
-    file.end_contents = test_pgm + sizeof(test_pgm) - 1;
-    file.name = path;
-    file.contents_size = sizeof(test_pgm) - 1;
+    Buffer buffer = buffer_from_format("%.*s", (int) sizeof(test_pgm), test_pgm);
+    SourceFile* file = source_file_from_buffer(path, buffer, 0);
 
     LineMap map;
-    line_map(&map, &file, 0);
+    line_map(&map, file, 0);
 
     Lexer l = lexer(test_pgm, test_pgm + sizeof(test_pgm) - 1, 0);
 
