@@ -22,15 +22,10 @@ typedef struct SourceFile {
     FileBuffer* file_buffer; // the underlying file that we have
 } SourceFile;
 
-// Try to create a source file from an absolute path and return it even if it
-// is not a valid file. This will help us to cache results even if they are
-// invalid
-// SourceFile* source_file_try_create(Filepath* path);
-
 // This will be used to create a user made buffer either through commmand line
 // defines and includes (or builtin defines and that kind of thing) or through
 // token concatenation and pasting
-SourceFile* source_file_from_buffer(Filepath name, Buffer buffer, Location include);
+SourceFile* source_file_create(SourceFileId id, FileBuffer* buffer, Location include);
 
 // Free a source file structure not including the filebuffer
 void source_file_free(SourceFile* file);

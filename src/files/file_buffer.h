@@ -15,7 +15,8 @@ typedef struct FileBuffer {
 } FileBuffer;
 
 // Create a file buffer from a given path (or at least attempt to). Path should
-// be the canonical path to the file itself
+// be the canonical path to the file itself. If the file is unable to be opened
+// or read then a NULL pointer is returned indicating it failed.
 FileBuffer* file_buffer_try_get(Filepath path);
 
 // Create a file buffer from a buffer with a given name

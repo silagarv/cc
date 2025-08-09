@@ -1,14 +1,55 @@
 #include "file_buffer.h"
 
+#include <stddef.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <assert.h>
+#include <string.h>
 
 #include "util/buffer.h"
 #include "util/xmalloc.h"
 
+static void read_file_contents(FILE* fp, char** buffer, size_t* length)
+{
+    fseek(fp, 0, SEEK_END);
+    size_t file_length = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    *buffer = xmalloc(sizeof(char) * (file_length + 1));
+    *length = fread(*buffer, sizeof(char), file_length, fp);
+    (*buffer)[*length] = '\0';
+
+    assert(file_length == *length);
+}
+
 // Create a file buffer from a given path (or at least attempt to). Path should
 // be the canonical path to the file itself
-FileBuffer* file_buffer_try_get(Filepath path);
+FileBuffer* file_buffer_try_get(Filepath path)
+{
+    FILE* fp = fopen(path.path, "rb");
+    if (!fp)
+    {
+        return NULL;
+    }
+
+    // Get our buffer and it's length
+    char* buffer = NULL;
+    size_t length = 0;
+
+    read_file_contents(fp, &buffer, &length);
+
+    fclose(fp);
+
+    FileBuffer* file_buffer = xmalloc(sizeof(FileBuffer));
+    *file_buffer = (FileBuffer)
+    {
+        .path = path,
+        .buffer_start = buffer,
+        .buffer_end = buffer + length
+    };
+
+    return file_buffer;
+}
 
 // Create a file buffer from a buffer with a given name
 FileBuffer* file_buffer_from_buffer(Filepath name, Buffer buffer)

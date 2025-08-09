@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "util/panic.h"
 #include "util/hash.h"
 #include "util/hash_map.h"
 
@@ -46,6 +47,12 @@ static void filemap_free_function(void* key, void* data)
 SourceManager source_manager(void)
 {
     SourceManager sm;
+
+    if (!filepath_get_current_path(&sm.cwd)) 
+    {
+        panic("unable to determine the current working directory");
+    }
+
     sm = (SourceManager)
     {
         .filemap = hash_map_create(filemap_hash_function, 

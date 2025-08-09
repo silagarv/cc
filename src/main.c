@@ -50,25 +50,12 @@ int main(int argc, char** argv)
     Filepath path = FILEPATH_STATIC_INIT("test_pgm.c");
 
     Buffer buffer = buffer_from_format("%.*s", (int) sizeof(test_pgm), test_pgm);
-    SourceFile* file = source_file_from_buffer(path, buffer, 0);
+    SourceFile* file = source_file_create(0, file_buffer_from_buffer(path, buffer), 0);
 
     LineMap map;
     line_map(&map, file, 0);
 
     Lexer l = lexer(test_pgm, test_pgm + sizeof(test_pgm) - 1, 0);
-
-    // Token tok;
-    // while (lexer_get_next(&l, &tok))
-    // {
-    //     ResolvedLocation loc = line_map_resolve_location(&map, tok.loc);
-    //     ResolvedLocation loc_end = line_map_resolve_location(&map, tok.end);
-
-    //     printf("%s:%u:%u\n", loc.name->path, loc.line, loc.col);
-    //     printf("%s:%u:%u\n", loc_end.name->path, loc_end.line, loc_end.col);
-        
-    //     printf("%s\n", token_get_string(&tok));
-    //     printf("%s\n\n", token_type_get_name(tok.type));
-    // }
 
     TokenList tokens = (TokenList)
     {

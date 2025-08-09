@@ -41,6 +41,7 @@ LEX = src/lex/token.c \
 	src/lex/char_help.c \
 	src/lex/unicode.c \
 	src/lex/lexer.c \
+	src/lex/macro.c \
 	src/lex/preprocessor.c
 
 PARSE = src/parse/type.c \
