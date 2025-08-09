@@ -8,6 +8,7 @@
 #include "files/file_buffer.h"
 #include "files/source_file.h"
 #include "files/location.h"
+#include "util/hash_map.h"
 #include "util/panic.h"
 #include "util/buffer.h"
 #include "util/str.h"
@@ -110,12 +111,4 @@ int main(int argc, char** argv)
 
     file_buffer_free(file->file_buffer);
     source_file_free(file);
-
-    // Filepath cwd;
-    // filepath_get_current_path(&cwd);
-
-    // printf("%s\n", cwd.path);
-                    
-                    // // token_lexer_close(&lexer);
-    // // line_map_free(&map);
 }

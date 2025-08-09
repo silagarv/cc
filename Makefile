@@ -19,7 +19,8 @@ UTIL = src/util/panic.c \
 	src/util/str.c \
 	src/util/str_view.c \
 	src/util/arena.c \
-	src/util/hash.c
+	src/util/hash.c \
+	src/util/hash_map.c
 
 FILES = src/files/filepath.c \
 	src/files/file_buffer.c \
@@ -27,6 +28,7 @@ FILES = src/files/filepath.c \
 	src/files/location.c \
 	src/files/line_map.c \
 	src/files/location_manager.c \
+	src/files/source_manager.c
 
 DRIVER = src/driver/diagnostic.c \
 	src/driver/target.c \
