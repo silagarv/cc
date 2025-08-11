@@ -7,6 +7,11 @@
 
 #include "files/location.h"
 
+// TODO: make a line overrride map structure as well
+
+// A structure to hold all of the needed data to retrieve and store files for
+// later use. This is made so that we can hold any and all information about files
+// locations and source of data (even if they are not physical files on disk)
 typedef struct SourceManager {
     // The current working directory as an absolute path so that we can store
     // the full location of files in the filemap

@@ -19,7 +19,4 @@ typedef struct Preprocessor {
 
 Preprocessor preprocessor_create(void);
 
-
-
-
 #endif /* PREPROCESSOR_H */

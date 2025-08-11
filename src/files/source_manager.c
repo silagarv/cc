@@ -1,7 +1,5 @@
 #include "source_manager.h"
 
-#include <stdlib.h>
-#include <stdio.h>
 #include <string.h>
 
 #include "util/panic.h"

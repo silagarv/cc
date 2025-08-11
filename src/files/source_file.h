@@ -5,9 +5,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "util/buffer.h"
-
-#include "files/filepath.h"
 #include "files/file_buffer.h"
 #include "files/location.h"
 

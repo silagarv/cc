@@ -8,6 +8,7 @@
 #include "files/file_buffer.h"
 #include "files/source_file.h"
 #include "files/location.h"
+#include "files/source_manager.h"
 #include "util/hash_map.h"
 #include "util/panic.h"
 #include "util/buffer.h"
