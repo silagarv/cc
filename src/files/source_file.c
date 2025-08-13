@@ -4,7 +4,7 @@
 
 #include "util/xmalloc.h"
 
-#include "files/file_buffer.h"
+#include "files/file_manager.h"
 #include "files/location.h"
 
 SourceFile* source_file_create(SourceFileId id, FileBuffer* buffer, Location include)

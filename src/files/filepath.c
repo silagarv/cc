@@ -5,19 +5,6 @@
 #include <unistd.h>
 #include <linux/limits.h>
 
-bool filepath_get_current_path(Filepath* path)
-{
-    *path = (Filepath) {0};
-    if (!getcwd(path->path, FILEPATH_MAX_LEN))
-    {
-        return false;
-    }
-
-    path->len = strlen(path->path);
-
-    return true;
-}
-
 Filepath filepath_from_cstring(const char* path)
 {
     const size_t len = strlen(path);

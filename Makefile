@@ -23,7 +23,7 @@ UTIL = src/util/panic.c \
 	src/util/hash_map.c
 
 FILES = src/files/filepath.c \
-	src/files/file_buffer.c \
+	src/files/file_manager.c \
 	src/files/source_file.c \
 	src/files/location.c \
 	src/files/line_map.c \

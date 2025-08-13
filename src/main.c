@@ -5,7 +5,7 @@
 #include <stdlib.h>
 
 #include "driver/diagnostic.h"
-#include "files/file_buffer.h"
+#include "files/file_manager.h"
 #include "files/source_file.h"
 #include "files/location.h"
 #include "files/source_manager.h"
@@ -25,16 +25,6 @@
 
 #include "lex/lexer.h"
 
-char test_pgm[] = {
-        // #embed "/usr/include/stdio.h"
-        // #embed "../../external/sqlite3/sqlite3.i"
-        #embed "test.c"
-        // #embed "../sqlite-autoconf-3490100/sqlite3.c"
-        // #embed "src/parse/parser.c"
-//         #embed "../../external/c-testsuite/tests/single-exec/00004.c"
-    ,'\0'
-};
-
 #include "driver/target.h"
 
 #include "lex/preprocessor.h"
@@ -45,18 +35,22 @@ char test_pgm[] = {
 int main(int argc, char** argv)
 {
     diag_init();
-
+    
     const Target t = target_create_x86_64_linux();
 
-    Filepath path = FILEPATH_STATIC_INIT("test_pgm.c");
+    Filepath path = FILEPATH_STATIC_INIT("test.c");
+    FileBuffer* fb = file_buffer_try_get(path);
+    if (!fb)
+    {
+        panic("cannot find file!");
+    }
 
-    Buffer buffer = buffer_from_format("%.*s", (int) sizeof(test_pgm), test_pgm);
-    SourceFile* file = source_file_create(0, file_buffer_from_buffer(path, buffer), 0);
+    SourceFile* file = source_file_create(0, fb, 0);
 
     LineMap map;
     line_map(&map, file, 0);
 
-    Lexer l = lexer(test_pgm, test_pgm + sizeof(test_pgm) - 1, 0);
+    Lexer l = lexer(fb->buffer_start, fb->buffer_end, 0);
 
     TokenList tokens = (TokenList)
     {

@@ -1,7 +1,7 @@
 #ifndef SOURCE_MANAGER_H
 #define SOURCE_MANAGER_H
 
-#include "files/file_buffer.h"
+#include "files/file_manager.h"
 #include "files/filepath.h"
 #include "util/hash_map.h"
 
@@ -13,14 +13,7 @@
 // later use. This is made so that we can hold any and all information about files
 // locations and source of data (even if they are not physical files on disk)
 typedef struct SourceManager {
-    // The current working directory as an absolute path so that we can store
-    // the full location of files in the filemap
-    Filepath cwd;
-
-    // The map of real files that we have created in which the we store a 
-    // FileBuffer struct. The keys of the map is a pointer to the filepath and
-    // the data in the map is the entire filebuffer structure
-    HashMap filemap;
+    FileManager fm;
 
     // The highest location we have given out. We can never agian give out a
     // location that is lower than this highest location. This is in order to

@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "files/file_buffer.h"
+#include "files/file_manager.h"
 #include "files/location.h"
 
 typedef uint32_t SourceFileId;
