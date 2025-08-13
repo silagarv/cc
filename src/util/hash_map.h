@@ -62,6 +62,11 @@ void* hash_map_get(HashMap* map, void* key);
 // insert the data into the hashmap
 void* hash_map_insert(HashMap* map, void* key, void* data);
 
+// Attempt to insert an item into the hash map even if it already contains the
+// item. If the item is in the map, then we return the data for the original
+// item but replace it with the new items data.
+void* hash_map_insert_force(HashMap* map, void* key, void* data);
+
 // Attempt to remove an element from the hashmap if it exists in the map, and 
 // free the memory ascociated with the key using the hash_map free function
 void hash_map_remove(HashMap* map, void* key);
