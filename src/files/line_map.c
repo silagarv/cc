@@ -7,7 +7,7 @@
 #include <assert.h>
 #include <string.h>
 
-#include "files/source_file.h"
+#include "files/file_manager.h"
 #include "util/panic.h"
 #include "util/xmalloc.h"
 
@@ -22,15 +22,15 @@ Location calculate_location(Location base, const char* start, char* curr)
     return base + (Location) (curr - start);
 }
 
-static void line_map_calculate(LineMap* map, SourceFile* file)
+static void line_map_calculate(LineMap* map, FileBuffer* file)
 {
     const Location base = map->range.start;
 
     // TODO: we want to change it to this
-    const char* start = file->file_buffer->buffer_start;
-    const char* end = file->file_buffer->buffer_end;
+    const char* start = file->buffer_start;
+    const char* end = file->buffer_end;
 
-    char* current = file->file_buffer->buffer_start;
+    char* current = file->buffer_start;
 
     while (current != end)
     {
@@ -80,28 +80,30 @@ static void line_map_calculate(LineMap* map, SourceFile* file)
     }
 }
 
-void line_map(LineMap* map, SourceFile* file, Location base_location)
+LineMap line_map_create(FileBuffer* file, Location base_location)
 {
-    map->file_id = file->id;
-    
+    LineMap map = {0};
+
     // The starting and ending pointers for the map
-    const char* start = file->file_buffer->buffer_start;
-    const char* end = file->file_buffer->buffer_end;
+    const char* start = file->buffer_start;
+    const char* end = file->buffer_end;
 
     // Set up the overall range
-    map->range = (LocationRange) 
+    map.range = (LocationRange)
     {
         .start = base_location, 
         .end = base_location + (start - end) + 1
     };
 
     // Zero out the ranges for now
-    map->ranges = NULL;
-    map->num_ranges = 0;
-    map->cap_ranges = 0;
+    map.ranges = NULL;
+    map.num_ranges = 0;
+    map.cap_ranges = 0;
 
     // Calculate the line map
-    line_map_calculate(map, file);
+    line_map_calculate(&map, file);
+
+    return map;
 }
 
 void  line_map_delete(LineMap* map)
@@ -109,13 +111,13 @@ void  line_map_delete(LineMap* map)
     free(map->ranges);
 }
 
-LocationTriplet line_map_resolve_location(const LineMap* map, Location loc)
+ResolvedLocation line_map_resolve_location(const LineMap* map, Location loc)
 {
     if (!location_range_contains(&map->range, loc))
     {
         panic("line map does not contain location");
 
-        return (LocationTriplet) {0};
+        return (ResolvedLocation) {0};
     }
 
     // First we need to find the range that contains the line
@@ -143,6 +145,6 @@ LocationTriplet line_map_resolve_location(const LineMap* map, Location loc)
     const uint32_t line = range_index + 1;
     const uint32_t col = loc - range->start + 1; 
     
-    return (LocationTriplet) {map->file_id, line, col};
+    return (ResolvedLocation) {line, col};
 }
 

@@ -5,7 +5,7 @@
 #include <stdbool.h>
 
 #include "files/location.h"
-#include "files/source_file.h"
+#include "files/source_manager.h"
 #include "files/line_map.h"
 
 typedef struct SourceFileEntry {

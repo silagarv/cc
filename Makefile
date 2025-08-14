@@ -1,4 +1,4 @@
-CC = clang-19
+CC = clang
 CFLAGS = -Wall -Wextra -Wpedantic -std=gnu99 -g3 -O0
 CFLAGS += -Wshadow -Wno-unused-parameter -Wno-unused-function \
 	-Wno-unused-variable -Wno-c23-extensions -Wno-switch -Wvla
@@ -24,7 +24,6 @@ UTIL = src/util/panic.c \
 
 FILES = src/files/filepath.c \
 	src/files/file_manager.c \
-	src/files/source_file.c \
 	src/files/location.c \
 	src/files/line_map.c \
 	src/files/location_manager.c \

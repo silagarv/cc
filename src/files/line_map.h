@@ -5,18 +5,17 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "files/source_file.h"
+#include "files/file_manager.h"
 #include "files/location.h"
 
 // A structure to represent a location triplet. I.e. the file id, raw line, and
 // raw column. Note that this can then be used along with our mapping of our
 // line table (for #line directives) to determine the accurate and precise
 // location
-typedef struct LocationTriplet {
-    SourceFileId id;
+typedef struct ResolvedLocation {
     uint32_t line;
     uint32_t col;
-} LocationTriplet;
+} ResolvedLocation;
 
 // A line map representing the lines within a map
 // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -28,8 +27,6 @@ typedef struct LocationTriplet {
 // we will want to fix some potential performace concerns with the current
 // implementation.
 typedef struct LineMap {
-    SourceFileId file_id; // A pointer to the source file
-
     LocationRange range; // Overall location range of the file
 
     LocationRange* ranges; // The different non-overlapping ranges
@@ -37,9 +34,9 @@ typedef struct LineMap {
     size_t cap_ranges; // the total capacity
 } LineMap;
 
-void line_map(LineMap* map, SourceFile* file, Location base_location);
+LineMap line_map_create(FileBuffer* file, Location base_location);
 void line_map_delete(LineMap* map);
 
-LocationTriplet line_map_resolve_location(const LineMap* map, Location loc);
+ResolvedLocation line_map_resolve_location(const LineMap* map, Location loc);
 
 #endif /* LINE_MAP_H */

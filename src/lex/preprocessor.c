@@ -8,6 +8,7 @@
 
 #include "files/file_manager.h"
 #include "files/filepath.h"
+#include "files/source_manager.h"
 #include "util/buffer.h"
 #include "util/str.h"
 
@@ -38,12 +39,10 @@ static void preprocessor_add_defines(Preprocessor* pp)
     // Buffer predefine_buffer = buffer_new();
 
     // buffer_add_define_value(&predefine_buffer, "__STDC__", "1");
-
-            
 }
 
 
-Preprocessor preprocessor_create(void)
+Preprocessor preprocessor_create(SourceManager* sm)
 {
     Preprocessor pp = {0};
 

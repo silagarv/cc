@@ -6,7 +6,6 @@
 
 #include "driver/diagnostic.h"
 #include "files/file_manager.h"
-#include "files/source_file.h"
 #include "files/location.h"
 #include "files/source_manager.h"
 #include "util/hash_map.h"
@@ -35,8 +34,8 @@
 int main(int argc, char** argv)
 {
     diag_init();
-    
-    const Target t = target_create_x86_64_linux();
+
+    SourceManager sm = source_manager();
 
     Filepath path = FILEPATH_STATIC_INIT("test.c");
     FileBuffer* fb = file_buffer_try_get(path);
@@ -47,8 +46,7 @@ int main(int argc, char** argv)
 
     SourceFile* file = source_file_create(0, fb, 0);
 
-    LineMap map;
-    line_map(&map, file, 0);
+    LineMap map = line_map_create(fb, 0);
 
     Lexer l = lexer(fb->buffer_start, fb->buffer_end, 0);
 

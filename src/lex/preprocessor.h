@@ -9,11 +9,12 @@
 #include "lex/lexer.h"
 #include "lex/header_finder.h"
 
-
 typedef struct Preprocessor {
     // Source manager for us to be able to manage all of the source that we
-    // are going to use in the preprocessor
-    SourceManager sm;
+    // are going to use in the preprocessor. This is not owned by the 
+    // preprocessor in the event that we want to acess files after preprocessing
+    // e.g. printing diagnostics during parsing for instance. 
+    SourceManager* sm;
 
     // The header finder used to search for headers within the source
     HeaderFinder hf;
@@ -26,6 +27,6 @@ typedef struct Preprocessor {
     HashMap macros;
 } Preprocessor;
 
-Preprocessor preprocessor_create(void);
+Preprocessor preprocessor_create(SourceManager* sm);
 
 #endif /* PREPROCESSOR_H */
