@@ -1,6 +1,9 @@
 #ifndef SOURCE_MANAGER_H
 #define SOURCE_MANAGER_H
 
+#include "util/buffer.h"
+#include "util/vec.h"
+
 #include "files/location.h"
 #include "files/filepath.h"
 #include "files/file_manager.h"
@@ -20,6 +23,10 @@ typedef struct SourceFile {
     LineMap line_map; // The line map for this source file
 } SourceFile;
 
+// Create a vector of source file pointers since the id's will always be 
+// sequential and we can easily index by the id.
+vector_of_decl(SourceFile*, SourceFile, source_file);
+
 // A structure to hold all of the needed data to retrieve and store files for
 // later use. This is made so that we can hold any and all information about files
 // locations and source of data (even if they are not physical files on disk)
@@ -35,7 +42,7 @@ typedef struct SourceManager {
 
     // TODO: we would like to add a vector of all of our source_files so that
     // we can easily keep track of them and retrieve them if we need
-
+    SourceFileVector sources;
 } SourceManager;
 
 /* SourceFile */
@@ -56,6 +63,10 @@ SourceManager source_manager(void);
 // Delete a source manager and all of the data ascociated with it
 void source_manager_delete(SourceManager* sm);
 
-FileBuffer* source_manager_get(SourceManager* sm, Filepath* path);
+// Some function prototypes for creating new sources
+SourceFile* source_manager_get(SourceManager* sm, Filepath* path);
+SourceFile* source_manager_builtin_buffer(SourceManager* sm, Buffer buffer);
+SourceFile* source_manager_command_line_buffer(SourceManager* sm, Buffer buffer);
+SourceFile* source_manager_anonomous_buffer(SourceManager* sm, Buffer buffer);
 
 #endif /* SOURCE_MANAGER_H */
