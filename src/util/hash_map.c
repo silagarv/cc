@@ -150,6 +150,17 @@ void* hash_map_insert(HashMap* map, void* key, void* data)
             continue;
         }
 
+        // Check if the hash is not equal and if the keys are not equal as well
+        // if we did not find an equal key they just continue. Since we want to
+        // skip over this entry
+        if (entry.hash != key_hash || !map->key_eq_func(key, entry.key))
+        {
+            position = (position + 1) % map->cap_entries;
+            entry = map->entries[position];
+
+            continue;
+        }
+
         // Check if the keys are equal if so simply return the data for that
         // entry and do not insert the data into the map
         if (entry.hash == key_hash && map->key_eq_func(key, entry.key))

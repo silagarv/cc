@@ -28,6 +28,8 @@ typedef struct s_name ## Vector { \
  \
 s_name ## Vector f_name ## _vector_create(size_t cap); \
 void f_name ## _vector_free(s_name ## Vector* vec, void (*free_func)(T)); \
+size_t f_name ## _vector_size(const s_name ## Vector* vec); \
+size_t f_name ## _vector_capacity(const s_name ## Vector* vec); \
 void f_name ## _vector_push(s_name ## Vector* vec, T elem); \
 T f_name ## _vector_pop(s_name ## Vector* vec); \
 T f_name ## _vector_get(s_name ## Vector* vec, size_t index)
@@ -58,12 +60,22 @@ void f_name ## _vector_free(s_name ## Vector* vec, void (*free_func)(T)) \
     free(vec->data); \
 } \
  \
+size_t f_name ## _vector_size(const s_name ## Vector* vec) \
+{ \
+    return vec->count; \
+} \
+ \
+size_t f_name ## _vector_capacity(const s_name ## Vector* vec) \
+{ \
+    return vec->cap; \
+} \
+ \
 void f_name ## _vector_push(s_name ## Vector* vec, T elem) \
 { \
     if (vec->count == vec->cap) \
     { \
-        vec->count *= 2; \
-        vec->data = xrealloc(vec->data, sizeof(T) * vec->count); \
+        vec->cap *= 2; \
+        vec->data = xrealloc(vec->data, sizeof(T) * vec->cap); \
     } \
     \
     vec->data[vec->count++] = elem; \

@@ -35,8 +35,6 @@ int main(int argc, char** argv)
 {
     diag_init();
 
-    SourceManager sm = source_manager();
-
     Filepath path = FILEPATH_STATIC_INIT("test.c");
     FileBuffer* fb = file_buffer_try_get(path);
     if (!fb)
@@ -44,7 +42,7 @@ int main(int argc, char** argv)
         panic("cannot find file!");
     }
 
-    SourceFile* file = source_file_create(0, fb, 0);
+    SourceFile* file = source_file_create(0, 1, 0, fb);
 
     LineMap map = line_map_create(fb, 0);
 
