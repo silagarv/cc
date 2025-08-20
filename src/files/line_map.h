@@ -28,10 +28,7 @@ typedef struct ResolvedLocation {
 // implementation.
 typedef struct LineMap {
     LocationRange range; // Overall location range of the file
-
-    LocationRange* ranges; // The different non-overlapping ranges
-    size_t num_ranges; // The total number of lines
-    size_t cap_ranges; // the total capacity
+    LocationRangeVector ranges; // the different ranges in the line map
 } LineMap;
 
 LineMap line_map_create(FileBuffer* file, Location base_location);

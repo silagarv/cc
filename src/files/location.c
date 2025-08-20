@@ -1,5 +1,11 @@
 #include "location.h"
 
+#include "util/vec.h"
+
+#include <stdlib.h>
+
+vector_of_impl(LocationRange, LocationRange, location_range)
+
 // Check if a location is valid or invalid
 bool location_is_valid(Location loc)
 {

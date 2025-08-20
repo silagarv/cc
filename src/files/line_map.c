@@ -7,10 +7,8 @@
 #include <assert.h>
 #include <string.h>
 
-#include "files/file_manager.h"
-#include "util/xmalloc.h"
-
 #include "files/location.h"
+#include "files/file_manager.h"
 
 // TODO: track down bug for end of files location for a well formed file which
 // ends with a newline. (It works fine when the file doesn't end with a newline)
@@ -33,12 +31,6 @@ static void line_map_calculate(LineMap* map, FileBuffer* file)
 
     while (current != end)
     {
-        if (map->num_ranges == map->cap_ranges)
-        {
-            map->cap_ranges = (map->cap_ranges == 0) ? 1 : (map->cap_ranges * 2);
-            map->ranges = xrealloc(map->ranges, sizeof(LocationRange) * map->cap_ranges);
-        }
-
         // First get the starting location of the range
         const Location range_start = calculate_location(base, start, current);
 
@@ -74,30 +66,26 @@ static void line_map_calculate(LineMap* map, FileBuffer* file)
         const Location range_end = calculate_location(base, start, current);
 
         // Add the range to the ranges
-        map->ranges[map->num_ranges] = (LocationRange) {range_start, range_end};
-        map->num_ranges++;
+        location_range_vector_push(&map->ranges, 
+                (LocationRange) {range_start, range_end});
     }
 }
 
 LineMap line_map_create(FileBuffer* file, Location base_location)
 {
-    LineMap map = {0};
-
     // The starting and ending pointers for the map
     const char* start = file->buffer_start;
     const char* end = file->buffer_end;
 
-    // Set up the overall range
-    map.range = (LocationRange)
+    LineMap map = (LineMap)
     {
-        .start = base_location, 
-        .end = base_location + (start - end) + 1
+        .range = (LocationRange)
+        {
+            .start = base_location,
+            .end = base_location + (start - end) + 1
+        },
+        .ranges = location_range_vector_create(1)
     };
-
-    // Zero out the ranges for now
-    map.ranges = NULL;
-    map.num_ranges = 0;
-    map.cap_ranges = 0;
 
     // Calculate the line map
     line_map_calculate(&map, file);
@@ -107,7 +95,7 @@ LineMap line_map_create(FileBuffer* file, Location base_location)
 
 void  line_map_delete(LineMap* map)
 {
-    free(map->ranges);
+    location_range_vector_free(&map->ranges, NULL);
 }
 
 // According to man bsearch the first argument to compare function is expected
@@ -137,7 +125,8 @@ static LocationRange* line_map_get_location_range(const LineMap* map, Location l
 {
     assert(location_range_contains(&map->range, loc));
 
-    LocationRange* range = bsearch(&loc, map->ranges, map->num_ranges, 
+    LocationRange* range = bsearch(&loc, map->ranges.data, 
+            location_range_vector_size(&map->ranges), 
             sizeof(LocationRange), location_range_compare);
 
     assert(range && "Location range contains location but bsearch failed");
@@ -148,7 +137,7 @@ static LocationRange* line_map_get_location_range(const LineMap* map, Location l
 ResolvedLocation line_map_resolve_location(const LineMap* map, Location loc)
 {
     LocationRange* range = line_map_get_location_range(map, loc);
-    size_t range_index = range - map->ranges;
+    size_t range_index = range - map->ranges.data;
 
     // Convert from 0 based indexing to 1 base indexing
     const uint32_t line = range_index + 1;
@@ -170,15 +159,15 @@ uint32_t line_map_resolve_column(const LineMap* map, Location loc)
 Location line_map_get_next_line_start(const LineMap* map, Location loc)
 {
     LocationRange* range = line_map_get_location_range(map, loc);
-    size_t range_index = range - map->ranges;
+    size_t range_index = range - map->ranges.data;
 
     // Need to check if we're at the end of the map or not.
-    if (range_index + 1 > map->num_ranges)
+    if (range_index + 1 > location_range_vector_size(&map->ranges))
     {
         return LOCATION_INVALID;
     }
 
     // Get the next range and return it's start
-    return map->ranges[range_index + 1].start;
+    return map->ranges.data[range_index + 1].start;
 }
 

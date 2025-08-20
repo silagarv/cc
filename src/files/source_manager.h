@@ -76,6 +76,11 @@ typedef struct SourceManager {
     // we can easily keep track of them and retrieve them if we need
     SourceFileVector sources;
 
+    // A map which contains all of the filenames that we are using for line
+    // overrides along with their id's. This is used to map from an override
+    // filename id to an actual filename.
+    LineOverrideFilenames override_filenames;
+
     // The information below will be used for tracking macro expansions. But
     // this is not currently yet complete / supported...
     Location next_macro_location;

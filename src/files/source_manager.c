@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#include "files/line_table.h"
 #include "util/panic.h"
 #include "util/vec.h"
 #include "util/xmalloc.h"
@@ -84,7 +85,8 @@ SourceManager source_manager(void)
         .fm = file_manager_create(),
         .next_source_location = 1, // Start at location 1 so we're not invalid
         .next_id = 0,
-        .sources = source_file_vector_create(16)
+        .sources = source_file_vector_create(16),
+        .override_filenames = line_override_filenames_create()
     };
 
     return sm;
@@ -94,6 +96,7 @@ void source_manager_delete(SourceManager* sm)
 {
     file_manager_free(&sm->fm);
     source_file_vector_free(&sm->sources, source_file_free);
+    line_override_filenames_free(&sm->override_filenames);
 }
 
 static SourceFile* source_manager_assign_file(SourceManager* sm, FileBuffer* fb, 

@@ -1,6 +1,8 @@
 #ifndef LOCATION_H
 #define LOCATION_H
 
+#include "util/vec.h"
+#include <locale.h>
 #include <stdint.h>
 #include <limits.h>
 #include <stdbool.h>
@@ -26,6 +28,8 @@ typedef struct LocationRange {
     Location start;
     Location end;
 } LocationRange;
+
+vector_of_decl(LocationRange, LocationRange, location_range);
 
 // Function to check whether a location is valid or invalid
 bool location_is_valid(Location loc);

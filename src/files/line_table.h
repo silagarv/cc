@@ -58,6 +58,17 @@ typedef struct LineOverrideTable {
 // Check if the id given to a file it is valid.
 bool line_override_file_id_is_valid(LineOverrideFileId id);
 
+// Create a strcture to store all of the line override filenames
+LineOverrideFilenames line_override_filenames_create(void);
+
+// Delete a store of line override filenames
+void line_override_filenames_free(LineOverrideFilenames* lofs);
+
+// Get the id asociated with a filepath inserting it if not already in the table
+// otherwise simply getting the id asociated with it.
+LineOverrideFileId line_override_filenames_get(LineOverrideFilenames* lofs,
+        Filepath path);
+
 // Create a new line override
 LineOverride line_override_create(Location loc, uint32_t line_no, 
         LineOverrideFileId file);
@@ -71,7 +82,7 @@ void line_override_table_delete(LineOverrideTable* table);
 void line_override_table_add_path(Location loc, uint32_t line_no, Filepath* path);
 void line_override_table_add_no_path(Location loc, uint32_t line_no);
 
-// Get the line override 
+// Get the line override from the table that we are looking for.
 LineOverride line_override_table_lookup(const LineOverrideTable* table, Location loc);
 
 #endif /* LINE_TABLE_H */
