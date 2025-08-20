@@ -20,7 +20,8 @@ typedef uint32_t Location;
 // should be plenty.
 #define LOCATION_MACRO_BIT (1 << 31)
 
-// A simple structure which holds 2 values the starting and ending locations
+// A simple structure which holds 2 values the starting and ending locations.
+// This range is from [start, end)
 typedef struct LocationRange {
     Location start;
     Location end;

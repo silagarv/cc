@@ -26,6 +26,7 @@ FILES = src/files/filepath.c \
 	src/files/file_manager.c \
 	src/files/location.c \
 	src/files/line_map.c \
+	src/files/line_table.c \
 	src/files/location_manager.c \
 	src/files/source_manager.c
 

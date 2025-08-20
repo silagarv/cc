@@ -8,7 +8,6 @@
 #include <string.h>
 
 #include "files/file_manager.h"
-#include "util/panic.h"
 #include "util/xmalloc.h"
 
 #include "files/location.h"
@@ -111,40 +110,75 @@ void  line_map_delete(LineMap* map)
     free(map->ranges);
 }
 
+// According to man bsearch the first argument to compare function is expected
+// to be the key, and the second arument is expected to be an array memeber.
+// Thank you whoever created bsearch for this foresight
+static int location_range_compare(const void* loc, const void* loc_range)
+{
+    const Location location = *(Location*) loc;
+    const LocationRange* range = loc_range;
+
+    if (location_range_contains(range, location))
+    {
+        return 0;
+    }
+
+    if (location < range->start)
+    {
+        return -1;
+    }
+
+    assert(location >= range->end && "Must be true...");
+
+    return 1;
+}
+
+static LocationRange* line_map_get_location_range(const LineMap* map, Location loc)
+{
+    assert(location_range_contains(&map->range, loc));
+
+    LocationRange* range = bsearch(&loc, map->ranges, map->num_ranges, 
+            sizeof(LocationRange), location_range_compare);
+
+    assert(range && "Location range contains location but bsearch failed");
+
+   return range;
+}
+
 ResolvedLocation line_map_resolve_location(const LineMap* map, Location loc)
 {
-    if (!location_range_contains(&map->range, loc))
-    {
-        panic("line map does not contain location");
-
-        return (ResolvedLocation) {0};
-    }
-
-    // First we need to find the range that contains the line
-    LocationRange* range = NULL;
-    size_t range_index;
-
-    // Currently just linear search through each of the ranges but later it would
-    // be a good idea to convert this to a binary search for performance
-    for (range_index = 0; range_index < map->num_ranges; range_index++)
-    {
-        range = map->ranges + range_index;
-
-        if (location_range_contains(range, loc))
-        {
-            break;
-        }
-
-        if (range_index == map->num_ranges)
-        {
-            panic("unable to find location; should be unreachable");
-        }
-    }
+    LocationRange* range = line_map_get_location_range(map, loc);
+    size_t range_index = range - map->ranges;
 
     // Convert from 0 based indexing to 1 base indexing
     const uint32_t line = range_index + 1;
     const uint32_t col = loc - range->start + 1; 
     
     return (ResolvedLocation) {line, col};
+}
+
+uint32_t line_map_resolve_line(const LineMap* map, Location loc)
+{
+    return line_map_resolve_location(map, loc).line;
+}
+
+uint32_t line_map_resolve_column(const LineMap* map, Location loc)
+{
+    return line_map_resolve_location(map, loc).col;
+}
+
+Location line_map_get_next_line_start(const LineMap* map, Location loc)
+{
+    LocationRange* range = line_map_get_location_range(map, loc);
+    size_t range_index = range - map->ranges;
+
+    // Need to check if we're at the end of the map or not.
+    if (range_index + 1 > map->num_ranges)
+    {
+        return LOCATION_INVALID;
+    }
+
+    // Get the next range and return it's start
+    return map->ranges[range_index + 1].start;
 }
 

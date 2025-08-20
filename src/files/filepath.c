@@ -2,7 +2,7 @@
 
 #include <stddef.h>
 #include <string.h>
-#include <unistd.h>
+
 #include <linux/limits.h>
 
 Filepath filepath_from_cstring(const char* path)

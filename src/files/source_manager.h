@@ -8,6 +8,8 @@
 #include "files/filepath.h"
 #include "files/file_manager.h"
 #include "files/line_map.h"
+#include "files/line_table.h"
+#include <stdint.h>
 
 // TODO: make a line overrride map structure as well
 
@@ -19,9 +21,11 @@ typedef uint32_t SourceFileId;
 typedef struct SourceFile {
     SourceFileId id; // the id of the source file we got
     Location start_location; // the location that we consider the start of file
+    Location end_location; // the ending location of this source file.
     Location included_location; // where the file was included from (if needed)
     FileBuffer* file_buffer; // the underlying file that we have
     LineMap line_map; // The line map for this source file
+    LineOverrideTable line_overrides; // The override table
 } SourceFile;
 
 // Create a vector of source file pointers since the id's will always be 
@@ -49,6 +53,8 @@ typedef struct MacroEntry {
     Location macro_end_location;
 } MacroEntry;
 
+vector_of_decl(MacroEntry, MacroEntry, macro_entry);
+
 // A structure to hold all of the needed data to retrieve and store files for
 // later use. This is made so that we can hold any and all information about files
 // locations and source of data (even if they are not physical files on disk)
@@ -61,7 +67,7 @@ typedef struct SourceManager {
     // something that the source manager tracks internally in order to give
     // valid locations to source files. Note that the will never be a macro
     // location and it will always be considered valid
-    Location next_location;
+    Location next_source_location;
 
     // Used to keep track of the next SourceFileId that we are going to assign
     SourceFileId next_id;
@@ -69,7 +75,23 @@ typedef struct SourceManager {
     // TODO: we would like to add a vector of all of our source_files so that
     // we can easily keep track of them and retrieve them if we need
     SourceFileVector sources;
+
+    // The information below will be used for tracking macro expansions. But
+    // this is not currently yet complete / supported...
+    Location next_macro_location;
+    MacroEntryVector macro_entries;
 } SourceManager;
+
+// This is the location that we believe a location to fully and completely 
+// resolve to. This should resolve any #line directives, including the filename
+// and also resolve and line changes as a result of the directives. Should also
+// make sure that the location of the include is resolved too.
+typedef struct VirtualLocation {
+    Filepath* path;
+    uint32_t line;
+    uint32_t col;
+    Location include_location;
+} VirtualLocation;
 
 /* SourceFile */
 

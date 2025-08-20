@@ -82,7 +82,7 @@ SourceManager source_manager(void)
     SourceManager sm = (SourceManager)
     {
         .fm = file_manager_create(),
-        .next_location = 1, // Start at location 1 so we're not invalid
+        .next_source_location = 1, // Start at location 1 so we're not invalid
         .next_id = 0,
         .sources = source_file_vector_create(16)
     };
@@ -100,13 +100,13 @@ static SourceFile* source_manager_assign_file(SourceManager* sm, FileBuffer* fb,
         Location include)
 {
     // Create the source file
-    SourceFile* sf = source_file_create(sm->next_id, sm->next_location, include, fb);
+    SourceFile* sf = source_file_create(sm->next_id, sm->next_source_location, include, fb);
 
     // Increment our file id's and determine the sm's new highest location
     sm->next_id++;
-    sm->next_location += (Location) file_buffer_get_length(fb);
+    sm->next_source_location += (Location) file_buffer_get_length(fb);
 
-    assert(location_is_file(sm->next_location) && "Too many locations");
+    assert(location_is_file(sm->next_source_location) && "Too many locations");
 
     // Add the source file to our list of files
     source_file_vector_push(&sm->sources, sf);
@@ -161,7 +161,7 @@ SourceFile* source_manager_from_location(SourceManager* sm, Location loc)
 {
     assert(location_is_file(loc));
 
-    if (loc > sm->next_location)
+    if (loc > sm->next_source_location)
     {
         panic("Location given higher than maximum");
 
