@@ -8,6 +8,7 @@
 #include "files/file_manager.h"
 #include "files/location.h"
 #include "files/source_manager.h"
+#include "parse/statement.h"
 #include "util/hash_map.h"
 #include "util/panic.h"
 #include "util/buffer.h"

@@ -1028,24 +1028,15 @@ static Expression* parse_assignment_expression(Parser* parser)
     static const size_t num_operators = 
             sizeof(assignment_operators) / sizeof(assignment_operators[0]);
 
-    /* 
-     * well need to add in the other actual part but for now we'll just
-     * do the top half of this production
-     *
-     * also how are we supposed to know the difference before even trying to
-     * parse this shit... wtf do I do here????
-     * 
-     * unary-expression assignment-operator assignment-expression
-     */
-
-    // Some c compilers seem to just parse a conditional here so this is what
-    // I will do for now until I find a better solution
-    parse_conditional_expression(parser);
+    // Here as an extension gcc does this and then just checks the conditional
+    // is valid. I'm not sure how this qualifies as an extension since this
+    // honestly just seems like an easier way to write a parser so I will do
+    // the same thing.
+    Expression* expr = parse_conditional_expression(parser);
 
     if (has_match(parser, assignment_operators, num_operators))
     {
-        // TODO: this is naught since we will eventually want to know the
-        // TODO: type that we matched since that information is needed later
+        // TODO: implement proper assignment expression stuff
         TokenType current_type = curr_type(parser->stream);
         match(parser, current_type);
         parse_assignment_expression(parser);
@@ -1118,8 +1109,11 @@ static Statement* parse_label_statement(Parser* parser)
 
 static Statement* parse_case_statement(Parser* parser)
 {
-    // TODO: we will need to check somewhere that we are actually within the
-    // TODO: context of a switch statment
+    Statement* current_switch = parser->current_context.current_switch;
+    if (!current_switch)
+    {
+        parse_error(parser, "No current switch statement context");
+    }
     
     Statement* stmt = statement_allocate(parser, STATEMENT_CASE);
 
@@ -1143,8 +1137,11 @@ static Statement* parse_case_statement(Parser* parser)
 
 static Statement* parse_default_statement(Parser* parser)
 {
-    // TODO: add in check to make sure we are in the context of a switch
-    // TODO: otherwise this is invalid
+    Statement* current_switch = parser->current_context.current_switch;
+    if (!current_switch)
+    {
+        parse_error(parser, "No current switch statement context");
+    }
 
     Statement* stmt = statement_allocate(parser, STATEMENT_CASE);
 
@@ -1219,6 +1216,10 @@ static Statement* parse_if_statement(Parser* parser)
 
 static Statement* parse_switch_statement(Parser* parser)
 {
+    // Save the ast context for later
+    Statement* current_breakable = parser->current_context.current_breakable;
+    Statement* current_switch = parser->current_context.current_switch;
+
     const Token* switch_token = get_curr_token(parser);
 
     require(parser, TOKEN_SWITCH);
@@ -1229,15 +1230,29 @@ static Statement* parse_switch_statement(Parser* parser)
 
     match(parser, TOKEN_RPAREN);
 
+    // Create the switch statement and set the current breakable to be the
+    // switch statement.
+    Statement* switch_stmt = NULL;
+    parser->current_context.current_breakable = switch_stmt;
+    parser->current_context.current_switch = switch_stmt;
+
     Statement* body = parse_statement(parser);
+
+    // Restore the ast context
+    parser->current_context.current_breakable = current_breakable;
+    parser->current_context.current_switch = current_switch;
 
     return NULL;
 }
 
 static Statement* parse_while_statement(Parser* parser)
 {
-    const Token* while_token = get_curr_token(parser);
+    // Save the context... we will restore this later. Save both since we can
+    // both break and continue within a while statement.
+    Statement* current_iteration = parser->current_context.current_iteration;
+    Statement* current_breakable = parser->current_context.current_breakable;
 
+    const Token* while_token = get_curr_token(parser);
     require(parser, TOKEN_WHILE);
 
     match(parser, TOKEN_LPAREN);
@@ -1246,19 +1261,43 @@ static Statement* parse_while_statement(Parser* parser)
 
     match(parser, TOKEN_RPAREN);
 
+    // TODO: create the statement and push it
+    Statement* this_stmt = NULL;
+    parser->current_context.current_iteration = this_stmt;
+    parser->current_context.current_breakable = this_stmt;
+
     Statement* body = parse_statement(parser);
+
+    // Restore the ast context
+    parser->current_context.current_iteration = current_iteration;
+    parser->current_context.current_breakable = current_breakable;
 
     return NULL;
 }
 
 static Statement* parse_do_while_statement(Parser* parser)
 {
+    // Save the context... we will restore this later. Save both since we can
+    // both break and continue within a while statement.
+    Statement* current_iteration = parser->current_context.current_iteration;
+    Statement* current_breakable = parser->current_context.current_breakable;
+
     const Token* do_token = get_curr_token(parser);
 
     require(parser, TOKEN_DO);
 
+    // TODO: create the statement and push it
+    Statement* this_stmt = NULL;
+    parser->current_context.current_iteration = this_stmt;
+    parser->current_context.current_breakable = this_stmt;
+
     Statement* body = parse_statement(parser);
 
+     // Restore the ast context
+    parser->current_context.current_iteration = current_iteration;
+    parser->current_context.current_breakable = current_breakable;
+
+    // make sure we capture the while part.
     match(parser, TOKEN_WHILE);
 
     match(parser, TOKEN_LPAREN);
@@ -1336,6 +1375,12 @@ static Statement* parse_goto_statement(Parser* parser)
 
 static Statement* parse_continue_statement(Parser* parser)
 {
+    Statement* current_iteration = parser->current_context.current_iteration;
+    if (!current_iteration)
+    {
+        parse_error(parser, "No current continuable exists");
+    }
+
     const Token* continue_token = get_curr_token(parser);
 
     require(parser, TOKEN_CONTINUE);
@@ -1347,6 +1392,12 @@ static Statement* parse_continue_statement(Parser* parser)
 
 static Statement* parse_break_statement(Parser* parser)
 {
+    Statement* current_breakable = parser->current_context.current_breakable;
+    if (!current_breakable)
+    {
+        parse_error(parser, "No current breakable statement exists");
+    }
+
     const Token* break_token = get_curr_token(parser);
 
     require(parser, TOKEN_BREAK);
@@ -1358,6 +1409,12 @@ static Statement* parse_break_statement(Parser* parser)
 
 static Statement* parser_return_statement(Parser* parser)
 {
+    void* current_function = parser->current_context.current_function;
+    if (!current_function)
+    {
+        parse_error(parser, "Return statement outside of function");
+    }
+
     const Token* return_token = get_curr_token(parser);
 
     require(parser, TOKEN_RETURN);

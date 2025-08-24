@@ -1,6 +1,7 @@
 #ifndef STATEMENT_H
 #define STATEMENT_H
 
+#include "parse/literal_parser.h"
 #include "util/str.h"
 
 #include "files/location.h"
@@ -68,6 +69,7 @@ struct StatementLabel {
 struct StatementCase {
     StatementBase base;
     Expression* constant_expression;
+    IntegerValue expression_value;
     Statement* statement;
 };
 
@@ -139,10 +141,12 @@ struct StatmentGoto {
 
 struct StatmentContinue {
     StatementBase base;
+    Statement* iteration_stmt;
 };
 
 struct StatmentBreak {
     StatementBase base;
+    Statement* breakable_stmt;
 };
 
 struct StatmentReturn {

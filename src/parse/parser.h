@@ -9,6 +9,8 @@
 
 #include "lex/token.h"
 
+#include "parse/ast.h"
+
 // #include "parse/scope.h"
 
 typedef struct Parser {
@@ -21,6 +23,9 @@ typedef struct Parser {
 
     /* our anchor set for recovering from parsing */
     size_t recover_set[TOKEN_LAST];
+
+    // Stores the current context of the parser for statements and expressions.
+    AstContext current_context;
 } Parser;
 
 void parse_translation_unit(TokenStream* stream, LineMap* map);

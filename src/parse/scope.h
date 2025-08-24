@@ -28,7 +28,7 @@ typedef enum ScopeType {
 typedef struct Scope {
     size_t level;
 
-    
+        
 } Scope;
 
 Scope* scope_new(Scope* parent);
