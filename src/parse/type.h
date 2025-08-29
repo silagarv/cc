@@ -81,6 +81,11 @@ typedef enum TypeSpecifier {
 
 typedef union Type Type;
 
+typedef struct QualifiedType {
+    TypeQualifiers qualifiers;
+    Type* type;
+} QualifiedType;
+
 // The base type telling us how to interpret it
 typedef struct TypeBase {
     TypeKind type;
@@ -108,7 +113,7 @@ typedef struct TypeArray {
     bool is_variable; // is it declared with [*] (why... so many options)
     bool is_size_implicit; // Do we know cause we counted all elements or what?
     bool is_vla; // is it a variable length array
-} TypeArry;
+} TypeArray;
 
 // Struct and union types are both compound types which both have members. Each
 // of these members has themselves a type. 
@@ -170,10 +175,10 @@ typedef struct TypeFunction {
     bool is_variadic; // e.g. int foo(int, ...)
 } TypeFunction;
 
-// A type to a pointer
+// A type to a pointer containing a qualifier type and the base.
 typedef struct TypePointer {
     TypeBase type_base;
-    Type* underlying_type; // the type beneath could also be a pointer
+    QualifiedType underlying_type;
 } TypePointer;
 
 // And a typedef
@@ -187,7 +192,7 @@ union Type {
     TypeBase type_base;
     TypeUnreal type_imaginary;
     TypeUnreal type_complex;
-    TypeArry type_array;
+    TypeArray type_array;
     TypeCompound type_struct;
     TypeCompound type_union;
     TypeEnum type_enum;
@@ -195,11 +200,6 @@ union Type {
     TypePointer type_pointer;
     TypeTypedef type_typedef;
 };
-
-typedef struct QualifiedType {
-    TypeQualifiers qualifiers;
-    Type* type;
-} QualifiedType;
 
 bool type_qualifier_is_const(TypeQualifiers qualifiers);
 bool type_qualifier_is_restrict(TypeQualifiers qualifiers);
@@ -230,18 +230,5 @@ Type* type_create_long_double(void);
 Type* type_create_complex(Type* base_type);
 Type* type_create_imaginary(Type* base_type);
 
-void type_free(Type* type);
-
-// Function to transform a type to a string for when it is needed for diagnostics
-String type_to_string(Type* type);
-
-// Any type that is not user defined. (TODO: Should I include typedefs?)
-bool is_builtin_type(Type* type);
-
-bool is_arithmetic_type(Type* type);
-bool is_pointer(Type* type);
-
-bool is_type_equal_no_qualifiers(Type* type);
-bool is_type_equal(Type* type);
 
 #endif /* TYPE_H */

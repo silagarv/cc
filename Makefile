@@ -37,7 +37,8 @@ DRIVER = src/driver/diagnostic.c \
 	src/driver/translation_unit.c \
 	src/driver/driver.c
 
-LEX = src/lex/token.c \
+LEX = src/lex/identifier_table.c \
+	src/lex/token.c \
 	src/lex/char_help.c \
 	src/lex/unicode.c \
 	src/lex/lexer.c \

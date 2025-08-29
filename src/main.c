@@ -32,6 +32,8 @@
 #include <assert.h>
 #include "files/filepath.h"
 
+#include "lex/identifier_table.h"
+
 int main(int argc, char** argv)
 {
     diag_init();
@@ -77,7 +79,7 @@ int main(int argc, char** argv)
     }
 
     TokenStream stream = token_list_to_stream(&tokens);
-    parse_translation_unit(&stream, &map);
+    // parse_translation_unit(&stream, &map);
 
     for (size_t i = 0; i < tokens.used; i++)
     {

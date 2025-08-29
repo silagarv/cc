@@ -2503,8 +2503,6 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser)
     else if (!type && (type_spec == TYPE_SPECIFIER_NONE))
     {
         diag_error("not type specifiers; not assuming int just yet");
-
-        // TODO: make type int
     }
     // TODO: add check here for if we have specifiers AND a type...
 
