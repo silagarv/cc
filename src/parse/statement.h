@@ -137,16 +137,17 @@ struct StatementFor {
 struct StatmentGoto {
     StatementBase base;
     String label_name; // This will need to be changed in the future
+    bool label_seen;
 };
 
 struct StatmentContinue {
     StatementBase base;
-    Statement* iteration_stmt;
+    Statement* target; // the top level statement to go to
 };
 
 struct StatmentBreak {
     StatementBase base;
-    Statement* breakable_stmt;
+    Statement* target;
 };
 
 struct StatmentReturn {

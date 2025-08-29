@@ -25,47 +25,21 @@
 #include "parse/declaration.h"
 #include "parse/statement.h"
 
-// Special thanks to the below
-// https://recc.robertelder.org/ll-c-grammar.txt
-
 #define countof(array) (sizeof(array) / sizeof(array[0]))
 
 // Below are the start set for some of the specifiers / qualifiers
-static const TokenType storage_class[] = {
-    TOKEN_TYPEDEF, 
-    TOKEN_EXTERN, 
-    TOKEN_STATIC,
-    TOKEN_AUTO,
-    TOKEN_REGISTER
-};
+static const TokenType storage_class[] = {TOKEN_TYPEDEF, TOKEN_EXTERN, 
+        TOKEN_STATIC,TOKEN_AUTO,TOKEN_REGISTER};
 
-static const TokenType type_specifier[] = {
-    TOKEN_VOID,
-    TOKEN_CHAR,
-    TOKEN_SHORT,
-    TOKEN_INT,
-    TOKEN_LONG,
-    TOKEN_FLOAT,
-    TOKEN_DOUBLE,
-    TOKEN_SIGNED,
-    TOKEN_UNSIGNED,
-    TOKEN__BOOL,
-    TOKEN__COMPLEX,
-    TOKEN__IMAGINARY,
-    TOKEN_STRUCT,
-    TOKEN_UNION,
-    TOKEN_ENUM
-};
+static const TokenType type_specifier[] = { TOKEN_VOID, TOKEN_CHAR, TOKEN_SHORT,
+        TOKEN_INT, TOKEN_LONG, TOKEN_FLOAT, TOKEN_DOUBLE, TOKEN_SIGNED,
+        TOKEN_UNSIGNED, TOKEN__BOOL, TOKEN__COMPLEX, TOKEN__IMAGINARY,
+        TOKEN_STRUCT, TOKEN_UNION, TOKEN_ENUM};
 
-static const TokenType type_qualifier[] = {
-    TOKEN_CONST,
-    TOKEN_RESTRICT,
-    TOKEN_VOLATILE
-};
+static const TokenType type_qualifier[] = {TOKEN_CONST, TOKEN_RESTRICT,
+        TOKEN_VOLATILE};
 
-static const TokenType function_specificer[] = {
-    TOKEN_INLINE
-};
+static const TokenType function_specificer[] = {TOKEN_INLINE};
 
 static const size_t storage_class_count = countof(storage_class);
 static const size_t type_specifier_count = countof(type_specifier);
@@ -76,8 +50,6 @@ static bool is_valid_stream_position(TokenStream* stream)
 {
     return (stream->current_token < stream->count);
 }
-
-void* malloc(size_t);
 
 // Return the type of the current token in a token stream
 static TokenType curr_type(TokenStream* stream)
@@ -146,9 +118,9 @@ static bool is_in_recover_set(Parser* parser, TokenType type);
 static Token* get_curr_token(Parser* parser);
 static Token* get_next_token(Parser* parser);
 
-// Parsing helper methods for matching
 static void require(Parser* parser, TokenType type);
 static void match(Parser* parser, TokenType type);
+// static void consume(Parser* parser);
 static bool is_match(Parser* parser, TokenType type);
 static bool is_next_match(Parser* parser, TokenType type);
 static bool has_match(Parser* parser, const TokenType* types, size_t count);
@@ -432,6 +404,8 @@ static void* parse_type_name(Parser* parser);
 
 // TODO: add things for error recovery and whatnot to make parsing better
 
+// TODO: should I add the below into this function? It could be helpful but
+// some of the parse will have to be redone. E.g. mostly parsing typenames...
 static bool is_typename_start(Parser* parser, const Token* tok)
 {
     const TokenType type = tok->type;
@@ -452,9 +426,20 @@ static bool is_typename_start(Parser* parser, const Token* tok)
         case TOKEN_STRUCT:
         case TOKEN_UNION:
         case TOKEN_ENUM:
+        // case TOKEN_EXTERN:
+        // case TOKEN_STATIC:
+        // case TOKEN_TYPEDEF:
+        // case TOKEN_INLINE:
+        // case TOKEN_CONST:
+        // case TOKEN_VOLATILE:
+        // case TOKEN_REGISTER:
+        // case TOKEN_AUTO:
             return true;
 
-        case TOKEN_IDENTIFIER: // TODO: once we make a symbol table and stuff
+        case TOKEN_IDENTIFIER:
+            // TODO: we will need to look up if the symbol exists as a typename
+
+
             return false;
 
         default:
@@ -1611,7 +1596,7 @@ static Declaration* parse_initializer_list(Parser* parser)
         // Then get the initializer
         parse_initializer(parser);
 
-        // End of initializer list e.g. {..., }
+        // End of initializer list e.g. , }
         if (is_match(parser, TOKEN_COMMA) && is_next_match(parser, TOKEN_RCURLY))
         {
             break;
@@ -1931,6 +1916,7 @@ static Declaration* parse_abstract_declarator(Parser* parser)
     return NULL;
 }
 
+// TODO: eliminate recursion here
 static Declaration* parse_pointer(Parser* parser)
 {
     match(parser, TOKEN_STAR);
@@ -2547,7 +2533,7 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser)
 static Declaration* parse_declaration(Parser* parser)
 {
     // First we need to get our declaration specifiers here
-    DeclarationSpecifiers decl_spec = parse_declaration_specifiers(parser);
+    const DeclarationSpecifiers decl_spec = parse_declaration_specifiers(parser);
 
     if (!is_match(parser, TOKEN_SEMI))
     {
@@ -2571,15 +2557,10 @@ static Declaration* parse_declaration_or_definition(Parser* parser)
     {
         require(parser, TOKEN_SEMI);
 
-        return NULL;
     }
     else if (is_match(parser, TOKEN_LCURLY))
     {
-        parse_compound_statement(parser);
-
-        // TODO: add the function to list of functions and that
-
-        return NULL;
+        Statement* body = parse_compound_statement(parser);
     }
     else 
     {
@@ -2588,7 +2569,7 @@ static Declaration* parse_declaration_or_definition(Parser* parser)
         panic("expected ';' or '{'");
     }
 
-    return NULL;
+    return decl;
 }
 
 static void* parse_type_name(Parser* parser)
@@ -2611,15 +2592,6 @@ void parse_translation_unit(TokenStream* stream, LineMap* map)
 
     while (curr_type(stream) != TOKEN_EOF)
     {
-        // if (is_expression_start(&parser, get_curr_token(&parser)))
-        // {
-        //     parse_expression(&parser);
-        // }
-        // else
-        // {
-        //     eat_until(&parser, TOKEN_SEMI);
-        // }
-        // match(&parser, TOKEN_SEMI);
         parse_declaration_or_definition(&parser);
     }
 

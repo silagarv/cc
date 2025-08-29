@@ -6,7 +6,7 @@
 
 #include "util/str.h"
 
-#include "driver/target.h"
+#include "files/location.h"
 
 typedef enum TypeKind {
     TYPE_ERROR,
@@ -84,9 +84,9 @@ typedef union Type Type;
 // The base type telling us how to interpret it
 typedef struct TypeBase {
     TypeKind type;
-
     size_t type_size;
     size_t type_alignment;
+    Location declaration;
 } TypeBase;
 
 // Both imaginairy and complex types have an underlying type which is either
@@ -135,8 +135,7 @@ typedef struct TypeCompound {
 // A struct to represent an enum type
 typedef struct TypeEnumConstant {
     String name; // the name of the member
-    /* TODO: need to have some kind of value? but is this the right place... */
-
+    int value; // the value of the constant
     struct TypeEnumConstant* next;
 } TypeEnumConstant;
 

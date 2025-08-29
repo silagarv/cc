@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "util/str.h"
 
@@ -26,12 +27,20 @@ typedef enum ScopeType {
 
 // Add some sort of a symbol table in here
 typedef struct Scope {
-    size_t level;
+    // The parent scope to this one or NULL if this the `parent` is simply the
+    // translation unit itself. 
+    struct Scope* parent;
 
-        
+    // We will need to have some information about the scope below
+    uint32_t depth;
+
+    // TODO: we will have to have a thing we're we can put things in this scope.
 } Scope;
 
-Scope* scope_new(Scope* parent);
+// Create a new scope available on the stack
+Scope scope_new(Scope* parent);
+
+// Free all of the memory within the scope
 void scope_free(Scope* scope);
 
 Symbol* scope_lookup(Scope* scope, String* name);

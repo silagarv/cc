@@ -76,7 +76,6 @@ int main(int argc, char** argv)
         }
     }
 
-
     TokenStream stream = token_list_to_stream(&tokens);
     // parse_translation_unit(&stream, &map);
 

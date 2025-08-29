@@ -26,6 +26,8 @@ typedef struct Parser {
 
     // Stores the current context of the parser for statements and expressions.
     AstContext current_context;
+
+    // TODO: track brackets???
 } Parser;
 
 void parse_translation_unit(TokenStream* stream, LineMap* map);
