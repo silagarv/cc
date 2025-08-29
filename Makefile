@@ -1,7 +1,7 @@
 CC = clang-19
 CFLAGS = -Wall -Wextra -Wpedantic -std=c99 -g3 -O0
 CFLAGS += -Wshadow -Wno-unused-parameter -Wno-unused-function \
-	-Wno-unused-variable -Wno-switch -Wvla
+	-Wno-unused-variable -Wno-switch -Wvla -ferror-limit=0
 CFLAGS += -x c
 # CFLAGS += -fanalyzer
 # CFLAGS += -flto

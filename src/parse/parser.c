@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "files/location.h"
 #include "util/panic.h"
 #include "util/str.h"
 #include "util/xmalloc.h"
@@ -48,86 +49,73 @@ static const size_t function_specificer_count = countof(function_specificer);
 
 static bool is_valid_stream_position(TokenStream* stream)
 {
-    return (stream->current_token < stream->count);
+    return stream->current_token < stream->count;
 }
 
 // Return the type of the current token in a token stream
-static TokenType curr_type(TokenStream* stream)
+static TokenType token_stream_current_type(TokenStream* stream)
 {
     assert(is_valid_stream_position(stream));
-
     return stream->tokens[stream->current_token].type;
 }
 
-static TokenType next_type(TokenStream* stream)
+static TokenType token_stream_next_type(TokenStream* stream)
 {
     assert(is_valid_stream_position(stream));
-
     return stream->tokens[stream->current_token + 1].type;
 }
 
-static TokenType next_next_type(TokenStream* stream)
+static Token* token_stream_current(TokenStream* stream)
 {
     assert(is_valid_stream_position(stream));
-
-    return stream->tokens[stream->current_token + 2].type;
-}
-
-static Token* curr(TokenStream* stream)
-{
-    assert(is_valid_stream_position(stream));
-
     return &stream->tokens[stream->current_token];
 }
 
-static Token* next(TokenStream* stream)
+static Token* token_stream_next(TokenStream* stream)
 {
     assert(is_valid_stream_position(stream));
-
     return &stream->tokens[stream->current_token + 1];
 }
 
-static void consume(TokenStream* stream)
+static void token_stream_advance(TokenStream* stream)
 {
     assert(is_valid_stream_position(stream));
-
-    // Make sure we only eat tokens when it is okay to do so, otherwise we might
-    // go over how many we can actually eat. In the case there is none to eat
-    // we just panic
-    if (stream->current_token < stream->count)
-    {
-        stream->current_token++;
-    }
-    else
-    {
-        panic("trying to comsume a token we shouldn't...");
-    }
+    assert(token_stream_current_type(stream) != TOKEN_EOF);
+    stream->current_token++;
 }
 
 // Now we are below the token stream methods we have the parser methods. These
 // are the actual onces which should be called and acted upon
 
-// Anchor token methods
+// Parser methods for managing error recovory. We are mainly using recover
+// tokens for recovery since it is a simple yet powerful method.
 static void add_recover_token(Parser* parser, TokenType type);
 static void remove_recover_token(Parser* parser, TokenType type);
 static void add_recover_tokens(Parser* parser, const TokenType* types, size_t count);
 static void remove_recover_tokens(Parser* parser, const TokenType* types, size_t count);
+
 static bool is_in_recover_set(Parser* parser, TokenType type);
 
-// Get the current token from the parser
-static Token* get_curr_token(Parser* parser);
-static Token* get_next_token(Parser* parser);
+// Parser methods for getting the current and next token. We aim to be a LL(1)
+// like parser so we should only ever need these in order to figure own the
+// current production.
+static Token* current_token(Parser* parser);
+static Token* next_token(Parser* parser);
 
-static void require(Parser* parser, TokenType type);
+static TokenType current_token_type(Parser* parser);
+static TokenType next_token_type(Parser* parser);
+
+// Methods for mathing a token type or unconditionally consuming a token.
 static void match(Parser* parser, TokenType type);
-// static void consume(Parser* parser);
+static void consume(Parser* parser);
+
 static bool is_match(Parser* parser, TokenType type);
-static bool is_next_match(Parser* parser, TokenType type);
 static bool has_match(Parser* parser, const TokenType* types, size_t count);
+static bool is_next_match(Parser* parser, TokenType type);
 
 static void parse_error(Parser* parser, const char* fmt, ...)
 {
-    Token* tok = get_curr_token(parser);   
+    Token* tok = current_token(parser);   
 
     ResolvedLocation loc = line_map_resolve_location(parser->map, tok->loc);
     fprintf(stderr, "%u:%u\n", loc.line, loc.col);
@@ -176,34 +164,84 @@ static bool is_in_recover_set(Parser* parser, TokenType type)
     return (parser->recover_set[type] != 0);
 }
 
-static Token* get_curr_token(Parser* parser)
+// Parser methods for getting the current and next token. We aim to be a LL(1)
+// like parser so we should only ever need these in order to figure own the
+// current production.
+static Token* current_token(Parser* parser)
 {
-    return curr(parser->stream);
+    return token_stream_current(parser->stream);
 }
 
-static Token* get_next_token(Parser* parser)
+static Token* next_token(Parser* parser)
 {
-    return next(parser->stream);
+    return token_stream_next(parser->stream);
 }
 
-// The require function requires a token to be of that type. I.e. we should
-// have already checked we got that type and to get any other type would mean
-// that something has gone quite wrong. In this case I think it is more than 
-// okay that we just give up all together
-static void require(Parser* parser, TokenType type)
+static TokenType current_token_type(Parser* parser)
 {
-    assert(is_match(parser, type));
-    consume(parser->stream);
+    return token_stream_current_type(parser->stream);
+}
+
+static TokenType next_token_type(Parser* parser)
+{
+    return token_stream_next_type(parser->stream);
+}
+
+// Methods for mathing a token type or unconditionally consuming a token.
+static void match(Parser* parser, TokenType type)
+{
+    if (token_stream_current_type(parser->stream) == type)
+    {
+        token_stream_advance(parser->stream);
+
+        return;
+    }
+
+    parse_error(parser, "expected '%s' but got '%s'", 
+            token_type_get_name(type), 
+            token_type_get_name(current_token_type(parser))
+        );
+
+    panic("failed to match token... TODO: finish this method");
+}
+
+static void consume(Parser* parser)
+{
+    token_stream_advance(parser->stream);
+}
+
+static bool is_match(Parser* parser, TokenType type)
+{
+    return token_stream_current_type(parser->stream) == type;
+}
+
+static bool has_match(Parser* parser, const TokenType* types, size_t count)
+{
+    const TokenType current = token_stream_current_type(parser->stream);
+
+    for (size_t i = 0; i < count; i++)
+    {
+        if (current == types[i])
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool is_next_match(Parser* parser, TokenType type)
+{
+    return token_stream_next_type(parser->stream) == type;
 }
 
 static void eat_until(Parser* parser, TokenType type)
 {
-    // Can't have a match for the type when this function is called
     assert(!is_match(parser, type));
 
     while (!is_match(parser, type) && !is_match(parser, TOKEN_EOF))
     {
-        consume(parser->stream);
+        consume(parser);
     }
 }
 
@@ -211,16 +249,14 @@ static void eat_until_recover(Parser* parser)
 {
     while (true)
     {
-        TokenType curr = curr_type(parser->stream);
+        TokenType type = current_token_type(parser);
 
-        // Note: since we put EOF in our recover set this will never eat past
-        // the end
-        if (is_in_recover_set(parser, curr))
+        if (is_in_recover_set(parser, type))
         {
             break;
         }
 
-        consume(parser->stream);
+        consume(parser);
     }
 }
 
@@ -233,72 +269,8 @@ static void recover(Parser* parser, TokenType type)
 
     if (!is_match(parser, TOKEN_EOF))
     {
-        assert(is_match(parser, type));
-        consume(parser->stream);
+        consume(parser);
     }
-
-    // TODO: change this to basic recover set stuff once we are parsing everything
-    // TODO: also might also consider adding statement level recovery?
-
-    // while (true)
-    // {
-    //     TokenType curr = curr_type(parser->stream);
-    //     if (parser->recover_set[curr] != 0)
-    //     {
-    //         break;
-    //     }
-
-    //     // TODO: maybe add some things in here handle braces / parens / brackets
-    //     // TODO: better
-
-    //     consume(parser->stream);
-    // }
-}
-
-static void match(Parser* parser, TokenType type)
-{
-    TokenStream* stream = parser->stream;
-
-    if (curr_type(stream) == type)
-    {
-        consume(stream);
-
-        return;
-    }
-
-    parse_error(parser, "expected '%s' but got '%s'", 
-            token_type_get_name(type), 
-            token_type_get_name(curr_type(stream))
-        );
-
-    recover(parser, type);    
-
-    return;
-}
-
-static bool is_match(Parser* parser, TokenType type)
-{
-    return (curr_type(parser->stream) == type);
-}
-
-static bool is_next_match(Parser* parser, TokenType type)
-{
-    return (next_type(parser->stream) == type);
-}
-
-static bool has_match(Parser* parser, const TokenType* types, size_t count)
-{
-    const TokenType current = curr_type(parser->stream);
-
-    for (size_t i = 0; i < count; i++)
-    {
-        if (current == types[i])
-        {
-            return true;
-        }
-    }
-
-    return false;
 }
 
 // TODO: we definitely want to add methods like for example the below
@@ -495,12 +467,13 @@ static bool is_string_token(Parser* parser, const Token* tok)
 
 static Expression* parse_primary_expression(Parser* parser)
 {
-    const Token* current_token = get_curr_token(parser);
-    switch (current_token->type)
+    Token* current = current_token(parser);
+    TokenType current_type = current_token_type(parser);
+    switch (current_type)
     {
         case TOKEN_LPAREN: 
         {
-            require(parser, TOKEN_LPAREN);
+            consume(parser);
 
             Expression* expr = parse_expression(parser);
 
@@ -511,28 +484,28 @@ static Expression* parse_primary_expression(Parser* parser)
         
         case TOKEN_IDENTIFIER:
         {
-            require(parser, TOKEN_IDENTIFIER);
+            consume(parser);
 
             return NULL;
         }
 
         case TOKEN_NUMBER:
         {
-            require(parser, TOKEN_NUMBER);
+            consume(parser);
 
             IntegerValue value = {0};
-            const bool success = parse_integer_literal(&value, current_token);
+            const bool success = parse_integer_literal(&value, current);
 
             Expression* expr;
             if (!success)
             {
                 diag_error("integer literal conversion failed");
 
-                expr = create_error_expression(current_token);
+                expr = create_error_expression(current);
             }
             else
             {
-                expr = create_integer_expression(current_token, &value);
+                expr = create_integer_expression(current, &value);
             }
 
             return expr;
@@ -542,26 +515,25 @@ static Expression* parse_primary_expression(Parser* parser)
         case TOKEN_WIDE_STRING:
         {
             size_t string_count = 0;
-            while (is_string_token(parser, get_curr_token(parser)))
+            while (is_string_token(parser, current_token(parser)))
             {
-                require(parser, get_curr_token(parser)->type);
-
+                consume(parser);
                 string_count++;
             }
 
             StringLiteral string = {0};
-            const bool success = parse_string_literal(&string, current_token, string_count);
+            const bool success = parse_string_literal(&string, current, string_count);
 
             Expression* expr;
             if (!success)
             {
                 diag_error("string concatenation and conversion failed");
 
-                expr = create_error_expression(current_token);
+                expr = create_error_expression(current);
             }
             else
             {
-                expr = create_string_expression(current_token, &string);
+                expr = create_string_expression(current, &string);
             }
 
             return expr;
@@ -570,21 +542,21 @@ static Expression* parse_primary_expression(Parser* parser)
         case TOKEN_CHARACTER:
         case TOKEN_WIDE_CHARACTER:
         {
-            require(parser, current_token->type);
+            consume(parser);
 
             CharValue value = {0};
-            const bool success = parse_char_literal(&value, current_token);
+            const bool success = parse_char_literal(&value, current);
 
             Expression* expr;
             if (!success)
             {
                 diag_error("character conversion failed");
 
-                expr = create_error_expression(current_token);
+                expr = create_error_expression(current);
             }
             else
             {
-                expr = create_character_expression(current_token, &value);
+                expr = create_character_expression(current, &value);
             }
 
             return expr;
@@ -593,7 +565,7 @@ static Expression* parse_primary_expression(Parser* parser)
         default:
             diag_error("expected expression");
 
-            return create_error_expression(current_token);
+            return create_error_expression(current);
     }
 }
 
@@ -610,16 +582,16 @@ static Expression* parse_postfix_expression(Parser* parser)
     while (has_match(parser, (TokenType[]) {TOKEN_LBRACKET, TOKEN_LPAREN,
             TOKEN_DOT, TOKEN_ARROW, TOKEN_PLUS_PLUS, TOKEN_MINUS_MINUS}, 6))
     {
-        switch (curr_type(parser->stream))
+        switch (current_token_type(parser))
         {
             case TOKEN_LBRACKET:
-                match(parser, TOKEN_LBRACKET);
+                consume(parser);
                 parse_expression(parser);
                 match(parser, TOKEN_RBRACKET);
                 break;
 
             case TOKEN_LPAREN:
-                match(parser, TOKEN_LPAREN);
+                consume(parser);
                 if (!is_match(parser, TOKEN_RPAREN))
                 {
                     parse_argument_expression_list(parser);
@@ -628,21 +600,21 @@ static Expression* parse_postfix_expression(Parser* parser)
                 break;
 
             case TOKEN_DOT:
-                match(parser, TOKEN_DOT);
+                consume(parser);
                 match(parser, TOKEN_IDENTIFIER);
                 break;
 
             case TOKEN_ARROW:
-                match(parser, TOKEN_ARROW);
+                consume(parser);
                 match(parser, TOKEN_IDENTIFIER);
                 break;
 
             case TOKEN_PLUS_PLUS:
-                match(parser, TOKEN_PLUS_PLUS);
+                consume(parser);
                 break;
 
             case TOKEN_MINUS_MINUS:
-                match(parser, TOKEN_MINUS_MINUS);
+                consume(parser);
                 break;
 
             default:
@@ -660,7 +632,7 @@ static Expression* parse_argument_expression_list(Parser* parser)
 
     while (is_match(parser, TOKEN_COMMA))
     {
-        match(parser, TOKEN_COMMA);
+        consume(parser);
         parse_assignment_expression(parser);
     }
 
@@ -669,54 +641,54 @@ static Expression* parse_argument_expression_list(Parser* parser)
 
 static Expression* parse_unary_expression(Parser* parser)
 {
-    switch (curr_type(parser->stream))
+    switch (current_token_type(parser))
     {
         case TOKEN_PLUS_PLUS:
-            match(parser, TOKEN_PLUS_PLUS);
+            consume(parser);
             parse_unary_expression(parser);
             break;
 
         case TOKEN_MINUS_MINUS:
-            match(parser, TOKEN_MINUS_MINUS);
+            consume(parser);
             parse_unary_expression(parser);
             break;
 
         case TOKEN_AND:
-            match(parser, TOKEN_AND);
+            consume(parser);
             parse_cast_expression(parser);
             break;
 
         case TOKEN_STAR:
-            match(parser, TOKEN_STAR);
+            consume(parser);
             parse_cast_expression(parser);
             break;
 
         case TOKEN_PLUS:
-            match(parser, TOKEN_PLUS);
+            consume(parser);
             parse_cast_expression(parser);
             break;
 
         case TOKEN_MINUS:
-            match(parser, TOKEN_MINUS);
+            consume(parser);
             parse_cast_expression(parser);
             break;
 
         case TOKEN_TILDE:
-            match(parser, TOKEN_TILDE);
+            consume(parser);
             parse_cast_expression(parser);
             break;
 
         case TOKEN_NOT:
-            match(parser, TOKEN_NOT);
+            consume(parser);
             parse_cast_expression(parser);
             break;
 
         case TOKEN_SIZEOF:
-            require(parser, TOKEN_SIZEOF);
+            consume(parser);
             if (is_match(parser, TOKEN_LPAREN) && 
-                    is_typename_start(parser, get_next_token(parser)))
+                    is_typename_start(parser, next_token(parser)))
             {
-                match(parser, TOKEN_LPAREN);
+                consume(parser);
                 parse_type_name(parser);
                 match(parser, TOKEN_RPAREN);
             }
@@ -738,9 +710,9 @@ static Expression* parse_cast_expression(Parser* parser)
 {
     /* ( type-name ) cast-expression */
     while (is_match(parser, TOKEN_LPAREN) && 
-            is_typename_start(parser, get_next_token(parser)))
+            is_typename_start(parser, next_token(parser)))
     {
-        require(parser, TOKEN_LPAREN);
+        consume(parser);
 
         Type* type = parse_type_name(parser);
         
@@ -754,13 +726,13 @@ static Expression* parse_cast_expression(Parser* parser)
          */
         if (is_match(parser, TOKEN_LCURLY))
         {
-            require(parser, TOKEN_LCURLY);
+            consume(parser);
             
             parse_initializer_list(parser);
 
             if (is_match(parser, TOKEN_COMMA))
             {
-                require(parser, TOKEN_COMMA);
+                consume(parser);
             }
 
             match(parser, TOKEN_RCURLY);
@@ -780,11 +752,19 @@ static Expression* parse_multiplicative_expression(Parser* parser)
 
     while (has_match(parser, (TokenType[]) {TOKEN_STAR, TOKEN_SLASH, TOKEN_PERCENT}, 3))
     {
-        switch (curr_type(parser->stream)) 
+        switch (current_token_type(parser))
         {
-            case TOKEN_STAR: match(parser, TOKEN_STAR); break;
-            case TOKEN_SLASH: match(parser, TOKEN_SLASH); break;
-            case TOKEN_PERCENT: match(parser, TOKEN_PERCENT); break;
+            case TOKEN_STAR: 
+                consume(parser); 
+                break;
+            
+            case TOKEN_SLASH: 
+                consume(parser); 
+                break;
+            
+            case TOKEN_PERCENT: 
+                consume(parser); 
+                break;
 
             default:
                 panic("unreachable");
@@ -813,15 +793,15 @@ static Expression* parse_additive_expression(Parser* parser)
          */
         
         ExpressionType type = EXPRESSION_ERROR;
-        switch (curr_type(parser->stream))
+        switch (current_token_type(parser))
         {
             case TOKEN_PLUS: 
-                require(parser, TOKEN_PLUS);
+                consume(parser);
                 type = EXPRESSION_BINARY_ADD; 
                 break;
 
             case TOKEN_MINUS: 
-                require(parser, TOKEN_MINUS);
+                consume(parser);
                 type = EXPRESSION_BINARY_SUBTRACT; 
                 break;
 
@@ -853,10 +833,15 @@ static Expression* parse_shift_expression(Parser* parser)
 
     while (has_match(parser, (TokenType[]) {TOKEN_LT_LT, TOKEN_GT_GT}, 2))
     {
-        switch (curr_type(parser->stream)) 
+        switch (current_token_type(parser)) 
         {
-            case TOKEN_LT_LT: match(parser, TOKEN_LT_LT); break;
-            case TOKEN_GT_GT: match(parser, TOKEN_GT_GT); break;
+            case TOKEN_LT_LT: 
+                consume(parser); 
+                break;
+            
+            case TOKEN_GT_GT: 
+                consume(parser); 
+                break;
 
             default:
                 panic("unreachable");
@@ -875,12 +860,23 @@ static Expression* parse_relational_expression(Parser* parser)
 
     while (has_match(parser, (TokenType[]) {TOKEN_LT, TOKEN_GT, TOKEN_LT_EQUAL, TOKEN_GT_EQUAL}, 4))
     {
-        switch (curr_type(parser->stream))
+        switch (current_token_type(parser))
         {
-            case TOKEN_LT: match(parser, TOKEN_LT); break;
-            case TOKEN_GT: match(parser, TOKEN_GT); break;
-            case TOKEN_LT_EQUAL: match(parser, TOKEN_LT_EQUAL); break;
-            case TOKEN_GT_EQUAL: match(parser, TOKEN_GT_EQUAL); break;
+            case TOKEN_LT: 
+                consume(parser); 
+                break;
+            
+            case TOKEN_GT: 
+                consume(parser); 
+                break;
+            
+            case TOKEN_LT_EQUAL: 
+                consume(parser); 
+                break;
+            
+            case TOKEN_GT_EQUAL: 
+                consume(parser); 
+                break;
 
             default:
                 panic("unreachable");
@@ -899,10 +895,15 @@ static Expression* parse_equality_expression(Parser* parser)
 
     while (has_match(parser, (TokenType[]) {TOKEN_EQUAL_EQUAL, TOKEN_NOT_EQUAL}, 2))
     {
-        switch (curr_type(parser->stream))
+        switch (current_token_type(parser))
         {
-            case TOKEN_EQUAL_EQUAL: match(parser, TOKEN_EQUAL_EQUAL); break;
-            case TOKEN_NOT_EQUAL: match(parser, TOKEN_NOT_EQUAL); break;
+            case TOKEN_EQUAL_EQUAL: 
+                consume(parser);
+                break;
+            
+            case TOKEN_NOT_EQUAL: 
+                consume(parser);
+                break;
 
             default:
                 panic("unreachable");
@@ -935,7 +936,7 @@ static Expression* parse_exclusive_or_expression(Parser* parser)
 
     while (is_match(parser, TOKEN_XOR))
     {
-        match(parser, TOKEN_XOR);
+        consume(parser);
 
         parse_and_expression(parser);
     }
@@ -949,7 +950,7 @@ static Expression* parse_inclusive_or_expression(Parser* parser)
 
     while (is_match(parser, TOKEN_OR))
     {
-        match(parser, TOKEN_OR);
+        consume(parser);
 
         parse_exclusive_or_expression(parser);
     }
@@ -963,7 +964,7 @@ static Expression* parse_logical_and_expression(Parser* parser)
 
     while (is_match(parser, TOKEN_AND_AND))
     {
-        match(parser, TOKEN_AND_AND);
+        consume(parser);
 
         parse_inclusive_or_expression(parser);
     }
@@ -977,7 +978,7 @@ static Expression* parse_logical_or_expression(Parser* parser)
 
     while (is_match(parser, TOKEN_OR_OR))
     {
-        match(parser, TOKEN_OR_OR);
+        consume(parser);
 
         parse_logical_and_expression(parser);
     }
@@ -991,7 +992,7 @@ static Expression* parse_conditional_expression(Parser* parser)
 
     if (is_match(parser, TOKEN_QUESTION))
     {
-        match(parser, TOKEN_QUESTION);
+        consume(parser);
 
         parse_expression(parser);
 
@@ -1021,9 +1022,10 @@ static Expression* parse_assignment_expression(Parser* parser)
 
     if (has_match(parser, assignment_operators, num_operators))
     {
-        // TODO: implement proper assignment expression stuff
-        TokenType current_type = curr_type(parser->stream);
-        match(parser, current_type);
+        // TODO: will need to make sure that we actually somehow get the token
+        // type before simply consuming the token
+        consume(parser);
+        
         parse_assignment_expression(parser);
     }
 
@@ -1043,7 +1045,7 @@ static Expression* parse_expression(Parser* parser)
 
     while (is_match(parser, TOKEN_COMMA))
     {
-        require(parser, TOKEN_COMMA);
+        consume(parser);
 
         Expression* rhs = parse_assignment_expression(parser);
 
@@ -1063,7 +1065,7 @@ static Statement* statement_allocate(Parser* parser, StatementType type)
     Statement* stmt = xmalloc(sizeof(Statement));
 
     stmt->base.type = type;
-    stmt->base.loc = get_curr_token(parser)->loc;
+    stmt->base.loc = current_token(parser)->loc;
     stmt->base.parent = NULL; // TODO: change this from NULL to proper stmt
 
     return stmt;
@@ -1078,10 +1080,11 @@ static Statement* parse_label_statement(Parser* parser)
 {
     Statement* stmt = statement_allocate(parser, STATEMENT_LABEL);
 
-    Token* tok = get_curr_token(parser);
+    Token* tok = current_token(parser);
 
-    require(parser, TOKEN_IDENTIFIER);
-    require(parser, TOKEN_COLON);
+    // First consume identifier then the colon...
+    consume(parser);
+    consume(parser);
 
     // Somehow we want to get the name from the token
     stmt->label_stmt.name = (String) {0};
@@ -1102,7 +1105,7 @@ static Statement* parse_case_statement(Parser* parser)
     
     Statement* stmt = statement_allocate(parser, STATEMENT_CASE);
 
-    require(parser, TOKEN_CASE);
+    consume(parser);
 
     // TODO: somewhere we will need to parse the constant expression and then
     // TODO: eventually fold it somewhere
@@ -1130,8 +1133,7 @@ static Statement* parse_default_statement(Parser* parser)
 
     Statement* stmt = statement_allocate(parser, STATEMENT_CASE);
 
-    require(parser, TOKEN_DEFAULT);
-
+    consume(parser);
     match(parser, TOKEN_COLON);
 
     stmt->default_stmt.statement = parse_statement(parser);
@@ -1162,7 +1164,7 @@ static Statement* parse_expression_statement(Parser* parser)
 
     if (is_match(parser, TOKEN_SEMI))
     {
-        match(parser, TOKEN_SEMI);
+        consume(parser);
     }
     else
     {
@@ -1175,9 +1177,8 @@ static Statement* parse_expression_statement(Parser* parser)
 
 static Statement* parse_if_statement(Parser* parser)
 {
-    const Token* if_token = get_curr_token(parser);
-    
-    require(parser, TOKEN_IF);
+    const Token* if_token = current_token(parser);
+    consume(parser);
 
     match(parser, TOKEN_LPAREN);
 
@@ -1189,8 +1190,8 @@ static Statement* parse_if_statement(Parser* parser)
 
     if (is_match(parser, TOKEN_ELSE))
     {
-        require(parser, TOKEN_ELSE);
-
+        consume(parser);
+            
         Statement* else_body = parse_statement(parser);
     }
 
@@ -1205,9 +1206,8 @@ static Statement* parse_switch_statement(Parser* parser)
     Statement* current_breakable = parser->current_context.current_breakable;
     Statement* current_switch = parser->current_context.current_switch;
 
-    const Token* switch_token = get_curr_token(parser);
-
-    require(parser, TOKEN_SWITCH);
+    const Token* switch_token = current_token(parser);
+    consume(parser);
 
     match(parser, TOKEN_LPAREN);
 
@@ -1237,8 +1237,8 @@ static Statement* parse_while_statement(Parser* parser)
     Statement* current_iteration = parser->current_context.current_iteration;
     Statement* current_breakable = parser->current_context.current_breakable;
 
-    const Token* while_token = get_curr_token(parser);
-    require(parser, TOKEN_WHILE);
+    const Token* while_token = current_token(parser);
+    consume(parser);
 
     match(parser, TOKEN_LPAREN);
 
@@ -1267,9 +1267,8 @@ static Statement* parse_do_while_statement(Parser* parser)
     Statement* current_iteration = parser->current_context.current_iteration;
     Statement* current_breakable = parser->current_context.current_breakable;
 
-    const Token* do_token = get_curr_token(parser);
-
-    require(parser, TOKEN_DO);
+    const Token* do_token = current_token(parser);
+    consume(parser);
 
     // TODO: create the statement and push it
     Statement* this_stmt = NULL;
@@ -1298,16 +1297,15 @@ static Statement* parse_do_while_statement(Parser* parser)
 
 static Statement* parse_for_statement(Parser* parser)
 {
-    const Token* for_token = get_curr_token(parser);
-
-    require(parser, TOKEN_FOR);
+    const Token* for_token = current_token(parser);
+    consume(parser);
 
     match(parser, TOKEN_LPAREN);
 
     // Below if where it gets a little tricky :)
     if (!is_match(parser, TOKEN_SEMI))
     {
-        if (is_typename_start(parser, get_curr_token(parser)))
+        if (is_typename_start(parser, current_token(parser)))
         {
             // TODO: how do I deal with this?
             parse_declaration(parser);
@@ -1345,12 +1343,10 @@ static Statement* parse_for_statement(Parser* parser)
 
 static Statement* parse_goto_statement(Parser* parser)
 {
-    const Token* goto_token = get_curr_token(parser);
+    const Token* goto_token = current_token(parser);
+    consume(parser);
 
-    require(parser, TOKEN_GOTO);
-
-    const Token* label_name = get_curr_token(parser);
-
+    const Token* label_name = current_token(parser);
     match(parser, TOKEN_IDENTIFIER);
 
     match(parser, TOKEN_SEMI);
@@ -1366,9 +1362,8 @@ static Statement* parse_continue_statement(Parser* parser)
         parse_error(parser, "No current continuable exists");
     }
 
-    const Token* continue_token = get_curr_token(parser);
-
-    require(parser, TOKEN_CONTINUE);
+    const Token* continue_token = current_token(parser);
+    consume(parser);
 
     match(parser, TOKEN_SEMI);
 
@@ -1383,9 +1378,8 @@ static Statement* parse_break_statement(Parser* parser)
         parse_error(parser, "No current breakable statement exists");
     }
 
-    const Token* break_token = get_curr_token(parser);
-
-    require(parser, TOKEN_BREAK);
+    const Token* break_token = current_token(parser);
+    consume(parser);
 
     match(parser, TOKEN_SEMI);
 
@@ -1400,9 +1394,8 @@ static Statement* parser_return_statement(Parser* parser)
         parse_error(parser, "Return statement outside of function");
     }
 
-    const Token* return_token = get_curr_token(parser);
-
-    require(parser, TOKEN_RETURN);
+    const Token* return_token = current_token(parser);
+    consume(parser);
 
     if (!is_match(parser, TOKEN_SEMI))
     {
@@ -1417,14 +1410,14 @@ static Statement* parser_return_statement(Parser* parser)
 static Statement* parse_statement(Parser* parser)
 {
     Statement* stmt;
-    switch(curr_type(parser->stream))
+    switch(current_token_type(parser))
     {
         // Here we are specifically looking for a label
         // e.g. fail: ...
         // TODO: we will also eventually need to check if the identifier might
         // TODO: be a type name or not i think
         case TOKEN_IDENTIFIER:
-            if (next_type(parser->stream) != TOKEN_COLON)
+            if (next_token_type(parser) != TOKEN_COLON)
             {
                 goto expression_statement;
             }
@@ -1488,12 +1481,12 @@ static Statement* parse_statement(Parser* parser)
             break;
 
         default:
-expression_statement:
-            if (is_expression_start(parser, get_curr_token(parser)))
+        expression_statement:
+            if (is_expression_start(parser, current_token(parser)))
             {
                 stmt = parse_expression_statement(parser);    
             }
-            else if (has_declaration_specifier(parser, get_curr_token(parser)))
+            else if (has_declaration_specifier(parser, current_token(parser)))
             {
                 parse_declaration(parser);
 
@@ -1540,7 +1533,7 @@ static Declaration* parse_designator(Parser* parser)
 {
     if (is_match(parser, TOKEN_LBRACKET))
     {
-        match(parser, TOKEN_LBRACKET);
+        consume(parser);
 
         parse_constant_expression(parser);
 
@@ -1548,7 +1541,7 @@ static Declaration* parse_designator(Parser* parser)
     }
     else if (is_match(parser, TOKEN_DOT))
     {
-        match(parser, TOKEN_DOT);
+        consume(parser);
         match(parser, TOKEN_IDENTIFIER);
     }
     else
@@ -1563,13 +1556,13 @@ static Declaration* parse_initializer(Parser* parser)
 {
     if (is_match(parser, TOKEN_LCURLY))
     {
-        match(parser, TOKEN_LCURLY);
+        consume(parser);
 
         parse_initializer_list(parser);
 
         if (is_match(parser, TOKEN_COMMA))
         {
-            require(parser, TOKEN_COMMA);
+            consume(parser);
         }
 
         match(parser, TOKEN_RCURLY);
@@ -1607,7 +1600,7 @@ static Declaration* parse_initializer_list(Parser* parser)
         }
         else // Get the comma and keep going
         {
-            match(parser, TOKEN_COMMA);
+            consume(parser);
             assert(!is_match(parser, TOKEN_RCURLY));
         }
     }
@@ -1633,10 +1626,9 @@ static Declaration* parse_init_declarator(Parser* parser)
 
     if (is_match(parser, TOKEN_EQUAL))
     {
-        match(parser, TOKEN_EQUAL);
+        consume(parser);
         parse_initializer(parser);
     }
-
 
     return NULL;
 }
@@ -1647,7 +1639,7 @@ static Declaration* parse_init_declarator_list(Parser* parser)
 
     while (is_match(parser, TOKEN_COMMA))
     {
-        match(parser, TOKEN_COMMA);
+        consume(parser);
         parse_init_declarator(parser);
     }
  
@@ -1667,7 +1659,7 @@ static Declaration* parse_enumerator(Parser* parser)
     match(parser, TOKEN_IDENTIFIER);
     if (is_match(parser, TOKEN_EQUAL))
     {
-        require(parser, TOKEN_EQUAL);
+        consume(parser);
         parse_constant_expression(parser);
     }
 
@@ -1680,7 +1672,7 @@ static Declaration* parse_enumerator_list(Parser* parser)
 
     while (is_match(parser, TOKEN_COMMA) && !is_next_match(parser, TOKEN_RCURLY))
     {
-        require(parser, TOKEN_COMMA);
+        consume(parser);
 
         parse_enumerator(parser);
     }
@@ -1709,7 +1701,7 @@ static Declaration* parse_enum_specificer(Parser* parser)
 
     if (is_match(parser, TOKEN_COMMA))
     {
-        require(parser, TOKEN_COMMA);
+        consume(parser);
     }
 
     match(parser, TOKEN_RCURLY);
@@ -1720,13 +1712,13 @@ static Declaration* parse_enum_specificer(Parser* parser)
 static Declaration* parse_direct_declarator(Parser* parser)
 {   
     // Parse the first part
-    switch (curr_type(parser->stream))
+    switch (current_token_type(parser))
     {
         case TOKEN_IDENTIFIER:
-            match(parser, TOKEN_IDENTIFIER);
+            consume(parser);
             break;
         case TOKEN_LPAREN:
-            match(parser, TOKEN_LPAREN);
+            consume(parser);
             parse_declarator(parser);
             match(parser, TOKEN_RPAREN);
             break;
@@ -1738,10 +1730,10 @@ static Declaration* parse_direct_declarator(Parser* parser)
 
     while (has_match(parser, (TokenType[]) {TOKEN_LPAREN, TOKEN_LBRACKET}, 2))
     {
-        switch (curr_type(parser->stream))
+        switch (current_token_type(parser))
         {
             case TOKEN_LPAREN:
-                match(parser, TOKEN_LPAREN);
+                consume(parser);
 
                 if (is_match(parser, TOKEN_IDENTIFIER))
                 {
@@ -1756,7 +1748,7 @@ static Declaration* parse_direct_declarator(Parser* parser)
                     parse_paramater_type_list(parser);
                 }
 
-                match(parser, TOKEN_RPAREN);
+                consume(parser);
                 break;
 
             case TOKEN_LBRACKET:
@@ -1764,7 +1756,7 @@ static Declaration* parse_direct_declarator(Parser* parser)
 
             if (is_match(parser, TOKEN_STAR))
             {
-                match(parser, TOKEN_STAR);
+                consume(parser);
             }
             else if (has_match(parser, type_qualifier, type_qualifier_count))
             {
@@ -1772,12 +1764,12 @@ static Declaration* parse_direct_declarator(Parser* parser)
 
                 if (is_match(parser, TOKEN_STATIC))
                 {
-                    match(parser, TOKEN_STATIC);
+                    consume(parser);
                     parse_assignment_expression(parser);
                 }
                 else if (is_match(parser, TOKEN_STAR))
                 {
-                    match(parser, TOKEN_STAR);
+                    consume(parser);
                 }
                 else
                 {
@@ -1826,7 +1818,7 @@ static Declaration* parse_direct_abstract_declarator(Parser* parser)
         {
             match(parser, TOKEN_RPAREN);
         }
-        else if (is_typename_start(parser, get_curr_token(parser)))
+        else if (is_typename_start(parser, current_token(parser)))
         {
             parse_paramater_type_list(parser);
 
@@ -1870,7 +1862,7 @@ static Declaration* parse_direct_abstract_declarator(Parser* parser)
             {
                 match(parser, TOKEN_RPAREN);
             }
-            else if (is_typename_start(parser, get_curr_token(parser)))
+            else if (is_typename_start(parser, current_token(parser)))
             {
                 parse_paramater_type_list(parser);
 
@@ -1888,7 +1880,7 @@ static Declaration* parse_direct_abstract_declarator(Parser* parser)
             }
             else
             {
-                assert(is_expression_start(parser, get_curr_token(parser)));
+                assert(is_expression_start(parser, current_token(parser)));
 
                 parse_constant_expression(parser);
             }
@@ -1983,9 +1975,10 @@ static Declaration* parse_paramater_list(Parser* parser)
 {
     parse_paramater_declaration(parser);
     // Make sure we don't eat the , ... part if it exists
-    while (is_match(parser, TOKEN_COMMA) && next_type(parser->stream) != TOKEN_ELIPSIS)
+    while (is_match(parser, TOKEN_COMMA) && next_token_type(parser) != TOKEN_ELIPSIS)
     {
-        match(parser, TOKEN_COMMA);
+        consume(parser);
+
         parse_paramater_declaration(parser);
     }
 
@@ -2059,7 +2052,7 @@ static Declaration* parse_struct_declarator(Parser* parser)
     // If we get a bit field off the bar
     if (is_match(parser, TOKEN_COMMA))
     {
-        require(parser, TOKEN_COMMA);
+        consume(parser);
         parse_constant_expression(parser);
 
         return NULL;
@@ -2070,7 +2063,7 @@ static Declaration* parse_struct_declarator(Parser* parser)
     // If we maybe have a bitfield after
     if (is_match(parser, TOKEN_COMMA))
     {
-        require(parser, TOKEN_COMMA);
+        consume(parser);
         parse_constant_expression(parser);
 
         return NULL;
@@ -2085,7 +2078,7 @@ static Declaration* parse_struct_declarator_list(Parser* parser)
 
     if (is_match(parser, TOKEN_COMMA))
     {
-        require(parser, TOKEN_COMMA);
+        consume(parser);
         parse_struct_declarator(parser);
     }
  
@@ -2104,7 +2097,7 @@ static Declaration* parse_struct_declaration(Parser* parser)
 
 static Declaration* parse_struct_declaration_list(Parser* parser)
 {
-    while (get_curr_token(parser)->type != TOKEN_RCURLY)
+    while (current_token_type(parser) != TOKEN_RCURLY)
     {
         parse_struct_declaration(parser);
     }
@@ -2116,11 +2109,11 @@ static Declaration* parse_struct_or_union(Parser* parser)
 {
     if (is_match(parser, TOKEN_STRUCT))
     {
-        require(parser, TOKEN_STRUCT);
+        consume(parser);
     }
     else if (is_match(parser, TOKEN_UNION))
     {
-        require(parser, TOKEN_UNION);
+        consume(parser);
     }
     else
     {
@@ -2134,7 +2127,7 @@ static Declaration* parse_struct_or_union_specifier(Parser* parser)
 {
     assert(has_match(parser, (TokenType[]) {TOKEN_STRUCT, TOKEN_UNION}, 2));
 
-    match(parser, curr_type(parser->stream));
+    consume(parser);
 
     if (is_match(parser, TOKEN_IDENTIFIER))
     {
@@ -2161,8 +2154,8 @@ static TypeFunctionSpecifier parse_function_specificer(Parser* parser)
 {
     assert(has_match(parser, function_specificer, function_specificer_count));
 
-    require(parser, TOKEN_INLINE);
- 
+    consume(parser);
+    
     return TYPE_FUNCTION_SPECIFIER_INLINE;
 }
 
@@ -2170,9 +2163,8 @@ static TypeQualifiers parse_type_qualifier(Parser* parser)
 {
     assert(has_match(parser, type_qualifier, type_qualifier_count));
 
-    TokenType type = get_curr_token(parser)->type;
-
-    require(parser, type);
+    TokenType type = current_token_type(parser);
+    consume(parser);
 
     switch (type) 
     {
@@ -2188,9 +2180,8 @@ static TypeStorageSpecifier parse_storage_class_specifier(Parser* parser)
 {
     assert(has_match(parser, storage_class, storage_class_count));
 
-    TokenType type = get_curr_token(parser)->type;
-
-    require(parser, type);
+    TokenType type = current_token_type(parser);
+    consume(parser);
 
     switch (type)
     {
@@ -2233,7 +2224,7 @@ static Type* parse_builtin_type(Parser* parser)
 
     while (is_builtin_type_token(parser))
     {
-        match(parser, get_curr_token(parser)->type);
+        consume(parser);
     }
 
     return NULL;
@@ -2242,11 +2233,10 @@ static Type* parse_builtin_type(Parser* parser)
 // TODO: I think this here should return a type
 static TypeSpecifier parse_type_specifier(Parser* parser)
 {
-    assert(is_typename_start(parser, get_curr_token(parser)));
+    assert(is_typename_start(parser, current_token(parser)));
 
-    TokenType type = get_curr_token(parser)->type;
-
-    require(parser, type);
+    TokenType type = current_token_type(parser);
+    consume(parser);
 
     switch (type)
     {
@@ -2383,9 +2373,9 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser)
     Type* type = NULL;
 
     // TODO: should this be converted into a switch to be faster?
-    while (has_declaration_specifier(parser, get_curr_token(parser)))
+    while (has_declaration_specifier(parser, current_token(parser)))
     {
-        const Token* token = get_curr_token(parser);
+        const Token* token = current_token(parser);
 
         if (has_match(parser, storage_class, storage_class_count))
         {
@@ -2555,8 +2545,7 @@ static Declaration* parse_declaration_or_definition(Parser* parser)
 
     if (is_match(parser, TOKEN_SEMI))
     {
-        require(parser, TOKEN_SEMI);
-
+        consume(parser);
     }
     else if (is_match(parser, TOKEN_LCURLY))
     {
@@ -2590,7 +2579,7 @@ void parse_translation_unit(TokenStream* stream, LineMap* map)
     // add so we can never go past
     add_recover_token(&parser, TOKEN_EOF);
 
-    while (curr_type(stream) != TOKEN_EOF)
+    while (current_token_type(&parser) != TOKEN_EOF)
     {
         parse_declaration_or_definition(&parser);
     }
