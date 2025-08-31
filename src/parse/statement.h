@@ -6,8 +6,8 @@
 
 #include "files/location.h"
 
-#include "parse/symbol.h"
 #include "parse/expression.h"
+#include "declaration.h"
 
 enum StatementType {
     STATEMENT_ERROR = -1,
@@ -62,7 +62,7 @@ struct StatementBase {
 // Labelled statements
 struct StatementLabel {
     StatementBase base;
-    String name;
+    DeclarationLabel* label;
     Statement* statement;
 };
 
@@ -83,8 +83,6 @@ struct StatementCompound {
     // Maybe add a block item list opt?
     Statement* statement;
     size_t statement_count;
-
-    SymbolTable symbols;
 };
 
 struct StatementExpression {
@@ -97,7 +95,7 @@ struct StatementIf {
     StatementBase base;
     Expression* expression;
     Statement* true_part;
-    Statement* false_part;
+    Statement* false_part; // implies and else (but how to represent?)
 };
 
 struct StatementSwitch {
@@ -136,8 +134,7 @@ struct StatementFor {
 // Jump statement
 struct StatmentGoto {
     StatementBase base;
-    String label_name; // This will need to be changed in the future
-    bool label_seen;
+    Declaration* label;
 };
 
 struct StatmentContinue {

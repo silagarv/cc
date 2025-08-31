@@ -5,11 +5,10 @@
 #include <stddef.h>
 
 #include "util/str.h"
-
 #include "files/location.h"
+#include "lex/identifier_table.h"
 
 typedef enum TypeKind {
-    TYPE_ERROR,
     TYPE_VOID,
     TYPE_BOOL,
     TYPE_CHAR,
@@ -34,7 +33,8 @@ typedef enum TypeKind {
     TYPE_ENUM,
     TYPE_FUNCTION,
     TYPE_POINTER,
-    TYPE_TYPEDEF
+    TYPE_TYPEDEF,
+    TYPE_ERROR
 } TypeKind;
 
 typedef enum TypeQualifiers {
@@ -88,10 +88,20 @@ typedef struct QualifiedType {
 
 // The base type telling us how to interpret it
 typedef struct TypeBase {
+    // What kind of type this is
     TypeKind type;
-    size_t type_size;
-    size_t type_alignment;
+
+    // Where was this declared (if not builting)
     Location declaration;
+
+    // What is the size of this type?
+    size_t type_size;
+
+    // What is the alignment for this type?
+    size_t type_alignment;
+
+    // Is this type considered complete (very important)...
+    bool is_complete;
 } TypeBase;
 
 // Both imaginairy and complex types have an underlying type which is either
@@ -201,34 +211,25 @@ union Type {
     TypeTypedef type_typedef;
 };
 
+// Some functions to check for specific type qualifiers
 bool type_qualifier_is_const(TypeQualifiers qualifiers);
 bool type_qualifier_is_restrict(TypeQualifiers qualifiers);
 bool type_qualifier_is_volatile(TypeQualifiers qualifiers);
 bool type_qualifier_already_has(TypeQualifiers qualifiers, TypeQualifiers has);
-
-// Some logic here on how type specifiers can combine
 bool type_specifier_has(TypeSpecifier current, TypeSpecifier new);
 
-// Functions to create our basic types
-Type* type_create_error(void);
-Type* type_create_void(void);
-Type* type_create_bool(void);
-Type* type_create_char(void);
-Type* type_create_signed_char(void);
-Type* type_create_unsigned_char(void);
-Type* type_create_signed_short(void);
-Type* type_create_unsigned_short(void);
-Type* type_create_signed_int(void);
-Type* type_create_unsigned_int(void);
-Type* type_create_signed_long(void);
-Type* type_create_unsigned_long(void);
-Type* type_create_signed_long_long(void);
-Type* type_create_unsigned_long_long(void);
-Type* type_create_float(void);
-Type* type_create_double(void);
-Type* type_create_long_double(void);
-Type* type_create_complex(Type* base_type);
-Type* type_create_imaginary(Type* base_type);
+// Functions to compare types and test if they are equal...
+bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2);
+bool qualifier_type_is_equal_canonical(const QualifiedType* t1, 
+        const QualifiedType* t2);
 
+
+
+
+// typedef struct TypeStore {
+//     // All of our builtin types. Should be easily indexable based on the type
+//     // so should be nice and quick...
+//     Type builtins[TYPE_BUILTIN_END];
+// } TypeStore;
 
 #endif /* TYPE_H */

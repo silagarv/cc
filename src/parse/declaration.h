@@ -5,88 +5,107 @@
 
 #include "files/location.h"
 
+#include "lex/identifier_table.h"
+
 #include "parse/expression.h"
 #include "parse/type.h"
 
 // A struct to hold all of our declaration specifiers
 typedef struct DeclarationSpecifiers {
-    TypeStorageSpecifier storage_spec;
-    TypeQualifiers qualifiers;
-    TypeFunctionSpecifier function_spec;
     Type* type;
+
+    TypeStorageSpecifier storage_spec;
+
+    TypeQualifiers qualifiers;
+
+    TypeFunctionSpecifier function_spec;
 } DeclarationSpecifiers;
 
 typedef enum DeclarationType {
     DECLARATION_ERROR = -1, /* an error in a declaration */
-
     DECLARATION_VARIABLE, /* of any local or otherwise variable */
-    DECLARATION_FUNCTION_PARAM, /* parameters of a function */
     DECLARATION_FUNCTION, /* of a function with params */
-    DECLARATION_ENUM_CONSTANT, /* constants within an enum */
-    DECLARATION_ENUM, /* an enum */
+    DECLARATION_TYPEDEF, /* a typedef to any of the above */
     DECLARATION_FIELD, /* of a struct / union */
     DECLARATION_STRUCT, /* of a struct */
     DECLARATION_UNION, /* of a union */
-    DECLARATION_TYPEDEF /* a typedef to any of the above */
+    DECLARATION_ENUM_CONSTANT, /* constants within an enum */
+    DECLARATION_ENUM, /* an enum */
+    DECLARAITON_LABEL, /* A label within the source e.g. `foo:` */
 } DeclarationType;
 
+// A structure to hold all of the basics needed in a declaration. This helps us
+// to keep track of all of the basic information needed with each subtype of
+// the declaration keeping track of a bunch of other things.
 typedef struct DeclarationBase {
-    DeclarationType decl_type; /* what type of declaration is this? */
-    Location loc; /* where is this declaraiton located */
-    QualifiedType type; /* the overall type of the declaration */
-    TypeStorageSpecifier storage_class; /* the storage of the declaration */
+    // What type of declaration is this?
+    DeclarationType declaration_type; 
+
+    // What name are we giving this declaration
+    Identifier* identifier;
+    
+    // Where is this declaration located (just a base location here) for a more,
+    // fine grained location and information we will need to traverse the entire
+    // declaration.
+    Location location;
+
+    // The fully qualified type for the symbol
+    QualifiedType qualified_type;
+
+    // The storage specifier for this symbol
+    TypeStorageSpecifier storage_class;
+
+    // The function specifier for this symbol if needed
+    TypeFunctionSpecifier function_specifier;
 } DeclarationBase;
 
 typedef struct DeclarationVariable {
+    // The base declaration of this object
     DeclarationBase base;
 
-    String name; /* the name of the variable */
-
-    bool initialized; /* is it initialised */
-    bool used; /* was the variable used at all? */
+    // TODO: add initializer stuff...
 } DeclarationVariable;
 
-typedef struct DeclarationFunctionParamater DeclarationFunctionParamater;
-typedef struct DeclarationFunction DeclarationFunction;
+// TODO: all our other declarations...
 
-// NOTE: in c99 enum constants always have underlying type of int. Though this
-// may not be true in c23 or with extensions so we will include the underlying
-// type there too
-typedef struct DeclarationEnumConstant DeclarationEnumConstant;
-typedef struct DeclarationEnum DeclarationEnum;
-
-/* Since enum and enum constant need to reference each other */
-struct DeclarationEnumConstant {
+typedef struct DeclarationLabel {
+    // The base declaration of this object
     DeclarationBase base;
 
-    String name; /* the name e.g. GREEN */
-    Expression* expr; /* the value given if any */
-    DeclarationEnum* parent_enum; /* the parent enum */
-};
+    // goto foo; before label foo. This is true until we actually see the label
+    // whilst parsing. If we have label before goto this is never actually true
+    bool implicit_construction;
 
-struct DeclarationEnum {
-    DeclarationBase base;
-
-    String name; /* enum name if any... */
-
-    DeclarationEnumConstant* members; /* the memebers of an enum declaration */
-    size_t num_members; /* the number of members in the declaration */
-};
-
-typedef struct DeclarationField DeclarationField;
-typedef struct DeclarationStruct DeclarationStruct;
-typedef struct DeclarationUnion DeclarationUnion;
-
-typedef struct DeclarationTypedef DeclarationTypedef;
+    // Is this label actually used. This is mainly for warning about unused
+    // labels in useres code. If implicitly constructed this is also set.
+    bool used;
+} DeclarationLabel;
 
 typedef union Declaration {
+    // The base declaration. Used by all of the specialised declatation like
+    // structs as the first member so that we can do type punning and pointer
+    // casting to the correct type.
     DeclarationBase base;
 
-    DeclarationVariable var;
 
-    DeclarationEnum enumeration;
-    DeclarationEnumConstant enumeration_constant;
+    DeclarationVariable variable;
 
+    // The declaration of a label, note that it might not actually be a real
+    // label and could be implicitly constructed. However, this will be checked
+    // for at some stage.
+    DeclarationLabel label;
 } Declaration;
+
+// Create a declaration of a variable. This declaration will represent a
+// variable that we can use within other places.
+// TODO: add the initializer into the declaration so that we can represent that
+// in the AST.
+Declaration* declaration_create_variable(Identifier* identifier, 
+        Location location, QualifiedType type, TypeStorageSpecifier storage);
+
+// Create a declaration of label identifier at the given location, and indicate
+// if this label was implictly constructed.
+Declaration* declaration_create_label(Identifier* identifier, Location location,
+        bool implicit_construction);
 
 #endif /* DECLARATION_H */

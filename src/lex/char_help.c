@@ -7,6 +7,16 @@
 
 #include "util/panic.h"
 
+bool is_uppercase(char c)
+{
+    if ('A' <= c && c <= 'Z')
+    {
+        return true;
+    }
+
+    return false;
+}
+
 bool is_identifier_start(char c)
 {
     if ('a' <= c && c <= 'z')

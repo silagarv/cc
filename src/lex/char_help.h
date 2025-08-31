@@ -6,6 +6,8 @@
 
 typedef uint32_t utf32;
 
+bool is_uppercase(char c);
+
 bool is_identifier_start(char c);
 bool is_identifier(char c);
 bool is_numeric(char c);

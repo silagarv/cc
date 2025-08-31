@@ -1078,19 +1078,12 @@ static void statement_free(Statement* stmt)
 
 static Statement* parse_label_statement(Parser* parser)
 {
-    Statement* stmt = statement_allocate(parser, STATEMENT_LABEL);
-
     Token* tok = current_token(parser);
+    (void) tok;
 
     // First consume identifier then the colon...
     consume(parser);
     consume(parser);
-
-    // Somehow we want to get the name from the token
-    stmt->label_stmt.name = (String) {0};
-    stmt->label_stmt.statement = parse_statement(parser);
-
-    statement_free(stmt);
 
     return NULL;
 }

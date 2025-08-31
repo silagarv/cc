@@ -4,26 +4,14 @@
 #include <stddef.h>
 
 #include "util/hash_map.h"
-
-#include "files/location.h"
-
-#include "parse/type.h"
+#include "lex/identifier_table.h"
+#include "parse/declaration.h"
 
 // TODO: linkage maybe?
 
-// The type of symbol that we are dealing with
-typedef enum SymbolType {
-    SYMBOL_VARIABLE,
-    SYMBOL_FUNCTION,
-    SYMBOL_TYPEDEF,
-    SYMBOL_STRUCT,
-    SYMBOL_UNION,
-    SYMBOL_ENUM,
-    SYMBOL_ENUM_CONSTANT,
-    SYMBOL_LABEL
-} SymbolType;
-
-// 6.2.3 identifier namespaces
+// The different namespaces that symbols exist in. Although not directly needed
+// in the type of symbol, this is important when considering the symbol tables
+// themselves in order to ensure that we implement the standard correctly.
 typedef enum SymbolNamespace {
     SYMBOL_NAMESPACE_NONE, // The normal namespace ordinairy declarators or enum constants
     SYMBOL_NAMESPACE_LABELS, // e.g. label: ...
@@ -33,39 +21,29 @@ typedef enum SymbolNamespace {
 
 typedef struct Symbol {
     // What is the actual name that we are going to refer to this symbol by.
-    String name;
+    Identifier* identifier;
 
-    // What type of symbol is this?
-    SymbolType symbol_type;
-
-    // The location this symbol was declared at.
-    Location location;
-
-    // The fully qualified type of the symbol
-    QualifiedType qualified_type;
- 
-    // Storage specifier for the symbol
-    TypeStorageSpecifier storage_specifier;
-
-    // Function specifier for the symbol if relavent
-    TypeFunctionSpecifier function_specifier;
+    // What is the declaration of this symbol
+    Declaration* decl;
 } Symbol;
 
 // An array of Symbol pointers since we don't want the symbol pointer itself
-// to change once created.
+// to change once created. This is quite a simple structure and only contains
+// the parent of this symbol table, the list of symbols within the table, and
+// the symbol namespace of this table.
 typedef struct SymbolTable {
-    // The parent symbol table for looking up symbols.
-    struct SymbolTable* parent;
-
-    // The map of symbols in the table. From String to symbol...
+    // The namespace all of these symbols reside in
+    SymbolNamespace ns;
+    
+    // The actual symbols within this symbol table.
     HashMap symbols;
 } SymbolTable;
+
+Symbol* symbol_create(Identifier* ident, Declaration* declaration);
 
 SymbolTable* symbol_table_create(SymbolTable* parent);
 void symbol_table_delete(SymbolTable* table);
 
-bool symbol_table_insert(SymbolTable* table, Symbol* sym);
-
-Symbol* symbol_table_lookup(SymbolTable* table, String name);
+Symbol* symbol_table_lookup(SymbolTable* table, Identifier* identifier);
 
 #endif /* SYMBOL_H */

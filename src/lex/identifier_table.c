@@ -1,13 +1,15 @@
 #include "identifier_table.h"
 
 #include <stdlib.h>
+#include <assert.h>
 
+#include "util/xmalloc.h"
 #include "util/str.h"
 #include "util/hash.h"
 #include "util/hash_map.h"
 
+#include "lex/char_help.h"
 #include "lex/token.h"
-#include "util/xmalloc.h"
 
 // Create a malloced identifier structure with an owned string inside of it
 Identifier* identifier_create(String str)
@@ -48,6 +50,61 @@ void identifier_delete(Identifier* identifier)
 {
     string_free(&identifier->string);
     free(identifier);
+}
+
+bool identifier_is_keyword(const Identifier* identifier)
+{
+    return identifier->type != TOKEN_IDENTIFIER;
+}
+
+bool identifier_is_reserved(const Identifier* identifier)
+{
+    if (identifier_is_keyword(identifier))
+    {
+        return true;
+    }
+
+    const String* str = &identifier->string;
+    if (string_get(str, 0) == '_' && string_get(str, 1) == '_')
+    {
+        return true;
+    }
+
+    if (string_get(str, 0) == '_' && is_uppercase(string_get(str, 1)))
+    {
+        return true;
+    }
+
+    return false;
+}
+
+bool identifier_is_equal(const Identifier* ident1, const Identifier* ident2)
+{
+    if (ident1 == ident2)
+    {
+        return true;
+    }
+
+    assert(!string_equal_string(&ident1->string, &ident2->string));
+
+    return false;
+}
+
+TokenType identifier_get_keyword(const Identifier* identifier)
+{
+    assert(identifier_is_keyword(identifier));
+
+    return identifier->type;
+}
+
+String* identifier_get_string(Identifier* identifier)
+{
+    return &identifier->string;
+}
+
+uint32_t identifier_get_hash(const void* identifier)
+{
+    return ((Identifier*) identifier)->hash;
 }
 
 static uint32_t identifier_table_get_hash(const void* key)
@@ -120,6 +177,9 @@ IdentifierTable identifier_table_create(void)
     identifier_table_insert_keyword(&table, "_Bool", TOKEN__BOOL);
     identifier_table_insert_keyword(&table, "_Complex", TOKEN__COMPLEX);
     identifier_table_insert_keyword(&table, "_Imaginary", TOKEN__IMAGINARY);
+
+    // Predefined __func__
+    identifier_table_insert_keyword(&table, "__func__", TOKEN___FUNC__);
 
     return table;
 }

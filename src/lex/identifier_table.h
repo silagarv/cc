@@ -37,9 +37,17 @@ Identifier* identifier_create(String str);
 Identifier* identifier_create_keyword(const char* kw, TokenType type);
 
 // Delete an identifer.
-void Identifier_delete(Identifier* identifier);
+void identifier_delete(Identifier* identifier);
 
-// TODO: create methods on an identifier
+// Some helpful methods for identifiers that we might need to use when lexing
+// or parsing.
+bool identifier_is_keyword(const Identifier* identifier);
+bool identifier_is_reserved(const Identifier* identifier);
+bool identifier_is_equal(const Identifier* ident1, const Identifier* ident2);
+
+TokenType identifier_get_keyword(const Identifier* identifier);
+String* identifier_get_string(Identifier* identifier);
+uint32_t identifier_get_hash(const void* identifier);
 
 // Create an identifier table to intern all of our identifiers
 IdentifierTable identifier_table_create(void);
