@@ -91,7 +91,7 @@ typedef struct TypeBase {
     // What kind of type this is
     TypeKind type;
 
-    // Where was this declared (if not builting)
+    // Where was this declared (if not builtin)
     Location declaration;
 
     // What is the size of this type?
@@ -107,17 +107,18 @@ typedef struct TypeBase {
 // Both imaginairy and complex types have an underlying type which is either
 // float, double, or long double
 typedef struct TypeUnreal {
-    TypeBase type;
+    TypeBase base;
     Type* underlying_type;
 } TypeUnreal;
 
 // An array has an underlying element type and the length of an array may either
 // be known or unknown and we may have done all of the counting ourselves...
 typedef struct TypeArray {
-    TypeBase type;
+    TypeBase base;
     Type* element_type; // The individual element type
     size_t length; // Set if known otherwise 0
 
+    // TODO: what do I do about the absolute mess below
     bool is_size_known; // Do we know a size or at least a minimum size of it
     bool is_static; // is it declared with [static a] for example
     bool is_variable; // is it declared with [*] (why... so many options)
@@ -128,58 +129,34 @@ typedef struct TypeArray {
 // Struct and union types are both compound types which both have members. Each
 // of these members has themselves a type. 
 typedef struct TypeCompoundMember {
-    String name; // The members name
-    Type* member_type; // The type of the member
-
+    TypeBase base;
     bool is_bitfield; // is the member a bitfield
+    union Expression* bitfield_expr; // the constant expression for the bitfield
     size_t bitfield_size; // Size of the members bitfield if needed
-    
-    struct TypeCompoundMember* next; // the next member in the struct or NULL
 } TypeCompoundMember;
 
 typedef struct TypeCompound {
-    TypeBase type_base;
-    String name; // name may be given or could be anonymous but we give it one
+    TypeBase base;
+    union Declaration* decl; // the name given or compiler generated name
 
-    TypeCompoundMember* first_member; // the members of the compound type
-    TypeCompoundMember* last_member; // the last member in the struct
+    TypeCompoundMember* members; // the members of the compound type
+    size_t num_members;
 
-    bool is_anonamous; // e.g. struct { int x;} a;
+    bool is_anonamous; // e.g. struct { int x; };
 } TypeCompound;
 
-// A struct to represent an enum type
-typedef struct TypeEnumConstant {
-    String name; // the name of the member
-    int value; // the value of the constant
-    struct TypeEnumConstant* next;
-} TypeEnumConstant;
-
+// TODO: should we leave enums stuck with `int` or do we do something about this
 typedef struct TypeEnum {
-    TypeBase type_base;
-    String name; // the name of the member of mangled if anon
-    Type* underlying_type; // the underlying type of the enum
-
-    TypeEnumConstant* first; // the first member of enum
-    TypeEnumConstant* last; // The last member of the enum
-
-    bool is_anonamous; // if it is ananonamous enum
+    TypeBase base;
+    Type* real_type; // the `actual` type we consider this (int...)
+    union Declaration* decl; // the enum declaration itself
 } TypeEnum;
 
-// A function type
-typedef struct TypeFunctionParam {
-    String name;
-    Type* type;
-    struct TypeFunctionParam* next;
-} TypeFunctionParam;
-
 typedef struct TypeFunction {
-    TypeBase type_base;
-    Type* return_type; // Functions return type
-
-    TypeFunctionParam* first_param; // the first paramter
-    TypeFunctionParam* last_param; // the last memeber 
-
-    size_t num_params; // Number of params if known otherwise 0
+    TypeBase base;
+    QualifiedType return_type; // the return type of the function
+    QualifiedType* paramaters; // the parameters of the function
+    size_t num_paramaters; // Number of params if known otherwise 0
 
     bool unspecified_paramters; // e.g. int foo()
     bool is_variadic; // e.g. int foo(int, ...)
@@ -187,15 +164,15 @@ typedef struct TypeFunction {
 
 // A type to a pointer containing a qualifier type and the base.
 typedef struct TypePointer {
-    TypeBase type_base;
-    QualifiedType underlying_type;
+    TypeBase base;
+    QualifiedType underlying_type; // this could be a pointer type as well
 } TypePointer;
 
 // And a typedef
 typedef struct TypeTypedef {
-    TypeBase type_base;
-    String name; // name of the typedef for looking up
-    Type* resolved_type; // the fully underlying type resolved all the way
+    TypeBase base;
+    Type* underlying_type;
+    union Declaration* tdef; // the typedef that introduced this
 } TypeTypedef;
 
 union Type {
@@ -211,6 +188,10 @@ union Type {
     TypeTypedef type_typedef;
 };
 
+typedef struct TypeStore {
+    void* data;
+} TypeStore;
+
 // Some functions to check for specific type qualifiers
 bool type_qualifier_is_const(TypeQualifiers qualifiers);
 bool type_qualifier_is_restrict(TypeQualifiers qualifiers);
@@ -222,14 +203,5 @@ bool type_specifier_has(TypeSpecifier current, TypeSpecifier new);
 bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2);
 bool qualifier_type_is_equal_canonical(const QualifiedType* t1, 
         const QualifiedType* t2);
-
-
-
-
-// typedef struct TypeStore {
-//     // All of our builtin types. Should be easily indexable based on the type
-//     // so should be nice and quick...
-//     Type builtins[TYPE_BUILTIN_END];
-// } TypeStore;
 
 #endif /* TYPE_H */

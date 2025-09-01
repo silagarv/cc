@@ -409,8 +409,9 @@ static bool is_typename_start(Parser* parser, const Token* tok)
             return true;
 
         case TOKEN_IDENTIFIER:
-            // TODO: we will need to look up if the symbol exists as a typename
-
+            // This is hard to get right but very very important!
+            
+            // TODO: this requires switching identifier tokens to a Identifier*
 
             return false;
 
@@ -748,30 +749,18 @@ static Expression* parse_cast_expression(Parser* parser)
 
 static Expression* parse_multiplicative_expression(Parser* parser)
 {
-    parse_cast_expression(parser);
+    static const TokenType operators[] = {TOKEN_STAR, TOKEN_SLASH, 
+            TOKEN_PERCENT};
+    static const size_t num_operators = countof(operators);
 
-    while (has_match(parser, (TokenType[]) {TOKEN_STAR, TOKEN_SLASH, TOKEN_PERCENT}, 3))
+    Expression* expr = parse_cast_expression(parser);
+
+    while (has_match(parser, operators, num_operators))
     {
-        switch (current_token_type(parser))
-        {
-            case TOKEN_STAR: 
-                consume(parser); 
-                break;
-            
-            case TOKEN_SLASH: 
-                consume(parser); 
-                break;
-            
-            case TOKEN_PERCENT: 
-                consume(parser); 
-                break;
+        TokenType op_type = current_token_type(parser);
+        consume(parser);
 
-            default:
-                panic("unreachable");
-                break;
-        }
-
-        parse_cast_expression(parser);
+        Expression* rhs = parse_cast_expression(parser);
     }
 
     return NULL;
@@ -779,141 +768,79 @@ static Expression* parse_multiplicative_expression(Parser* parser)
 
 static Expression* parse_additive_expression(Parser* parser)
 {
-    static const TokenType additive_operators[] = {TOKEN_PLUS, TOKEN_MINUS};
-    static const size_t num_operators = countof(additive_operators);
+    static const TokenType operators[] = {TOKEN_PLUS, TOKEN_MINUS};
+    static const size_t num_operators = countof(operators);
 
-    add_recover_tokens(parser, additive_operators, num_operators);
+    add_recover_tokens(parser, operators, num_operators);
 
     Expression* expr = parse_multiplicative_expression(parser);
 
-    while (has_match(parser, additive_operators, num_operators))
+    while (has_match(parser, operators, num_operators))
     {
-        /* Need to create a new binary expression and allocate it that way and
-         * then set its type to match the corrosponding operator
-         */
-        
-        ExpressionType type = EXPRESSION_ERROR;
-        switch (current_token_type(parser))
-        {
-            case TOKEN_PLUS: 
-                consume(parser);
-                type = EXPRESSION_BINARY_ADD; 
-                break;
-
-            case TOKEN_MINUS: 
-                consume(parser);
-                type = EXPRESSION_BINARY_SUBTRACT; 
-                break;
-
-            default: 
-                panic("unreachable"); 
-                break;
-        }
+        TokenType op_type = current_token_type(parser);
+        consume(parser);
 
         Expression* rhs = parse_multiplicative_expression(parser);
-
-        // TODO: get new binary expression tmp with type type
-        Expression* tmp = NULL; 
-        // TODO: assign tmp's lhs to expr, and tmp's rhs to rhs
-        
-        expr = tmp;
-
-        // To stop warning about unused for now
-        (void) type;
     }
 
-    remove_recover_tokens(parser, additive_operators, num_operators);
+    remove_recover_tokens(parser, operators, num_operators);
 
     return expr;
 }
 
 static Expression* parse_shift_expression(Parser* parser)
 {
-    parse_additive_expression(parser);
+    static const TokenType operators[] = {TOKEN_LT_LT, TOKEN_GT_GT};
+    static const size_t num_operators = countof(operators);
 
-    while (has_match(parser, (TokenType[]) {TOKEN_LT_LT, TOKEN_GT_GT}, 2))
+    Expression* expr = parse_additive_expression(parser);
+
+    while (has_match(parser, operators, num_operators))
     {
-        switch (current_token_type(parser)) 
-        {
-            case TOKEN_LT_LT: 
-                consume(parser); 
-                break;
-            
-            case TOKEN_GT_GT: 
-                consume(parser); 
-                break;
-
-            default:
-                panic("unreachable");
-                break;
-        }
+        TokenType op_type = current_token_type(parser);
+        consume(parser);
         
-        parse_additive_expression(parser);
+        Expression* rhs = parse_additive_expression(parser);
     }
 
-    return NULL;
+    return expr;
 }
 
 static Expression* parse_relational_expression(Parser* parser)
 {
-    parse_shift_expression(parser);
+    static const TokenType operators[] = {TOKEN_LT, TOKEN_GT, TOKEN_LT_EQUAL, 
+            TOKEN_GT_EQUAL};
+    static const size_t num_operators = countof(operators);
 
-    while (has_match(parser, (TokenType[]) {TOKEN_LT, TOKEN_GT, TOKEN_LT_EQUAL, TOKEN_GT_EQUAL}, 4))
+    Expression* expr = parse_shift_expression(parser);
+
+    while (has_match(parser, operators, num_operators))
     {
-        switch (current_token_type(parser))
-        {
-            case TOKEN_LT: 
-                consume(parser); 
-                break;
-            
-            case TOKEN_GT: 
-                consume(parser); 
-                break;
-            
-            case TOKEN_LT_EQUAL: 
-                consume(parser); 
-                break;
-            
-            case TOKEN_GT_EQUAL: 
-                consume(parser); 
-                break;
+        TokenType op_type = current_token_type(parser);
+        consume(parser);
 
-            default:
-                panic("unreachable");
-                break;
-        }
-
-        parse_shift_expression(parser);
+        Expression* rhs = parse_shift_expression(parser);
     }
 
-    return NULL;
+    return expr;
 }
 
 static Expression* parse_equality_expression(Parser* parser)
 {
-    parse_relational_expression(parser);
+    static const TokenType operators[] = {TOKEN_EQUAL_EQUAL, TOKEN_NOT_EQUAL};
+    static const size_t num_operators = countof(operators);
 
-    while (has_match(parser, (TokenType[]) {TOKEN_EQUAL_EQUAL, TOKEN_NOT_EQUAL}, 2))
+    Expression* expr = parse_relational_expression(parser);
+
+    while (has_match(parser, operators, num_operators))
     {
-        switch (current_token_type(parser))
-        {
-            case TOKEN_EQUAL_EQUAL: 
-                consume(parser);
-                break;
-            
-            case TOKEN_NOT_EQUAL: 
-                consume(parser);
-                break;
+        TokenType op_type = current_token_type(parser);
+        consume(parser);
 
-            default:
-                panic("unreachable");
-                break;
-        }
-
-        parse_relational_expression(parser);
+        Expression* rhs = parse_relational_expression(parser);
     }
 
-    return NULL;
+    return expr;
 }
 
 static Expression* parse_and_expression(Parser* parser)
@@ -1006,13 +933,11 @@ static Expression* parse_conditional_expression(Parser* parser)
 
 static Expression* parse_assignment_expression(Parser* parser)
 {
-    static const TokenType assignment_operators[] = {
-        TOKEN_EQUAL, TOKEN_STAR_EQUAL, TOKEN_SLASH_EQUAL, TOKEN_PERCENT_EQUAL,
-        TOKEN_PLUS_EQUAL, TOKEN_MINUS_EQUAL, TOKEN_LT_LT_EQUAL, TOKEN_GT_GT_EQUAL,
-        TOKEN_AND_EQUAL, TOKEN_XOR_EQUAL, TOKEN_OR_EQUAL
-    };
-    static const size_t num_operators = 
-            sizeof(assignment_operators) / sizeof(assignment_operators[0]);
+    static const TokenType operators[] = {TOKEN_EQUAL, TOKEN_STAR_EQUAL, 
+            TOKEN_SLASH_EQUAL, TOKEN_PERCENT_EQUAL, TOKEN_PLUS_EQUAL, 
+            TOKEN_MINUS_EQUAL, TOKEN_LT_LT_EQUAL, TOKEN_GT_GT_EQUAL,
+            TOKEN_AND_EQUAL, TOKEN_XOR_EQUAL, TOKEN_OR_EQUAL};
+    static const size_t num_operators = countof(operators);
 
     // Here as an extension gcc does this and then just checks the conditional
     // is valid. I'm not sure how this qualifies as an extension since this
@@ -1020,10 +945,9 @@ static Expression* parse_assignment_expression(Parser* parser)
     // the same thing.
     Expression* expr = parse_conditional_expression(parser);
 
-    if (has_match(parser, assignment_operators, num_operators))
+    if (has_match(parser, operators, num_operators))
     {
-        // TODO: will need to make sure that we actually somehow get the token
-        // type before simply consuming the token
+        TokenType op_type = current_token_type(parser);
         consume(parser);
         
         parse_assignment_expression(parser);
@@ -1078,10 +1002,11 @@ static void statement_free(Statement* stmt)
 
 static Statement* parse_label_statement(Parser* parser)
 {
-    Token* tok = current_token(parser);
-    (void) tok;
+    Token* label = current_token(parser);
+    (void) label;
 
-    // First consume identifier then the colon...
+    // First consume identifier then the colon. We already know that both of
+    // these are okay.
     consume(parser);
     consume(parser);
 
