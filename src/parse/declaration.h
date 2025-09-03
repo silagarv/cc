@@ -34,7 +34,7 @@ typedef enum DeclarationType {
     DECLARATION_UNION, /* of a union */
     DECLARATION_ENUM_CONSTANT, /* constants within an enum */
     DECLARATION_ENUM, /* an enum */
-    DECLARAITON_LABEL, /* A label within the source e.g. `foo:` */
+    DECLARATION_LABEL, /* A label within the source e.g. `foo:` */
 } DeclarationType;
 
 typedef union Declaration Declaration;
@@ -50,6 +50,9 @@ typedef struct DeclarationBase {
     // fine grained location and information we will need to traverse the entire
     // declaration.
     Location location;
+
+    // Location of the semicolon in the declaration.
+    Location semi_location;
 
     // What name are we giving this declaration
     Identifier* identifier;
@@ -115,12 +118,9 @@ typedef struct DeclarationLabel {
     // The base declaration of this object
     DeclarationBase base;
 
-    // goto foo; before label foo. This is true until we actually see the label
-    // whilst parsing. If we have label before goto this is never actually true
-    bool implicit_construction;
-
     // Is this label actually used. This is mainly for warning about unused
-    // labels in useres code. If implicitly constructed this is also set.
+    // labels in useres code. Note that this should be set even if this is
+    // implicitly constructed since we may need it for later
     bool used;
 } DeclarationLabel;
 

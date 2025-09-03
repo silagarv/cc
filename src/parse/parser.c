@@ -106,8 +106,8 @@ static TokenType current_token_type(Parser* parser);
 static TokenType next_token_type(Parser* parser);
 
 // Methods for mathing a token type or unconditionally consuming a token.
-static void match(Parser* parser, TokenType type);
-static void consume(Parser* parser);
+static Location match(Parser* parser, TokenType type);
+static Location consume(Parser* parser);
 
 static bool is_match(Parser* parser, TokenType type);
 static bool has_match(Parser* parser, const TokenType* types, size_t count);
@@ -188,13 +188,15 @@ static TokenType next_token_type(Parser* parser)
 }
 
 // Methods for mathing a token type or unconditionally consuming a token.
-static void match(Parser* parser, TokenType type)
+static Location match(Parser* parser, TokenType type)
 {
     if (token_stream_current_type(parser->stream) == type)
     {
+        const Token* current = current_token(parser);
+
         token_stream_advance(parser->stream);
 
-        return;
+        return current->loc;
     }
 
     parse_error(parser, "expected '%s' but got '%s'", 
@@ -203,11 +205,17 @@ static void match(Parser* parser, TokenType type)
         );
 
     panic("failed to match token... TODO: finish this method");
+
+    return LOCATION_INVALID;
 }
 
-static void consume(Parser* parser)
+static Location consume(Parser* parser)
 {
+    const Token* current = current_token(parser);
+
     token_stream_advance(parser->stream);
+
+    return current->loc;
 }
 
 static bool is_match(Parser* parser, TokenType type)
@@ -240,6 +248,21 @@ static void eat_until(Parser* parser, TokenType type)
     assert(!is_match(parser, type));
 
     while (!is_match(parser, type) && !is_match(parser, TOKEN_EOF))
+    {
+        consume(parser);
+    }
+}
+
+static void eat_until_and(Parser* parser, TokenType type)
+{
+    assert(!is_match(parser, type));
+
+    while (!is_match(parser, type) && !is_match(parser, TOKEN_EOF))
+    {
+        consume(parser);
+    }
+
+    if (is_match(parser, type))
     {
         consume(parser);
     }
@@ -321,6 +344,9 @@ static Statement* parse_expression_statement(Parser* parser);
 static Statement* parse_selection_statement(Parser* parser);
 static Statement* parse_iteration_statement(Parser* parser);
 static Statement* parse_jump_statement(Parser* parser);
+static Statement* parse_declaration_statement(Parser* parser);
+static Statement* parse_empty_statement(Parser* parser);
+static Statement* parse_error_statement(Parser* parser);
 static Statement* parse_statement(Parser* parser);
 
 // All of our functions for parsing declarations / definitions
@@ -983,27 +1009,9 @@ static Expression* parse_expression(Parser* parser)
 
 // For parsing statements
 
-// Allocate and setup the current statement
-static Statement* statement_allocate(Parser* parser, StatementType type)
-{
-    Statement* stmt = xmalloc(sizeof(Statement));
-
-    stmt->base.type = type;
-    stmt->base.loc = current_token(parser)->loc;
-    stmt->base.parent = NULL; // TODO: change this from NULL to proper stmt
-
-    return stmt;
-}
-
-static void statement_free(Statement* stmt)
-{
-    free(stmt);
-}
-
 static Statement* parse_label_statement(Parser* parser)
 {
     Token* label = current_token(parser);
-    (void) label;
 
     // First consume identifier then the colon. We already know that both of
     // these are okay.
@@ -1021,56 +1029,47 @@ static Statement* parse_case_statement(Parser* parser)
         parse_error(parser, "No current switch statement context");
     }
     
-    Statement* stmt = statement_allocate(parser, STATEMENT_CASE);
-
     consume(parser);
-
-    // TODO: somewhere we will need to parse the constant expression and then
-    // TODO: eventually fold it somewhere
     
     // Get the experssion and the statment
-    stmt->case_stmt.constant_expression = parse_constant_expression(parser);
+    parse_constant_expression(parser);
     
     // Get the colon and the rest of the statment
     match(parser, TOKEN_COLON);
 
-    stmt->case_stmt.statement = parse_statement(parser);
-
-    statement_free(stmt);
+    parse_statement(parser);
 
     return NULL;
 }
 
 static Statement* parse_default_statement(Parser* parser)
 {
-    Statement* current_switch = parser->current_context.current_switch;
-    if (!current_switch)
-    {
-        parse_error(parser, "No current switch statement context");
-    }
+    // Statement* current_switch = parser->current_context.current_switch;
+    // if (!current_switch)
+    // {
+    //     parse_error(parser, "No current switch statement context");
+    // }
 
-    Statement* stmt = statement_allocate(parser, STATEMENT_CASE);
+    Location default_loc = consume(parser);
+    Location colon_loc = match(parser, TOKEN_COLON);
 
-    consume(parser);
-    match(parser, TOKEN_COLON);
-
-    stmt->default_stmt.statement = parse_statement(parser);
-
-    statement_free(stmt);
+    Statement* stmt = parse_statement(parser);
 
     return NULL;
 }
 
 static Statement* parse_compound_statement(Parser* parser)
 {
-    match(parser, TOKEN_LCURLY);
+    // TODO: push new thino context like...
+
+    Location l_curly = match(parser, TOKEN_LCURLY);
 
     while (!is_match(parser, TOKEN_RCURLY))
     {
-        parse_statement(parser);
+        Statement* stmt = parse_statement(parser);
     }
 
-    match(parser, TOKEN_RCURLY);
+    Location r_curly = match(parser, TOKEN_RCURLY);
 
     return NULL;
 }
@@ -1095,23 +1094,25 @@ static Statement* parse_expression_statement(Parser* parser)
 
 static Statement* parse_if_statement(Parser* parser)
 {
-    const Token* if_token = current_token(parser);
-    consume(parser);
-
-    match(parser, TOKEN_LPAREN);
+    Location if_loc = consume(parser);
+    Location lparen_loc = match(parser, TOKEN_LPAREN);
 
     Expression* cond = parse_expression(parser);
 
-    match(parser, TOKEN_RPAREN);
+    Location rparen_loc = match(parser, TOKEN_RPAREN);
 
     Statement* if_body = parse_statement(parser);
 
+    Location else_loc = LOCATION_INVALID;
+    Statement* else_body = NULL;
     if (is_match(parser, TOKEN_ELSE))
     {
-        consume(parser);
-            
-        Statement* else_body = parse_statement(parser);
+        else_loc = consume(parser);
+        else_body = parse_statement(parser);
     }
+
+    (void) else_loc;
+    (void) else_body;
 
     // TODO: build the if statement fully here
 
@@ -1215,59 +1216,67 @@ static Statement* parse_do_while_statement(Parser* parser)
 
 static Statement* parse_for_statement(Parser* parser)
 {
-    const Token* for_token = current_token(parser);
-    consume(parser);
-
-    match(parser, TOKEN_LPAREN);
+    Location for_loc = consume(parser);
+    Location lparen_loc = match(parser, TOKEN_LPAREN);
 
     // Below if where it gets a little tricky :)
+    Statement* init = NULL;
+    if (is_typename_start(parser, current_token(parser)))
+    {
+        init = parse_declaration_statement(parser);
+    }
+    else if (is_expression_start(parser, current_token(parser)))
+    {
+        init = parse_expression_statement(parser);
+    }
+    else if (is_match(parser, TOKEN_SEMI))
+    {
+        init = parse_empty_statement(parser);
+    }
+    else
+    {
+        // TODO: good error recovery here
+        panic("Bad for statement init...");
+    }
+    (void) init;
+
+    Expression* cond = NULL;
     if (!is_match(parser, TOKEN_SEMI))
     {
-        if (is_typename_start(parser, current_token(parser)))
-        {
-            // TODO: how do I deal with this?
-            parse_declaration(parser);
-            
-            // MASSIVE TODO: there is a but while parsing a declaration where
-            // we do not eat a semi-colon and this needs to be fixed for this
-            // to work properly but I'm not sure where this is just yet :)
-            // goto skip_semi;
-        }
-        else
-        {
-            Expression* expr1 = parse_expression(parser);
-        }
+        cond = parse_expression(parser);
     }
+    (void) cond;
 
+    // TODO: do we need this semis location?
     match(parser, TOKEN_SEMI);
 
-// skip_semi:
-    if (!is_match(parser, TOKEN_SEMI))
-    {
-        Expression* expr2 = parse_expression(parser);
-    }
-
-    match(parser, TOKEN_SEMI);
-
+    Expression* inc = NULL;
     if (!is_match(parser, TOKEN_RPAREN))
     {
-        Expression* expr3 = parse_expression(parser);
+        inc = parse_expression(parser);
     }
+    (void) inc;
 
-    match(parser, TOKEN_RPAREN);
+    Location rparen_loc = match(parser, TOKEN_RPAREN);
+
+    Statement* body = parse_statement(parser);
 
     return NULL;
 }
 
 static Statement* parse_goto_statement(Parser* parser)
 {
-    const Token* goto_token = current_token(parser);
-    consume(parser);
+    Location goto_loc = consume(parser);
+
+    if (current_token_type(parser) != TOKEN_IDENTIFIER)
+        ; // TODO: in trouble but don't know how to fix...
+    // TODO: I think to recover we just create an error expression and move on
+    // with our lives...
 
     const Token* label_name = current_token(parser);
     match(parser, TOKEN_IDENTIFIER);
 
-    match(parser, TOKEN_SEMI);
+    Location semi_loc = match(parser, TOKEN_SEMI);
 
     return NULL;
 }
@@ -1280,10 +1289,8 @@ static Statement* parse_continue_statement(Parser* parser)
         parse_error(parser, "No current continuable exists");
     }
 
-    const Token* continue_token = current_token(parser);
-    consume(parser);
-
-    match(parser, TOKEN_SEMI);
+    Location continue_loc = consume(parser);
+    Location semi_loc = match(parser, TOKEN_SEMI);
 
     return NULL;
 }
@@ -1325,105 +1332,96 @@ static Statement* parser_return_statement(Parser* parser)
     return NULL;
 }
 
+static Statement* parse_declaration_statement(Parser* parser)
+{
+    Declaration* decl = parse_declaration(parser);
+
+    return NULL;
+}
+
+static Statement* parse_empty_statement(Parser* parser)
+{
+    /// Should be a semi location
+    Location semi_loc = consume(parser);
+
+    return NULL;
+}
+
+static Statement* parse_error_statement(Parser* parser)
+{
+    eat_until_and(parser, TOKEN_SEMI);
+
+    return NULL;
+}
+
 static Statement* parse_statement(Parser* parser)
 {
-    Statement* stmt;
     switch(current_token_type(parser))
     {
-        // Here we are specifically looking for a label
-        // e.g. fail: ...
-        // TODO: we will also eventually need to check if the identifier might
-        // TODO: be a type name or not i think
-        case TOKEN_IDENTIFIER:
-            if (next_token_type(parser) != TOKEN_COLON)
-            {
-                goto expression_statement;
-            }
-            stmt = parse_label_statement(parser);
-            break;
-
         case TOKEN_CASE:
-            stmt = parse_case_statement(parser);
-            break;
+            return parse_case_statement(parser);
 
         case TOKEN_DEFAULT:
-            stmt = parse_default_statement(parser);
-            break;
+            return parse_default_statement(parser);
 
         case TOKEN_LCURLY:
-            stmt = parse_compound_statement(parser);
-            break;
-        
-        /* note that if we get a ';' we're just going to match an empty 
-         * expression statement so this can easily just be reduced to match a
-         * semi colon later but will leave this here for now
-         */
-        case TOKEN_SEMI:
-            stmt = parse_expression_statement(parser);
-            break;
+            return parse_compound_statement(parser);
 
         case TOKEN_IF:
-            stmt = parse_if_statement(parser);
-            break;
+            return parse_if_statement(parser);
 
         case TOKEN_SWITCH:
-            stmt = parse_switch_statement(parser);
-            break;
+            return parse_switch_statement(parser);
 
         case TOKEN_WHILE:
-            stmt = parse_while_statement(parser);
-            break;
+            return parse_while_statement(parser);
 
         case TOKEN_DO:
-            stmt = parse_do_while_statement(parser);
-            break;
+            return parse_do_while_statement(parser);
 
         case TOKEN_FOR:
-            stmt = parse_for_statement(parser);
-            break;
+            return parse_for_statement(parser);
 
         case TOKEN_GOTO:
-            stmt = parse_goto_statement(parser);
-            break;
+            return parse_goto_statement(parser);
 
         case TOKEN_CONTINUE:
-            stmt = parse_continue_statement(parser);
-            break;
+            return parse_continue_statement(parser);
 
         case TOKEN_BREAK:
-            stmt = parse_break_statement(parser);
-            break;
+            return parse_break_statement(parser);
 
         case TOKEN_RETURN:
-            stmt = parser_return_statement(parser);
-            break;
+            return parser_return_statement(parser);
+
+        case TOKEN_SEMI:
+            return parse_empty_statement(parser);
+
+        case TOKEN_IDENTIFIER:
+            if (next_token_type(parser) == TOKEN_COLON)
+            {
+                return parse_label_statement(parser);
+            }
+            
+            /* FALLTHROUGH */
 
         default:
-        expression_statement:
             if (is_expression_start(parser, current_token(parser)))
             {
-                stmt = parse_expression_statement(parser);    
+                return parse_expression_statement(parser);    
             }
             else if (has_declaration_specifier(parser, current_token(parser)))
             {
-                parse_declaration(parser);
-
-                stmt = NULL;
+                return parse_declaration_statement(parser);
             }
             else
             {
-                // TODO: make an error statement here?
-                stmt = NULL;
+                // TODO: might have to eventually change this sometime...
+                parse_error(parser, "expected expression");
 
-                match(parser, TOKEN_EOF);
-
-                panic("bad statement start");
+                return parse_error_statement(parser);
             }
-
-            break;
     }
-
-    return stmt;
 }
 
 // Below is things for declarations

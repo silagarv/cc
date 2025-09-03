@@ -16,6 +16,7 @@
 #include "parse/expression.h"
 #include "parse/initializer.h"
 
+// This is a function to create a barebones base declaration.
 static Declaration* declaration_create_base(DeclarationType decl_type, 
         Location location, Identifier* identifier, QualifiedType type,
         TypeStorageSpecifier storage, TypeFunctionSpecifier function,
@@ -49,4 +50,14 @@ Declaration* declaration_create_variable(Location location,
     return decl;
 }
 
+Declaration* declaration_create_label(Identifier* identifier, Location location,
+        bool implicit)
+{
+    // Note the label is a special case where we do not really have a type
+    Declaration* decl = declaration_create_base(DECLARATION_LABEL, location,
+            identifier, (QualifiedType) {0}, TYPE_STORAGE_SPECIFIER_NONE,
+            TYPE_FUNCTION_SPECIFIER_NONE, implicit);
+    decl->label.used = implicit; // if implicit then used...
 
+    return decl;    
+}
