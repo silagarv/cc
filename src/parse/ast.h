@@ -11,6 +11,13 @@
 #include "parse/declaration.h"
 #include "parse/statement.h"
 
+typedef struct AstAllocator {
+    Arena statements;
+    Arena declarations;
+    Arena expressions;
+    Arena initializers;
+} AstAllocator;
+
 // this struct contains all of the current context information e.g. current
 // switch, if, else, etc...
 typedef struct AstContext {

@@ -48,6 +48,7 @@ LEX = src/lex/identifier_table.c \
 PARSE = src/parse/type.c \
 	src/parse/literal_parser.c \
 	src/parse/expression.c \
+	src/parse/statement.c \
 	src/parse/parser.c
 
 SRC = $(UTIL) $(FILES) $(LEX) $(PARSE) $(DRIVER) 

@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "files/location.h"
+#include "util/buffer.h"
 #include "util/panic.h"
 #include "util/str.h"
 #include "util/xmalloc.h"
@@ -204,7 +205,7 @@ static Location match(Parser* parser, TokenType type)
             token_type_get_name(current_token_type(parser))
         );
 
-    panic("failed to match token... TODO: finish this method");
+    // panic("failed to match token... TODO: finish this method");
 
     return LOCATION_INVALID;
 }
@@ -995,7 +996,7 @@ static Expression* parse_expression(Parser* parser)
 
     while (is_match(parser, TOKEN_COMMA))
     {
-        consume(parser);
+        Location comma_loc = consume(parser);
 
         Expression* rhs = parse_assignment_expression(parser);
 
@@ -1078,16 +1079,9 @@ static Statement* parse_expression_statement(Parser* parser)
 {
     // Need some way to check if we can start and expression
     // like idk might need some kind of expression start set
-
-    if (is_match(parser, TOKEN_SEMI))
-    {
-        consume(parser);
-    }
-    else
-    {
-        parse_expression(parser);
-        match(parser, TOKEN_SEMI);
-    }
+    Expression* expr = parse_expression(parser);
+    
+    Location semi_loc = match(parser, TOKEN_SEMI);
 
     return NULL;
 }
@@ -1122,8 +1116,8 @@ static Statement* parse_if_statement(Parser* parser)
 static Statement* parse_switch_statement(Parser* parser)
 {
     // Save the ast context for later
-    Statement* current_breakable = parser->current_context.current_breakable;
-    Statement* current_switch = parser->current_context.current_switch;
+    // Statement* current_breakable = parser->current_context.current_breakable;
+    // Statement* current_switch = parser->current_context.current_switch;
 
     const Token* switch_token = current_token(parser);
     consume(parser);
@@ -1136,15 +1130,15 @@ static Statement* parse_switch_statement(Parser* parser)
 
     // Create the switch statement and set the current breakable to be the
     // switch statement.
-    Statement* switch_stmt = NULL;
-    parser->current_context.current_breakable = switch_stmt;
-    parser->current_context.current_switch = switch_stmt;
+    // Statement* switch_stmt = NULL;
+    // parser->current_context.current_breakable = switch_stmt;
+    // parser->current_context.current_switch = switch_stmt;
 
     Statement* body = parse_statement(parser);
 
     // Restore the ast context
-    parser->current_context.current_breakable = current_breakable;
-    parser->current_context.current_switch = current_switch;
+    // parser->current_context.current_breakable = current_breakable;
+    // parser->current_context.current_switch = current_switch;
 
     return NULL;
 }
@@ -1219,8 +1213,9 @@ static Statement* parse_for_statement(Parser* parser)
     Location for_loc = consume(parser);
     Location lparen_loc = match(parser, TOKEN_LPAREN);
 
-    // Below if where it gets a little tricky :)
+    // Below is where it gets a little tricky :)
     Statement* init = NULL;
+    // TODO: i think below should be has declaration specifiers...
     if (is_typename_start(parser, current_token(parser)))
     {
         init = parse_declaration_statement(parser);
@@ -1260,6 +1255,10 @@ static Statement* parse_for_statement(Parser* parser)
     Location rparen_loc = match(parser, TOKEN_RPAREN);
 
     Statement* body = parse_statement(parser);
+    if (body != NULL && body->base.type == STATEMENT_DECLARATION) {
+        parse_error(parser, "declaration not allowed here; create a compound "
+                "statement {...}");
+    }
 
     return NULL;
 }
@@ -1313,11 +1312,11 @@ static Statement* parse_break_statement(Parser* parser)
 
 static Statement* parser_return_statement(Parser* parser)
 {
-    void* current_function = parser->current_context.current_function;
-    if (!current_function)
-    {
-        parse_error(parser, "Return statement outside of function");
-    }
+    // void* current_function = parser->current_context.current_function;
+    // if (!current_function)
+    // {
+    //     parse_error(parser, "Return statement outside of function");
+    // }
 
     const Token* return_token = current_token(parser);
     consume(parser);
@@ -1335,6 +1334,8 @@ static Statement* parser_return_statement(Parser* parser)
 static Statement* parse_declaration_statement(Parser* parser)
 {
     Declaration* decl = parse_declaration(parser);
+
+    Location semi_loc = match(parser, TOKEN_SEMI);
 
     return NULL;
 }
@@ -1358,14 +1359,14 @@ static Statement* parse_statement(Parser* parser)
 {
     switch(current_token_type(parser))
     {
+        case TOKEN_LCURLY:
+            return parse_compound_statement(parser);
+
         case TOKEN_CASE:
             return parse_case_statement(parser);
 
         case TOKEN_DEFAULT:
             return parse_default_statement(parser);
-
-        case TOKEN_LCURLY:
-            return parse_compound_statement(parser);
 
         case TOKEN_IF:
             return parse_if_statement(parser);
@@ -1405,14 +1406,15 @@ static Statement* parse_statement(Parser* parser)
             
             /* FALLTHROUGH */
 
-        default:
-            if (is_expression_start(parser, current_token(parser)))
-            {
-                return parse_expression_statement(parser);    
-            }
-            else if (has_declaration_specifier(parser, current_token(parser)))
+        default: {
+            const Token* current = current_token(parser);
+            if (has_declaration_specifier(parser, current))
             {
                 return parse_declaration_statement(parser);
+            }
+            else if (is_expression_start(parser, current))
+            {
+                return parse_expression_statement(parser);    
             }
             else
             {
@@ -1421,6 +1423,7 @@ static Statement* parse_statement(Parser* parser)
 
                 return parse_error_statement(parser);
             }
+        }
     }
 }
 
@@ -1480,7 +1483,6 @@ static Declaration* parse_initializer(Parser* parser)
         {
             consume(parser);
         }
-
         match(parser, TOKEN_RCURLY);
     }
     else
@@ -1556,6 +1558,7 @@ static Declaration* parse_init_declarator_list(Parser* parser)
     while (is_match(parser, TOKEN_COMMA))
     {
         consume(parser);
+
         parse_init_declarator(parser);
     }
  
@@ -1598,16 +1601,17 @@ static Declaration* parse_enumerator_list(Parser* parser)
 
 static Declaration* parse_enum_specificer(Parser* parser)
 {
-    match(parser, TOKEN_ENUM);
+    Location enum_location = consume(parser);
 
     if (is_match(parser, TOKEN_IDENTIFIER))
     {
-        match(parser, TOKEN_IDENTIFIER);
+        const Token* token = current_token(parser);
+        Location identifier_loc = consume(parser);
+    }
 
-        if (!is_match(parser, TOKEN_LCURLY))
-        {
-            return NULL;
-        }
+    if (!is_match(parser, TOKEN_LCURLY))
+    {
+        return NULL;
     }
 
     // Here we should match a left curly
@@ -1726,6 +1730,8 @@ static Declaration* parse_direct_declarator(Parser* parser)
 
 static Declaration* parse_direct_abstract_declarator(Parser* parser)
 {
+    // TODO: redo most of this as it is quite terrible and confusing...
+
     if (is_match(parser, TOKEN_LPAREN))
     {
         match(parser, TOKEN_LPAREN);
@@ -1816,7 +1822,8 @@ static Declaration* parse_abstract_declarator(Parser* parser)
     {
         parse_pointer(parser);
     }
-    else
+    
+    if (has_match(parser, (TokenType[]) {TOKEN_LPAREN, TOKEN_LBRACKET}, 2))
     {
         parse_direct_abstract_declarator(parser);
     }
@@ -1844,13 +1851,19 @@ static Declaration* parse_pointer(Parser* parser)
 
 static Declaration* parse_identifier_list(Parser* parser)
 {
-    match(parser, TOKEN_LPAREN);
-    match(parser, TOKEN_IDENTIFIER);
+    Location lparen_loc = match(parser, TOKEN_LPAREN);
+    
+    Token* current = current_token(parser);
+    consume(parser);
+    
     while (is_match(parser, TOKEN_COMMA))
     {
-        match(parser, TOKEN_COMMA);
+        Location comma_loc = consume(parser);
+
+        current = current_token(parser);
         match(parser, TOKEN_IDENTIFIER);
     }
+    (void) current; // Shutup clang
 
     match(parser, TOKEN_RPAREN);
  
@@ -2235,8 +2248,8 @@ static TypeKind determine_type_kind(TypeSpecifier specifiers)
             return TYPE_S_LONG_LONG;
 
         case TYPE_SPECIFIER_LONG_LONG | TYPE_SPECIFIER_UNSIGNED | TYPE_SPECIFIER_LONG:
-        case TYPE_SPECIFIER_LONG_LONG | TYPE_SPECIFIER_UNSIGNED | TYPE_SPECIFIER_INT
-                | TYPE_SPECIFIER_LONG:
+        case TYPE_SPECIFIER_LONG_LONG | TYPE_SPECIFIER_UNSIGNED
+                | TYPE_SPECIFIER_INT | TYPE_SPECIFIER_LONG:
             return TYPE_U_LONG_LONG;
 
         case TYPE_SPECIFIER_FLOAT:
@@ -2451,11 +2464,34 @@ static Declaration* parse_declaration(Parser* parser)
     return NULL;
 }
 
-static Declaration* parse_declaration_or_definition(Parser* parser)
+static void* parse_type_name(Parser* parser)
+{
+    Declaration* decl = parse_specifier_qualifier_list(parser);
+    // TODO: parse abstract declarator if needed
+
+    return NULL;
+}
+
+// The definitions of the functions we will use for pasing
+
+static Declaration* parse_top_level_declaration_or_definition(Parser* parser)
 {
     Declaration* decl = parse_declaration(parser);
 
-    /* TODO: add declaration to list of declarations */
+    // TODO: we eventually want something like this
+    // if (decl->base.declaration_type == DECLARATION_FUNCTION &&
+    //         is_match(parser, TOKEN_LCURLY))
+    // {
+    //     Statement* body = parse_compound_statement(parser);
+
+    //     decl->function.function_body = body;
+    // }
+    // else
+    // {
+    //     match(parser, TOKEN_SEMI);
+    // }
+
+    // return decl;
 
     if (is_match(parser, TOKEN_SEMI))
     {
@@ -2475,27 +2511,15 @@ static Declaration* parse_declaration_or_definition(Parser* parser)
     return decl;
 }
 
-static void* parse_type_name(Parser* parser)
-{
-    Declaration* decl = parse_specifier_qualifier_list(parser);
-    // TODO: parse abstract declarator if needed
-
-    return NULL;
-}
-
-// The definitions of the functions we will use for pasing
-
-
 void parse_translation_unit(TokenStream* stream, LineMap* map)
 {
     Parser parser = {.stream = stream, .map = map};
 
-    // add so we can never go past
     add_recover_token(&parser, TOKEN_EOF);
 
     while (current_token_type(&parser) != TOKEN_EOF)
     {
-        parse_declaration_or_definition(&parser);
+        parse_top_level_declaration_or_definition(&parser);
     }
 
     remove_recover_token(&parser, TOKEN_EOF);
