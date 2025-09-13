@@ -7,8 +7,6 @@
 #include "lex/identifier_table.h"
 #include "parse/declaration.h"
 
-// TODO: linkage maybe?
-
 // The different namespaces that symbols exist in. Although not directly needed
 // in the type of symbol, this is important when considering the symbol tables
 // themselves in order to ensure that we implement the standard correctly.
@@ -19,11 +17,8 @@ typedef enum SymbolNamespace {
     SYMBOL_NAMESPACE_MEMBERS // members of struct / unions
 } SymbolNamespace;
 
+// A symbol is simply a wrapper for a declaration...
 typedef struct Symbol {
-    // What is the actual name that we are going to refer to this symbol by.
-    Identifier* identifier;
-
-    // What is the declaration of this symbol
     Declaration* decl;
 } Symbol;
 
@@ -39,9 +34,9 @@ typedef struct SymbolTable {
     HashMap symbols;
 } SymbolTable;
 
-Symbol* symbol_create(Identifier* ident, Declaration* declaration);
+Symbol symbol_create(Declaration* declaration);
 
-SymbolTable* symbol_table_create(SymbolTable* parent);
+SymbolTable* symbol_table_create(SymbolNamespace ns, SymbolTable* parent);
 void symbol_table_delete(SymbolTable* table);
 
 Symbol* symbol_table_lookup(SymbolTable* table, Identifier* identifier);

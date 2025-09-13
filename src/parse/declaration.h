@@ -150,6 +150,8 @@ union Declaration {
     DeclarationLabel label;
 };
 
+// TODO: redo this completely with our ast allocator
+
 // Create a declaration of a variable. This declaration will represent a
 // variable that we can use within other places.
 // TODO: add the initializer into the declaration so that we can represent that
@@ -162,7 +164,5 @@ Declaration* declaration_create_variable(Location location,
 // if this label was implictly constructed.
 Declaration* declaration_create_label(Identifier* identifier, Location location,
         bool implicit);
-
-void declaration_free(Declaration* declaration);
 
 #endif /* DECLARATION_H */

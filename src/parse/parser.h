@@ -13,6 +13,8 @@
 
 // #include "parse/scope.h"
 
+#define PARSER_TOKENS 2
+
 typedef struct Parser {
     // Current tokens and where we are in the list
     TokenStream* stream;
@@ -20,9 +22,13 @@ typedef struct Parser {
 
     // Will need to add context to it as well for parsing loops conditionals
     // and other things
+    Token tokens[PARSER_TOKENS];
 
     /* our anchor set for recovering from parsing */
     size_t recover_set[TOKEN_LAST];
+
+    // Stores the ast
+    Ast ast;
 
     // Stores the current context of the parser for statements and expressions.
     AstContext current_context;

@@ -1,5 +1,6 @@
 #include "arena.h"
 
+#include <stdio.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -7,27 +8,29 @@
 
 #include "util/xmalloc.h"
 
-#define NEW_USED(current_used, alignment) (((current_used) + ((alignment) - 1)) / (alignment)) * alignment
+static size_t arena_round_up(size_t used, size_t align)
+{
+    assert((align & (align - 1)) == 0);
 
-#include <stdio.h>
+    return (used + (align - 1)) & ~(align - 1);
+}
 
 static ArenaChunk* arena_chunk_new(size_t capacity, size_t alignment)
 {
     // Here allocate alignment extra space so that we have space to burn
     ArenaChunk* chunk = xmalloc(sizeof(ArenaChunk));
-    chunk->base_ptr = xmalloc(capacity + alignment);
+    chunk->base_ptr = xmalloc(capacity);
     chunk->used = 0;
     chunk->capacity = capacity;
-
     chunk->next = NULL;
 
-    // Here we need to update used to be aligned we NEED the base ptr here since
-    // chunk->used is 0 upon itialisation (i.e. always aligned to a multiple of anything)
-    const size_t new_used = NEW_USED((uintptr_t) chunk->base_ptr + chunk->used, alignment);
+    // Check alignment of the base ptr here...
+    if ((uintptr_t) chunk->base_ptr % alignment != 0)
+    {
+        chunk->used += alignment - ((uintptr_t) chunk->base_ptr % alignment);
+    }
 
-    assert(new_used >= chunk->used);
-
-    chunk->used = new_used;
+    assert(((uintptr_t) chunk->base_ptr + chunk->used) % alignment == 0);
 
     return chunk;
 }
@@ -118,10 +121,11 @@ void* arena_allocate_size(Arena* arena, size_t size)
         arena->current = new_chunk;
 
         arena->current->used += size;
+
+        return_ptr = new_chunk->base_ptr;
     }
 
-    // Fix arena alignment to make sure it is all good
-    const size_t new_used = NEW_USED(arena->current->used, arena->alignment);
+    size_t new_used = arena_round_up(arena->current->used, arena->alignment);
 
     assert(new_used >= arena->current->used);
 

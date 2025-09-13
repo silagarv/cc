@@ -1,10 +1,14 @@
 #ifndef STATEMENT_H
 #define STATEMENT_H
 
+#include "util/vec.h"
+
 #include "files/location.h"
 
+#include "parse/ast_allocator.h"
 #include "parse/expression.h"
 #include "parse/declaration.h"
+#include "parse/literal_parser.h"
 
 enum StatementType {
     STATEMENT_ERROR = -1,
@@ -47,10 +51,10 @@ typedef struct StatementSwitch StatementSwitch;
 typedef struct StatementWhile StatementWhile;
 typedef struct StatementDoWhile StatementDoWhile;
 typedef struct StatementFor StatementFor;
-typedef struct StatmentGoto StatmentGoto;
-typedef struct StatmentContinue StatmentContinue;
-typedef struct StatmentBreak StatmentBreak;
-typedef struct StatmentReturn StatmentReturn;
+typedef struct StatementGoto StatementGoto;
+typedef struct StatementContinue StatementContinue;
+typedef struct StatementBreak StatementBreak;
+typedef struct StatementReturn StatementReturn;
 typedef struct StatementEmpty StatementEmpty;
 typedef struct StatementDeclaration StatementDeclaration;
 
@@ -82,6 +86,7 @@ struct StatementCase {
     Expression* constant_expression;
     IntegerValue expression_value;
     Statement* statement;
+    Statement* switch_statement;
 };
 
 struct StatementDefault {
@@ -89,13 +94,14 @@ struct StatementDefault {
     Location default_location;
     Location colon_location;
     Statement* statement;
+    Statement* switch_statement;
 };
 
 struct StatementCompound {
     StatementBase base;
     Location opening_curly;
     Location closing_curly;
-    Statement* statement;
+    Statement** statements;
     size_t statement_count;
 };
 
@@ -130,6 +136,8 @@ struct StatementSwitch {
 struct StatementWhile {
     StatementBase base;
     Location while_location;
+    Location left_paren;
+    Location right_paren;
     Expression* expression;
     Statement* body;
 };
@@ -156,32 +164,33 @@ struct StatementFor {
 };
 
 // Jump statement
-struct StatmentGoto {
+struct StatementGoto {
     StatementBase base;
     Location goto_location;
     Location semi_location;
     Declaration* label;
 };
 
-struct StatmentContinue {
+struct StatementContinue {
     StatementBase base;
     Location continue_location;
     Location semi_location;
     Statement* target; // the top level statement to go to
 };
 
-struct StatmentBreak {
+struct StatementBreak {
     StatementBase base;
     Location break_location;
     Location semi_location;
     Statement* target; // the statement we are breaking from
 };
 
-struct StatmentReturn {
+struct StatementReturn {
     StatementBase base;
     Location return_location;
     Location location_semi;
     Expression* expression_opt;
+    // TODO: should we point to the current function here?
 };
 
 struct StatementEmpty {
@@ -222,10 +231,10 @@ union Statement {
     StatementFor for_stmt;
 
     // Jump statements
-    StatmentGoto goto_stmt;
-    StatmentContinue continue_stmt;
-    StatmentBreak break_stmt;
-    StatmentReturn return_stmt;
+    StatementGoto goto_stmt;
+    StatementContinue continue_stmt;
+    StatementBreak break_stmt;
+    StatementReturn return_stmt;
 
     // An empty statement (just a ';')
     StatementEmpty empty_stmt;
@@ -234,26 +243,78 @@ union Statement {
     StatementDeclaration declaration_stmt;
 };
 
-Statement* statement_create_error(void);
+vector_of_decl(Statement*, Statement, statement);
 
-Statement* statement_create_label(Location identifier_location, 
-        Location colon_location, DeclarationLabel* label_decl, 
-        Statement* body);
+// TODO: some of below needs to be redone since some of these statements need
+// to exist before we can make a body
 
-// TODO: case, default, compound, expression, while, do, for
+Statement* statement_create_error(AstAllocator* allocator);
 
-Statement* statement_create_goto(Location goto_location, Location semi_location,
-        Declaration* label);
+Statement* statement_create_label(AstAllocator* allocator, 
+        Location identifier_location, Location colon_location,
+        DeclarationLabel* label_decl, Statement* body);
 
-Statement* statement_create_contine(Location continue_location, 
-        Location semi_location, Statement* target_location);
+Statement* statement_create_case(AstAllocator* allocator, 
+        Location case_location, Location colon_location, Expression* expr,
+        IntegerValue value, Statement* body, Statement* statement);
 
-Statement* statement_create_break(Location break_location,
-        Location semi_location, Statement* target_location);
+Statement* statement_create_default(AstAllocator* allocator,
+        Location default_location, Location colon_location, 
+        Statement* body, Statement* statement);
 
-Statement* statement_create_return(Location return_location,
+Statement* statement_create_compound(AstAllocator* allocator,
+        Location opening_curly, Location closing_curly, StatementVector* stmts);
+
+Statement* statement_create_expression(AstAllocator* allocator, 
         Location semi_location, Expression* expression);
 
-Statement* statement_create_empty(Location semi_location);
+Statement* statement_create_if(AstAllocator* allocator, Location if_location,
+        Location left_paren, Location right_paren, Location else_location,
+        Expression* condition, Statement* true_part, Statement* false_part);
+
+Statement* statement_create_while(AstAllocator* allocator, 
+        Location while_location, Location left_paren, Location right_paren,
+        Expression* condition);
+
+void statement_while_set_body(Statement* while_statement, Statement* body);
+
+// Note: a do while has extremely limited information when created but gets
+// all of its information later...
+Statement* statement_create_do_while(AstAllocator* allocator,
+        Location do_location);
+
+void statement_do_while_set_body(Statement* do_while_statement,
+        Location while_location, Location left_paren, Location right_paren,
+        Expression* condition, Statement* body);
+
+Statement* statement_create_for(AstAllocator* allocator, Location for_location,
+        Location left_paren, Location right_paren, Statement* init,
+        Expression* cond, Expression* inc);
+
+void statement_for_set_body(Statement* for_statement, Statement* body);
+
+Statement* statement_create_switch(AstAllocator* allocator, 
+        Location switch_location, Location left_paren, Location right_paren,
+        Expression* cond);
+
+void statement_switch_set_body(Statement* switch_statement, Statement* body);
+
+Statement* statement_create_goto(AstAllocator* allocator, 
+        Location goto_location, Location semi_location, Declaration* label);
+
+Statement* statement_create_contine(AstAllocator* allocator,
+        Location continue_location, Location semi_location,
+        Statement* target_location);
+
+Statement* statement_create_break(AstAllocator* allocator, 
+        Location break_location, Location semi_location,
+        Statement* target_location);
+
+Statement* statement_create_return(AstAllocator* allocator,
+        Location return_location, Location semi_location,
+        Expression* expression);
+
+Statement* statement_create_empty(AstAllocator* allocator,
+        Location semi_location);
 
 #endif /* STATEMENT_H */

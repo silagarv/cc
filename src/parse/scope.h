@@ -4,9 +4,10 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <string.h>
 
 #include "util/str.h"
+
+#include "lex/identifier_table.h"
 
 #include "parse/symbol.h"
 
@@ -65,12 +66,9 @@ Scope* scope_new_function_prototype(Scope* parent_file,
 Scope* scope_new_function(Scope* parent_file, Scope* parent_function_prototype,
         Scope* parent_block, Scope* parent_function);
 
-// Free all of the memory within the scope
-void scope_free(Scope* scope);
+Symbol* scope_lookup(Scope* scope, Identifier* name);
 
-Symbol* scope_lookup(Scope* scope, String* name);
-
-bool scope_contains(Scope* scope, String* name);
+bool scope_contains(Scope* scope, Identifier* name);
 
 bool scope_add_symbol(Scope* scope, Symbol* symbol);
 

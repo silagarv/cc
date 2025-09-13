@@ -4,6 +4,7 @@
 // This file will contain prototypes for our identifier table so that
 // we are able to easily intern identifiers to save 
 
+#include "util/arena.h"
 #include "util/str.h"
 #include "util/hash_map.h"
 
@@ -25,8 +26,12 @@ typedef struct Identifier {
     uint32_t hash;
 } Identifier;
 
+// TODO: change identifier allocation to use an arena instead of normal 
+// allocations
+
 // Structure to represent the identifier table
 typedef struct IdentifierTable {
+    Arena ident_allocator;
     HashMap ident_table;
 } IdentifierTable;
 

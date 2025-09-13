@@ -1,69 +1,28 @@
 #include "expression.h"
 
-#include "util/panic.h"
-#include "util/xmalloc.h"
-
-#include "lex/token.h"
+#include <stddef.h>
 #include <string.h>
 
-Expression* create_error_expression(const Token* token)
+#include "files/location.h"
+#include "parse/ast_allocator.h"
+#include "parse/type.h"
+
+static Expression* expression_create_base(AstAllocator* allocator, size_t size,
+        ExpressionType expression_type, Type* type, LocationRange range)
 {
-    Expression* expr = xmalloc(sizeof(Expression));
-    expr->base = (ExpressionBase)
-    {
-        .kind = EXPRESSION_ERROR,
-        .loc = token->loc,
-        .type = NULL, // TODO: make sure the type is done properly
-        .is_parenthesized = false
-    };
+    Expression* expr = ast_allocator_alloc(allocator, size);
+    expr->base.kind = expression_type;
+    expr->base.type = type;
+    expr->base.range = range;
 
     return expr;
 }
 
-Expression* create_integer_expression(const Token* token, IntegerValue* value)
+Expression* expression_create_error(AstAllocator* allocator,
+        LocationRange range)
 {
-    Expression* expr = xmalloc(sizeof(Expression));
-    expr->integer.base = (ExpressionBase)
-    {
-        .kind = EXPRESSION_CHARACTER_CONSTANT,
-        .loc = token->loc,
-        .type = NULL, // TODO: make sure the type is done properly
-        .is_parenthesized = false
-    };
-    expr->integer.value = *value;
-
-    return expr;
+    return expression_create_base(allocator, sizeof(ExpressionError),
+            EXPRESSION_ERROR, NULL, range);
 }
-
-Expression* create_character_expression(const Token* token, CharValue* value)
-{
-    Expression* expr = xmalloc(sizeof(Expression));
-    expr->character.base = (ExpressionBase)
-    {
-        .kind = EXPRESSION_CHARACTER_CONSTANT,
-        .loc = token->loc,
-        .type = NULL, // TODO: make sure the type is done properly
-        .is_parenthesized = false
-    };
-    expr->character.value = *value;
-
-    return expr;
-}
-
-Expression* create_string_expression(const Token* token, StringLiteral* value)
-{
-    Expression* expr = xmalloc(sizeof(Expression));
-    expr->string.base = (ExpressionBase)
-    {
-        .kind = EXPRESSION_CHARACTER_CONSTANT,
-        .loc = token->loc,
-        .type = NULL, // TODO: make sure the type is done properly
-        .is_parenthesized = false
-    };
-    expr->string.value = *value;
-
-    return expr;
-}
-
 
 

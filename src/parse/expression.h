@@ -3,6 +3,10 @@
 
 #include "files/location.h"
 
+#include "lex/token.h"
+#include "lex/identifier_table.h"
+
+#include "parse/ast_allocator.h"
 #include "parse/type.h"
 #include "parse/literal_parser.h"
 
@@ -23,7 +27,8 @@ typedef enum ExpressionType {
     EXPRESSION_MEMBER_ACCESS,
     EXPRESSION_MEMBER_POINTER_ACCESS,
     EXPRESSION_COMPOUND_LITERAL,
-    EXPRESSION_SIZE_OF,
+    EXPRESSION_SIZEOF_TYPE,
+    EXPRESSION_SIZEOF_EXPRESSION,
     EXPRESSION_CAST,
 
     EXPRESSION_UNARY_ADDRESS,
@@ -68,27 +73,29 @@ typedef enum ExpressionType {
     EXPRESSION_BINARY_OR_ASSIGN,
 
     EXPRESSION_CONDITIONAL,
-    EXPRESSION_COMMA // Here we just use the binary expression...
+    EXPRESSION_COMMA, // Here we just use the binary expression...
+    
+    EXPRESSION_PARENTHESISED
 } ExpressionType;
 
 typedef union Expression Expression;
 
 typedef struct ExpressionBase {
     ExpressionType kind;
-    Location loc;
     Type* type;
-
-    bool is_parenthesized;
+    LocationRange range;
 } ExpressionBase;
 
 // Our primary expressions
 typedef struct ExpressionReference {
     ExpressionBase base;
-    String name;
+    Location identifier_loc;
+    Identifier* Identifier;
 } ExpressionReference;
 
 typedef struct ExpressionInteger {
     ExpressionBase base;
+    Location num_location;
     IntegerValue value;
 } ExpressionInteger;
 
@@ -96,6 +103,7 @@ typedef struct ExpressionFloat ExpressionFloat;
 
 typedef struct ExpressionEnumeration {
     ExpressionBase base;
+    Identifier* enumeration;
 } ExpressionEnumeration;
 
 // 6.4.4.4 (Characters have type int)
@@ -107,39 +115,91 @@ typedef struct ExpressionCharacter {
 typedef struct ExpressionStringLiteral {
     ExpressionBase base;
     StringLiteral value;
-}ExpressionStringLiteral;
+} ExpressionStringLiteral;
 
-typedef struct ExpressionArrayAccess ExpressionArrayAccess;
-typedef struct ExpressionFunctionCall ExpressionFunctionCall;
+// A high level array access this will be converted into c's final form later
+typedef struct ExpressionArrayAccess {
+    ExpressionBase base;
+    Location lbracket_loc;
+    Location rbracket_loc;
+    Expression* lhs;
+    Expression* member;
+} ExpressionArrayAccess;
+
+typedef struct ExpressionFunctionCall {
+    ExpressionBase base;
+    Location lparen_loc;
+    Location rparen_loc;
+    Expression* lhs;
+    Expression** arguments;
+    size_t num_arguments;
+} ExpressionFunctionCall;
 
 typedef struct ExpressionMemberAccess {
     ExpressionBase base;
+    Location location_op;
     Expression* lhs;
-    String member;
-    Location member_loc;
+    Identifier* member;
+    bool is_arrow;
 } ExpressionMemberAccess;
 
+// TODO: how to do this
 typedef struct ExpressionCompoundLiteral ExpressionCompoundLiteral;
-typedef struct ExpressionSizeOf ExpressionSizeOf;
-typedef struct ExpressionCast ExpressionCast;
+
+typedef struct ExpressionSizeofType {
+    ExpressionBase base;
+    Location sizeof_loc;
+    Location lparen_loc;
+    Location rparen_loc;
+    Type* type;
+} ExpressionSizeofType;
+
+typedef struct ExpressionSizeofExpression {
+    ExpressionBase base;
+    Location sizeof_loc;
+    Expression* expression;
+} ExpressionSizeofExpression;
+
+typedef struct ExpressionCast {
+    ExpressionBase base;
+    Location lparen_loc;
+    Location rparen_loc;
+    Type* type;
+    Expression* rhs;
+}ExpressionCast;
 
 typedef struct ExpressionUnary {
     ExpressionBase base;
+    Location op_loc;
     Expression* lhs;
 } ExpressionUnary;
 
 typedef struct ExpressionBinary {
     ExpressionBase base;
+    Location op_loc;
     Expression* lhs;
     Expression* rhs;
 } ExpressionBinary;
 
 typedef struct ExpressionConditional {
     ExpressionBase base;
+    Location question;
+    Location colon;
     Expression* condition;
     Expression* true_part;
     Expression* false_part;
 } ExpressionConditional;
+
+typedef struct ExpressionParenthesised {
+    ExpressionBase base;
+    Location lparen_loc;
+    Location rparen_loc;
+    Expression* inside;
+} ExpressionParenthesised;
+
+typedef struct ExpressionError {
+    ExpressionBase base;
+} ExpressionError;
 
 union Expression {
     ExpressionBase base;
@@ -151,15 +211,13 @@ union Expression {
     ExpressionUnary unary;
     ExpressionBinary binary;
     ExpressionConditional conditional;
+
+    ExpressionError error;
 };
 
-Expression* create_error_expression(const Token* token);
+Expression* expression_create_error(AstAllocator* allocator,
+        LocationRange range);
 
-Expression* create_integer_expression(const Token* token, IntegerValue* value);
-Expression* create_character_expression(const Token* token, CharValue* value);
-Expression* create_string_expression(const Token* token, StringLiteral* value);
 
-Expression* expression_unary(Expression* expr, ExpressionType type, Location loc);
-Expression* expression_binary(Expression* lhs, Expression* rhs, ExpressionType type, Location loc);
 
 #endif /* EXPRESSION_H */
