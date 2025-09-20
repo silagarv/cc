@@ -279,3 +279,15 @@ Statement* statement_create_empty(AstAllocator* allocator,
 
     return stmt;
 }
+
+Statement* statement_create_declaration(AstAllocator* allocator,
+        Location semi_location, Declaration* declaration)
+{
+    Statement* stmt = statement_create_base(allocator, 
+            sizeof(StatementDeclaration), STATEMENT_DECLARATION);
+
+    stmt->declaration_stmt.semi_location = semi_location;
+    stmt->declaration_stmt.declaration = declaration;
+
+    return stmt;
+}

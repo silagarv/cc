@@ -200,6 +200,7 @@ struct StatementEmpty {
 
 struct StatementDeclaration {
     StatementBase base;
+    Location semi_location;
     Declaration* declaration;
 };
 
@@ -316,5 +317,8 @@ Statement* statement_create_return(AstAllocator* allocator,
 
 Statement* statement_create_empty(AstAllocator* allocator,
         Location semi_location);
+
+Statement* statement_create_declaration(AstAllocator* allocator,
+        Location semi_location, Declaration* declaration);
 
 #endif /* STATEMENT_H */

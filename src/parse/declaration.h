@@ -3,6 +3,8 @@
 
 #include <stddef.h>
 
+#include <util/vec.h>
+
 #include "files/location.h"
 
 #include "lex/identifier_table.h"
@@ -149,6 +151,8 @@ union Declaration {
     // for at some stage.
     DeclarationLabel label;
 };
+
+vector_of_decl(Declaration*, Declaration, declaration);
 
 // TODO: redo this completely with our ast allocator
 

@@ -4,11 +4,10 @@
 // This file will contain prototypes for our identifier table so that
 // we are able to easily intern identifiers to save 
 
+#include "lex/token.h"
 #include "util/arena.h"
 #include "util/str.h"
 #include "util/hash_map.h"
-
-#include "lex/token.h"
 
 // An identifier within the source.
 typedef struct Identifier {
@@ -62,6 +61,6 @@ void identifier_table_delete(IdentifierTable* table);
 
 // Lookup an identifier in the table inserting it into the table if it is not
 // already a part of the table.
-Identifier* identifier_table_lookup(IdentifierTable* table, String string);
+Identifier* identifier_table_lookup(IdentifierTable* table, String* string);
 
 #endif /* IDENTIFIER_TABLE_H */

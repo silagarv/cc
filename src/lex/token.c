@@ -13,6 +13,8 @@
 #include "util/str.h"
 #include "util/hash.h"
 
+#include "lex/identifier_table.h"
+
 void token_set_flag(Token* token, TokenFlags flag)
 {
     token->flags |= flag;
@@ -121,20 +123,6 @@ bool token_is_string(const Token* token)
     return (token->type == TOKEN_STRING || token->type == TOKEN_WIDE_STRING);
 }
 
-TokenData token_create_identifier_node(String string)
-{
-    IdentifierNode* node = xmalloc(sizeof(IdentifierNode));
-    *node = (IdentifierNode)
-    {
-        .value = string,
-        .hash = string_get_hash(&string)
-    };
-
-    TokenData data = { .identifier = node };
-
-    return data;
-}
-
 TokenData token_create_literal_node(String string)
 {
     LiteralNode* node = xmalloc(sizeof(LiteralNode));
@@ -171,14 +159,7 @@ bool token_has_opt_value(Token* tok)
 
 void token_free_data(Token* token)
 {
-    if (token_is_identifier(token))
-    {
-        IdentifierNode* node = token->data.identifier;
-
-        string_free(&node->value);
-        free(node);
-    }
-    else if (token_is_literal(token))
+    if (token_is_literal(token))
     {
         LiteralNode* node = token->data.literal;
 
@@ -344,9 +325,9 @@ const char* token_get_string(Token* tok)
     String* string;
     if (token_is_identifier(tok))
     {
-        IdentifierNode* node = tok->data.identifier;
+        Identifier* node = tok->data.identifier;
 
-        string = &node->value;
+        string = identifier_get_string(node);
     }
     else 
     {
@@ -372,9 +353,9 @@ static size_t token_get_real_length(const Token* token)
     String* string;
     if (token_is_identifier(token))
     {
-        IdentifierNode* node = token->data.identifier;
+        Identifier* node = token->data.identifier;
 
-        string = &node->value;
+        string = identifier_get_string(node);
     }
     else
     {

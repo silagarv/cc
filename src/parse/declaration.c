@@ -6,6 +6,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "util/vec.h"
 #include "util/xmalloc.h"
 
 #include "files/location.h"
@@ -15,6 +16,8 @@
 #include "parse/type.h"
 #include "parse/expression.h"
 #include "parse/initializer.h"
+
+vector_of_impl(Declaration*, Declaration, declaration)
 
 // This is a function to create a barebones base declaration.
 static Declaration* declaration_create_base(DeclarationType decl_type, 

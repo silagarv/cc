@@ -8,6 +8,8 @@
 
 #include "files/location.h"
 
+struct Identifier;
+
 // Our token types here
 // Note that we use the pp definitions of tokens mainly which are then converted
 // on demand by the parser. E.g. if its a number it gets converted, and properly
@@ -144,14 +146,6 @@ typedef enum TokenType {
     TOKEN_LAST
 } TokenType;
 
-
-
-typedef struct IdentifierNode {
-    String value;
-    uint32_t hash;
-    char* starting_ptr;
-} IdentifierNode;
-
 typedef struct LiteralNode {
     String value;
     char* starting_ptr;
@@ -159,7 +153,7 @@ typedef struct LiteralNode {
 
 // From TokenData we should always be able to retrieve the token spelling back
 typedef union TokenData {
-    IdentifierNode* identifier;
+    struct Identifier* identifier;
     LiteralNode* literal;
     char* starting_ptr;
 } TokenData;

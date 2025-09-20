@@ -27,11 +27,15 @@ typedef struct Parser {
     /* our anchor set for recovering from parsing */
     size_t recover_set[TOKEN_LAST];
 
-    // Stores the ast
+    // Stores the ast. This includes all of the statements, expressions,
+    // declaration, and anything else that we might need. This is held in one
+    // large arena so that we can effeciently free and allocate it.
     Ast ast;
 
+    // TODO: should we also store our scopes in here???
     // Stores the current context of the parser for statements and expressions.
     AstContext current_context;
+
 
     // TODO: track brackets???
 } Parser;

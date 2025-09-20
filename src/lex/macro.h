@@ -7,9 +7,10 @@
 #include "util/buffer.h"
 
 #include "lex/token.h"
+#include "lex/identifier_table.h"
 
 typedef struct Macro {
-    IdentifierNode* name;
+    Identifier* name;
 
     bool is_function;
 

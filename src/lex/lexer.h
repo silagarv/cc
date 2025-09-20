@@ -6,8 +6,11 @@
 #include "files/location.h"
 
 #include "lex/token.h"
+#include "lex/identifier_table.h"
 
 typedef struct Lexer {
+    IdentifierTable* identifiers;
+
     const char* buffer_start;
     const char* buffer_end;
     
@@ -20,9 +23,9 @@ typedef struct Lexer {
     bool can_lex_header;
 } Lexer;
 
-
 // Create a lexer on the stack, no heap allocations needed for it at all
-Lexer lexer(const char* buffer_start, const char* buffer_end, Location start_loc);
+Lexer lexer(IdentifierTable* identifiers, const char* buffer_start,
+        const char* buffer_end, Location start_loc);
 Lexer lexer_from_buffer(Buffer buffer, Location start_loc);
 
 // Get the next token from the lexer advancing it's position

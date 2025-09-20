@@ -2,7 +2,6 @@ CC = clang-19
 CFLAGS = -Wall -Wextra -Wpedantic -std=c99 -g3 -O0
 CFLAGS += -Wshadow -Wno-unused-parameter -Wno-unused-function \
 	-Wno-unused-variable -Wno-switch -Wvla -ferror-limit=0
-CFLAGS += -x c
 # CFLAGS += -fanalyzer
 # CFLAGS += -flto
 
@@ -50,6 +49,7 @@ PARSE = src/parse/ast_allocator.c \
 	src/parse/literal_parser.c \
 	src/parse/expression.c \
 	src/parse/statement.c \
+	src/parse/declaration.c \
 	src/parse/ast.c \
 	src/parse/parser.c
 

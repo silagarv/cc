@@ -188,9 +188,11 @@ union Type {
     TypeTypedef type_typedef;
 };
 
-typedef struct TypeStore {
+// TODO: how can we implement a type tree so that we are able to quickly and 
+// easily compare types???????
+typedef struct TypeTree {
     void* data;
-} TypeStore;
+} TypeTree;
 
 // Some functions to check for specific type qualifiers
 bool type_qualifier_is_const(TypeQualifiers qualifiers);

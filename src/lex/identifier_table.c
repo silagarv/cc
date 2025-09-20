@@ -190,15 +190,15 @@ void identifier_table_delete(IdentifierTable* table)
     hash_map_delete(&table->ident_table);
 }
 
-Identifier* identifier_table_lookup(IdentifierTable* table, String string)
+Identifier* identifier_table_lookup(IdentifierTable* table, String* string)
 {
-    Identifier* ident = hash_map_get(&table->ident_table, &string);
+    Identifier* ident = hash_map_get(&table->ident_table, string);
     if (ident)
     {
         return ident;
     }
 
-    ident = identifier_create(string);
+    ident = identifier_create(*string);
     hash_map_insert(&table->ident_table, &ident->string, ident);
 
     return ident;

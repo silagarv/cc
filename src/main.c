@@ -49,7 +49,8 @@ int main(int argc, char** argv)
 
     LineMap map = line_map_create(fb, 0);
 
-    Lexer l = lexer(fb->buffer_start, fb->buffer_end, 0);
+    IdentifierTable idents = identifier_table_create();
+    Lexer l = lexer(&idents, fb->buffer_start, fb->buffer_end, 0);
 
     TokenList tokens = (TokenList)
     {
@@ -87,6 +88,8 @@ int main(int argc, char** argv)
     }
     free(tokens.tokens);
             
+    identifier_table_delete(&idents);
+
     line_map_delete(&map);
 
     file_buffer_free(file->file_buffer);

@@ -9,6 +9,7 @@
 #include "parse/ast_allocator.h"
 #include "parse/type.h"
 #include "parse/literal_parser.h"
+#include <stdbool.h>
 
 typedef enum ExpressionType {
     EXPRESSION_ERROR,
@@ -82,8 +83,6 @@ typedef union Expression Expression;
 
 typedef struct ExpressionBase {
     ExpressionType kind;
-    Type* type;
-    LocationRange range;
 } ExpressionBase;
 
 // Our primary expressions
@@ -171,7 +170,7 @@ typedef struct ExpressionCast {
 typedef struct ExpressionUnary {
     ExpressionBase base;
     Location op_loc;
-    Expression* lhs;
+    Expression* rhs; // This is not nesseccarily true btw...
 } ExpressionUnary;
 
 typedef struct ExpressionBinary {
@@ -208,16 +207,40 @@ union Expression {
     ExpressionCharacter character;
     ExpressionStringLiteral string;
 
+    ExpressionArrayAccess array;
+
     ExpressionUnary unary;
     ExpressionBinary binary;
     ExpressionConditional conditional;
 
+    ExpressionParenthesised parenthesised;
+
     ExpressionError error;
 };
 
-Expression* expression_create_error(AstAllocator* allocator,
-        LocationRange range);
+Expression* expression_create_error(AstAllocator* allocator);
 
+Expression* expression_create_array(AstAllocator* allocator, 
+        Location lbracket_loc, Location rbracket_loc, Expression* lhs,
+        Expression* member);
 
+Expression* expression_create_unary(AstAllocator* allocator, 
+        ExpressionType type, Location op_loc, Expression* expression);
+
+Expression* expression_create_binary(AstAllocator* allocator, 
+        ExpressionType type, Location op_loc, Expression* lhs, Expression* rhs);
+
+Expression* expression_create_parenthesised(AstAllocator* allocator,
+        Location lparen_loc, Location rparen_loc, Expression* inside);
+
+// TODO: somehow we will need to be able to fold expressions...
+// TODO: so we will need to set up some stuff here to do that. This will also
+// TODO: be useful for any preprocessor work that we have to do.
+
+bool expression_can_fold(const Expression* expression);
+
+void expression_fold(const Expression* expression);
+
+bool expression_fold_to_bool(const Expression* expression);
 
 #endif /* EXPRESSION_H */

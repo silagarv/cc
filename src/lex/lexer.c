@@ -17,6 +17,7 @@
 #include "lex/char_help.h"
 #include "lex/unicode.h"
 #include "lex/token.h"
+#include "lex/identifier_table.h"
 
 #define MAX_UCN_LENGTH (8)
 
@@ -24,11 +25,14 @@
 #define NUMBER_START_SIZE (10)
 #define STRING_START_SIZE (10)
 
-Lexer lexer(const char* buffer_start, const char* buffer_end, Location start_loc)
+Lexer lexer(IdentifierTable* identifiers, const char* buffer_start,
+        const char* buffer_end, Location start_loc)
 {
     assert(*buffer_end == '\0');
 
     Lexer lexer;
+    lexer.identifiers = identifiers;
+
     lexer.buffer_start = buffer_start;
     lexer.buffer_end = buffer_end;
 
@@ -445,78 +449,80 @@ static void classify_pp_identifier(Token* token)
 {
     assert(token_is_identifier(token));
 
-    const String* string = &token->data.identifier->value;
-    switch (string_get(string, 0))
-    {
-        case 'd':
-            if (token_equal_string(token, "define"))
-            {
-                token->type = TOKEN_PP_DEFINE;
-            }
-            break;
+    // TODO: this function will probably need to be ripped out and redone
 
-        case 'e':
-            if (token_equal_string(token, "elif"))
-            {
-                token->type= TOKEN_PP_ELIF;
-            }
-            else if (token_equal_string(token, "else"))
-            {
-                token->type= TOKEN_PP_ELSE;
-            }
-            else if (token_equal_string(token, "endif"))
-            {
-                token->type= TOKEN_PP_ENDIF;
-            }
-            else if (token_equal_string(token, "error"))
-            {
-                token->type= TOKEN_PP_ERROR;
-            }
-            break;
+    // const String* string = &token->data.identifier->value;
+    // switch (string_get(string, 0))
+    // {
+    //     case 'd':
+    //         if (token_equal_string(token, "define"))
+    //         {
+    //             token->type = TOKEN_PP_DEFINE;
+    //         }
+    //         break;
 
-        case 'i':
-            if (token_equal_string(token, "if"))
-            {
-                token->type= TOKEN_PP_IF;
-            }
-            else if (token_equal_string(token, "ifdef"))
-            {
-                token->type= TOKEN_PP_IFDEF;
-            }
-            else if (token_equal_string(token, "ifndef"))
-            {
-                token->type= TOKEN_PP_IFNDEF;
-            }
-            else if (token_equal_string(token, "include"))
-            {
-                token->type= TOKEN_PP_INCLUDE;
-            }
-            break;
+    //     case 'e':
+    //         if (token_equal_string(token, "elif"))
+    //         {
+    //             token->type= TOKEN_PP_ELIF;
+    //         }
+    //         else if (token_equal_string(token, "else"))
+    //         {
+    //             token->type= TOKEN_PP_ELSE;
+    //         }
+    //         else if (token_equal_string(token, "endif"))
+    //         {
+    //             token->type= TOKEN_PP_ENDIF;
+    //         }
+    //         else if (token_equal_string(token, "error"))
+    //         {
+    //             token->type= TOKEN_PP_ERROR;
+    //         }
+    //         break;
 
-        case 'l':
-            if (token_equal_string(token, "line"))
-            {
-                token->type= TOKEN_PP_LINE;
-            }
-            break;
+    //     case 'i':
+    //         if (token_equal_string(token, "if"))
+    //         {
+    //             token->type= TOKEN_PP_IF;
+    //         }
+    //         else if (token_equal_string(token, "ifdef"))
+    //         {
+    //             token->type= TOKEN_PP_IFDEF;
+    //         }
+    //         else if (token_equal_string(token, "ifndef"))
+    //         {
+    //             token->type= TOKEN_PP_IFNDEF;
+    //         }
+    //         else if (token_equal_string(token, "include"))
+    //         {
+    //             token->type= TOKEN_PP_INCLUDE;
+    //         }
+    //         break;
+
+    //     case 'l':
+    //         if (token_equal_string(token, "line"))
+    //         {
+    //             token->type= TOKEN_PP_LINE;
+    //         }
+    //         break;
         
-        case 'p':
-            if (token_equal_string(token, "pragma"))
-            {
-                token->type= TOKEN_PP_PRAGMA;
-            }
-            break;
+    //     case 'p':
+    //         if (token_equal_string(token, "pragma"))
+    //         {
+    //             token->type= TOKEN_PP_PRAGMA;
+    //         }
+    //         break;
 
-        case 'u':
-            if (token_equal_string(token, "undef"))
-            {
-                token->type= TOKEN_PP_UNDEF;
-            }
-            break;
+    //     case 'u':
+    //         if (token_equal_string(token, "undef"))
+    //         {
+    //             token->type= TOKEN_PP_UNDEF;
+    //         }
+    //         break;
         
-        default:
-            break;
-    }
+    //     default:
+    //         break;
+    // }
 
 }
 
@@ -526,212 +532,12 @@ static void classify_identifier(Token* token)
 {
     assert(token_is_identifier(token));
 
-    const String* string = &token->data.identifier->value;
-    switch (string_get(string, 0))
+    if (!identifier_is_keyword(token->data.identifier))
     {
-        case 'a':
-            if (token_equal_string(token, "auto"))
-            {
-                token->type = TOKEN_AUTO;
-            }
-            break;
-        
-        case 'b':
-            if (token_equal_string(token, "break"))
-            {
-                token->type = TOKEN_BREAK;
-            }
-            break;
-
-        case 'c':
-            if (token_equal_string(token, "case"))
-            {
-                token->type = TOKEN_CASE;
-            }
-            else if (token_equal_string(token, "char"))
-            {
-                token->type = TOKEN_CHAR;
-            }
-            else if (token_equal_string(token, "const"))
-            {
-                token->type = TOKEN_CONST;
-            }
-            else if (token_equal_string(token, "continue"))
-            {
-                token->type = TOKEN_CONTINUE;
-            }
-            break;
-
-        case 'd':
-            if (token_equal_string(token, "default"))
-            {
-                token->type = TOKEN_DEFAULT;
-            }
-            else if (token_equal_string(token, "do"))
-            {
-                token->type = TOKEN_DO;
-            }
-            else if (token_equal_string(token, "double"))
-            {
-                token->type = TOKEN_DOUBLE;
-            }
-            break;
-
-        case 'e':
-            if (token_equal_string(token, "else"))
-            {
-                token->type = TOKEN_ELSE;
-            }
-            else if (token_equal_string(token, "enum"))
-            {
-                token->type = TOKEN_ENUM;
-            }
-            else if (token_equal_string(token, "extern"))
-            {
-                token->type = TOKEN_EXTERN;
-            }
-            break;
-
-        case 'f':
-            if (token_equal_string(token, "float"))
-            {
-                token->type = TOKEN_FLOAT;
-            }
-            else if (token_equal_string(token, "for"))
-            {
-                token->type = TOKEN_FOR;
-            }
-            break;
-
-        case 'g':
-            if (token_equal_string(token, "goto"))
-            {
-                token->type = TOKEN_GOTO;
-            }
-            break;
-
-        case 'i':
-            if (token_equal_string(token, "if"))
-            {
-                token->type = TOKEN_IF;
-            }
-            else if (token_equal_string(token, "inline"))
-            {
-                token->type = TOKEN_INLINE;
-            }
-            else if (token_equal_string(token, "int"))
-            {
-                token->type = TOKEN_INT;
-            }
-            break;
-
-        case 'l':
-            if (token_equal_string(token, "long"))
-            {
-                token->type = TOKEN_LONG;
-            }
-            break;
-
-        case 'r':
-            if (token_equal_string(token, "register"))
-            {
-                token->type = TOKEN_REGISTER;
-            }
-            else if (token_equal_string(token, "restrict"))
-            {
-                token->type = TOKEN_RESTRICT;
-            }
-            else if (token_equal_string(token, "return"))
-            {
-                token->type = TOKEN_RETURN;
-            }
-            break;
-
-        case 's':
-            if (token_equal_string(token, "short"))
-            {
-                token->type = TOKEN_SHORT;
-            }
-            else if (token_equal_string(token, "signed"))
-            {
-                token->type = TOKEN_SIGNED;
-            }
-            else if (token_equal_string(token, "sizeof"))
-            {
-                token->type = TOKEN_SIZEOF;
-            }            
-            else if (token_equal_string(token, "static"))
-            {
-                token->type = TOKEN_STATIC;
-            }
-            else if (token_equal_string(token, "struct"))
-            {
-                token->type = TOKEN_STRUCT;
-            }
-            else if (token_equal_string(token, "switch"))
-            {
-                token->type = TOKEN_SWITCH;
-            }
-            break;
-
-        case 't':
-            if (token_equal_string(token, "typedef"))
-            {
-                token->type = TOKEN_TYPEDEF;
-            }
-            break;
-
-        case 'u':
-            if (token_equal_string(token, "union"))
-            {
-                token->type = TOKEN_UNION;
-            }
-            else if (token_equal_string(token, "unsigned"))
-            {
-                token->type = TOKEN_UNSIGNED;
-            }
-            break;
-
-        case 'v':
-            if (token_equal_string(token, "volatile"))
-            {
-                token->type = TOKEN_VOLATILE;
-            }
-            else if (token_equal_string(token, "void"))
-            {
-                token->type = TOKEN_VOID;
-            }
-            break;
-
-        case 'w':
-            if (token_equal_string(token, "while"))
-            {
-                token->type = TOKEN_WHILE;
-            }
-            break;
-
-        case '_':
-            if (token_equal_string(token, "_Bool"))
-            {
-                token->type = TOKEN__BOOL;
-            }
-            else if (token_equal_string(token, "_Complex"))
-            {
-                token->type = TOKEN__COMPLEX;
-            }
-            else if (token_equal_string(token, "_Imaginary"))
-            {
-                token->type = TOKEN__IMAGINARY;
-            }
-            else if (token_equal_string(token, "__func__"))
-            {
-                token->type = TOKEN___FUNC__;
-            }
-            break;
-
-        default:
-            break;
+        return;
     }
+
+    token->type = identifier_get_keyword(token->data.identifier);
 }
 
 static bool lex_identifier(Lexer* lexer, Token* token, char* start)
@@ -781,11 +587,17 @@ static bool lex_identifier(Lexer* lexer, Token* token, char* start)
         break;
     }
 
-    // Finish building the identifier and create the token data
+    // Finish building the identifier and create the token data.
+    // TODO: we wan't to improve this to not allocate / deallocate alot so we
+    // may in the future reuse this buffer would be nice
     buffer_make_cstr(&identifier);
-    token->data = token_create_identifier_node(string_from_buffer(&identifier));
+    String string = string_from_buffer(&identifier);
 
-    // TODO: classify the identifier into catagories
+    token->data.identifier = identifier_table_lookup(lexer->identifiers,
+            &string);
+
+    string_free(&string);
+
     classify_identifier(token);
 
     return true;

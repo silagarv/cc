@@ -4,6 +4,8 @@
 #include <stddef.h>
 
 #include "files/location.h"
+
+#include "parse/ast_allocator.h"
 #include "parse/expression.h"
 
 // The type of designators that we might have e.g. array [10] = ... or field
@@ -80,7 +82,6 @@ typedef struct InitializerList {
 
     Location left_backet;
     Location right_bracket;
-    Location final_comma_opt;
 
     InitializerListMember* head;    
 } InitializerList;
@@ -91,5 +92,11 @@ union Initializer {
     InitializerExpression expr;
     InitializerList list;
 };
+
+// TODO: we will need to create functions for initializer creation and stuff
+
+// TODO: this will potentially be one of the trickiest parts of the whole
+// TODO: compiler. Since I am quite lost at the moment on how to initialize
+// TODO: these things
 
 #endif /* INITIALIZER_H */

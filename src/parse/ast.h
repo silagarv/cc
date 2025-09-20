@@ -37,6 +37,7 @@ Statement* ast_context_current_switch(const AstContext* context);
 // This represents the abstract syntax tree for a translation unit.
 typedef struct Ast {
     AstAllocator ast_allocator;
+    DeclarationVector top_level_decls;
 } Ast;
 
 #endif /* AST_H */
