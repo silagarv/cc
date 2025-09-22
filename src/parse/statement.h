@@ -75,7 +75,7 @@ struct StatementLabel {
     StatementBase base;
     Location identifier_location;
     Location colon_location;
-    DeclarationLabel* label;
+    Declaration* label;
     Statement* statement;
 };
 
@@ -253,7 +253,7 @@ Statement* statement_create_error(AstAllocator* allocator);
 
 Statement* statement_create_label(AstAllocator* allocator, 
         Location identifier_location, Location colon_location,
-        DeclarationLabel* label_decl, Statement* body);
+        Declaration* label_decl, Statement* body);
 
 Statement* statement_create_case(AstAllocator* allocator, 
         Location case_location, Location colon_location, Expression* expr,

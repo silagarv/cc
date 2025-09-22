@@ -28,7 +28,7 @@ Statement* statement_create_error(AstAllocator* allocator)
 
 Statement* statement_create_label(AstAllocator* allocator,
         Location identifier_location, Location colon_location,
-        DeclarationLabel* label_decl, Statement* statement)
+        Declaration* label_decl, Statement* statement)
 {
     Statement* stmt = statement_create_base(allocator, sizeof(StatementLabel),
             STATEMENT_LABEL);

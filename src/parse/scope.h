@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "parse/declaration.h"
 #include "util/str.h"
 
 #include "lex/identifier_table.h"
@@ -37,7 +38,7 @@ typedef struct Scope {
     struct Scope* function;
 
     // The symbol table for this scope containing all of the different symbols
-    // within the scope
+    // within the scope. 
     SymbolTable symbols;
 
     // The direct parent scope of this one, or null.
@@ -47,15 +48,15 @@ typedef struct Scope {
 // Create a new file scope this should only really need to be called once for
 // each translation unit and calling this multiple times in each unit may lead
 // to errors.
-Scope* scope_new_file(void);
+Scope scope_new_file(void);
 
 // TODO: work out how this will work...
-Scope* scope_new_block(Scope* parent_file, Scope* parent_function_prototype,
+Scope scope_new_block(Scope* parent_file, Scope* parent_function_prototype,
         Scope* parent_block, Scope* parent_function);
 
 // TODO: work out how this will work since we can have function prototypes both
 // in file scope and in block scope... e.g. declared in a function as well!!!
-Scope* scope_new_function_prototype(Scope* parent_file, 
+Scope scope_new_function_prototype(Scope* parent_file, 
         Scope* parent_function_prototype, Scope* parent_block, 
         Scope* parent_function);
 
@@ -63,13 +64,13 @@ Scope* scope_new_function_prototype(Scope* parent_file,
 // parent block scope. This is since the standard requires that we have function
 // definitions (not declarations) in a block scope. So we will need to create a
 // block scope in the file before we create one of these scopes.
-Scope* scope_new_function(Scope* parent_file, Scope* parent_function_prototype,
+Scope scope_new_function(Scope* parent_file, Scope* parent_function_prototype,
         Scope* parent_block, Scope* parent_function);
 
-Symbol* scope_lookup(Scope* scope, Identifier* name);
+Declaration* scope_lookup(const Scope* scope, Identifier* name);
 
-bool scope_contains(Scope* scope, Identifier* name);
+bool scope_contains(const Scope* scope, Identifier* name);
 
-bool scope_add_symbol(Scope* scope, Symbol* symbol);
+bool scope_add_symbol(const Scope* scope, Declaration* declaration);
 
 #endif /* SCOPE_H */

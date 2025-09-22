@@ -12,17 +12,15 @@
 #include "parse/type.h"
 #include "parse/expression.h"
 #include "parse/initializer.h"
+#include "parse/ast_allocator.h"
 
 union Statement;
 
 // A struct to hold all of our declaration specifiers
 typedef struct DeclarationSpecifiers {
     Type* type;
-
     TypeStorageSpecifier storage_spec;
-
     TypeQualifiers qualifiers;
-
     TypeFunctionSpecifier function_spec;
 } DeclarationSpecifiers;
 
@@ -52,9 +50,6 @@ typedef struct DeclarationBase {
     // fine grained location and information we will need to traverse the entire
     // declaration.
     Location location;
-
-    // Location of the semicolon in the declaration.
-    Location semi_location;
 
     // What name are we giving this declaration
     Identifier* identifier;
@@ -116,6 +111,15 @@ typedef struct DeclarationField {
 
 // TODO: all our other declarations...
 
+
+typedef struct DeclarationEnumConstant {
+    // The base declaration
+    DeclarationBase base;
+
+    // optional expression used as the enumeration value.
+    Expression* expression;
+} DeclarationEnumConstant;
+
 typedef struct DeclarationLabel {
     // The base declaration of this object
     DeclarationBase base;
@@ -154,19 +158,89 @@ union Declaration {
 
 vector_of_decl(Declaration*, Declaration, declaration);
 
+// Below is declarator pieces. These help us to form declarations whilst we are
+// parsing the declaration. 
+typedef enum DeclaratorPieceType {
+    DECLARATOR_PIECE_POINTER,
+    DECLARATOR_PIECE_ARRAY,
+    DECLARATOR_PIECE_FUNCTION
+} DeclaratorPieceType;
+
+typedef struct DeclaratorPieceBase {
+    DeclaratorPieceType type;
+} DeclaratorPieceBase;
+
+typedef struct DeclaratorPiecePointer {
+    DeclaratorPieceBase base;
+    TypeQualifiers qualifiers;
+} DeclaratorPiecePointer;
+
+typedef struct DeclaratorPieceArray {
+    DeclaratorPieceBase base;
+    TypeQualifiers qualifiers;
+    Expression* expression;
+    bool is_static;
+    bool is_star;
+} DeclaratorPieceArray;
+
+typedef struct DeclaratorPieceFunction {
+    DeclaratorPieceBase base;
+    Declaration** paramaters;
+    size_t num_paramaters;
+    bool is_variadic;
+    bool is_star;
+} DeclaratorPieceFunction;
+
+typedef union DeclaratorPiece {
+    DeclaratorPieceBase base;
+    DeclaratorPiecePointer pointer;
+    DeclaratorPieceArray array;
+    DeclaratorPieceFunction function;
+} DeclaratorPiece;
+
+vector_of_decl(DeclaratorPiece, DeclaratorPiece, declarator_piece);
+
+// Here is our declarator vector that we are going to use to help us parse
+// declarations correctly. Note that we definitely eventually want this to
+// contain more locations and things that we can use.
+typedef struct Declarator {
+    Identifier* identifier;
+    Location identifier_location;
+
+    DeclaratorPieceVector pieces;
+} Declarator;
+
+Declarator declarator_create(void);
+void declarator_delete(Declarator* declarator);
+
+void declarator_set_identifier(Declarator* declarator, Identifier* identifier,
+        Location identifier_location);
+
+void declarator_push_pointer(Declarator* declarator, TypeQualifiers qualifiers);
+void declarator_push_array(Declarator* declarator,
+        TypeQualifiers qualifiers, Expression* expression, bool is_static,
+        bool is_star);
+
+void declarator_push_function_empty(Declarator* declarator, ...);
+void declarator_push_function_knr(Declarator* declarator, ...);
+void declarator_push_function(Declarator* declarator, ...);
+
+// TODO: this will need some stuff added to it
+void declarator_piece_push_function(Declarator* declarator, bool is_variadic);
+
 // TODO: redo this completely with our ast allocator
 
 // Create a declaration of a variable. This declaration will represent a
 // variable that we can use within other places.
 // TODO: add the initializer into the declaration so that we can represent that
 // in the AST.
-Declaration* declaration_create_variable(Location location,
-        Identifier* identifier, QualifiedType type, 
+Declaration* declaration_create_variable(AstAllocator* allocator,
+        Location location, Identifier* identifier, QualifiedType type, 
         TypeStorageSpecifier storage, Initializer* initializer);
 
 // Create a declaration of label identifier at the given location, and indicate
 // if this label was implictly constructed.
-Declaration* declaration_create_label(Identifier* identifier, Location location,
-        bool implicit);
+Declaration* declaration_create_label(AstAllocator* allocator, 
+        Identifier* identifier, Location location, bool implicit);
 
 #endif /* DECLARATION_H */

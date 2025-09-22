@@ -16,16 +16,73 @@
 #include "parse/type.h"
 #include "parse/expression.h"
 #include "parse/initializer.h"
+#include "parse/ast_allocator.h"
 
 vector_of_impl(Declaration*, Declaration, declaration)
+vector_of_impl(DeclaratorPiece, DeclaratorPiece, declarator_piece)
+
+Declarator declarator_create(void)
+{
+    Declarator declarator = (Declarator)
+    {
+        .identifier = NULL,
+        .identifier_location = LOCATION_INVALID,
+        .pieces = declarator_piece_vector_create(1)
+    };
+
+    return declarator;
+}
+
+void declarator_delete(Declarator* declarator)
+{
+    declarator_piece_vector_free(&declarator->pieces, NULL);
+}
+
+void declarator_push_pointer(Declarator* declarator, TypeQualifiers qualifiers)
+{
+    DeclaratorPiece piece = (DeclaratorPiece)
+    {
+        .pointer.base.type = DECLARATOR_PIECE_POINTER,
+        .pointer.qualifiers = qualifiers
+    };
+
+    declarator_piece_vector_push(&declarator->pieces, piece);
+}
+
+void declarator_push_array(Declarator* declarator,
+        TypeQualifiers qualifiers, Expression* expression, bool is_static,
+        bool is_star)
+{
+    DeclaratorPiece piece = (DeclaratorPiece)
+    {
+        .array.base.type = DECLARATOR_PIECE_ARRAY,
+        .array.qualifiers = qualifiers,
+        .array.expression = expression,
+        .array.is_static = is_static,
+        .array.is_star = is_star
+    };
+
+    declarator_piece_vector_push(&declarator->pieces, piece);
+}
+
+void declarator_set_identifier(Declarator* declarator, Identifier* identifier,
+        Location identifier_location)
+{
+    assert(declarator->identifier == NULL && 
+            declarator->identifier_location == LOCATION_INVALID);
+
+    declarator->identifier = identifier;
+    declarator->identifier_location = identifier_location;
+}
 
 // This is a function to create a barebones base declaration.
-static Declaration* declaration_create_base(DeclarationType decl_type, 
-        Location location, Identifier* identifier, QualifiedType type,
+static Declaration* declaration_create_base(AstAllocator* allocator, 
+        size_t size, DeclarationType decl_type, Location location, 
+        Identifier* identifier, QualifiedType type, 
         TypeStorageSpecifier storage, TypeFunctionSpecifier function,
         bool implicit)
 {
-    Declaration* decl = xmalloc(sizeof(Declaration));
+    Declaration* decl = ast_allocator_alloc(allocator, size);
     decl->base = (DeclarationBase)
     {
         .declaration_type = decl_type,
@@ -40,27 +97,19 @@ static Declaration* declaration_create_base(DeclarationType decl_type,
     return decl;
 }
 
-Declaration* declaration_create_variable(Location location,
-        Identifier* identifier, QualifiedType type, 
-        TypeStorageSpecifier storage, Initializer* initializer)
-{
-    assert(storage != TYPE_STORAGE_SPECIFIER_TYPEDEF);
+Declaration* declaration_create_variable(AstAllocator* allocator,
+        Location location, Identifier* identifier, QualifiedType type, 
+        TypeStorageSpecifier storage, Initializer* initializer);
 
-    Declaration* decl = declaration_create_base(DECLARATION_VARIABLE, location,
-            identifier, type, storage, TYPE_FUNCTION_SPECIFIER_NONE, false);
-    decl->variable.initializer = initializer;
-
-    return decl;
-}
-
-Declaration* declaration_create_label(Identifier* identifier, Location location,
-        bool implicit)
+Declaration* declaration_create_label(AstAllocator* allocator, 
+        Identifier* identifier, Location location, bool implicit)
 {
     // Note the label is a special case where we do not really have a type
-    Declaration* decl = declaration_create_base(DECLARATION_LABEL, location,
-            identifier, (QualifiedType) {0}, TYPE_STORAGE_SPECIFIER_NONE,
+    Declaration* decl = declaration_create_base(allocator, 
+            sizeof(DeclarationLabel), DECLARATION_LABEL, location, identifier,
+            (QualifiedType) {0}, TYPE_STORAGE_SPECIFIER_NONE,
             TYPE_FUNCTION_SPECIFIER_NONE, implicit);
     decl->label.used = implicit; // if implicit then used...
 
-    return decl;    
+    return decl;
 }

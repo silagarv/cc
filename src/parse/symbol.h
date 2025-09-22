@@ -17,28 +17,17 @@ typedef enum SymbolNamespace {
     SYMBOL_NAMESPACE_MEMBERS // members of struct / unions
 } SymbolNamespace;
 
-// A symbol is simply a wrapper for a declaration...
-typedef struct Symbol {
-    Declaration* decl;
-} Symbol;
-
-// An array of Symbol pointers since we don't want the symbol pointer itself
-// to change once created. This is quite a simple structure and only contains
-// the parent of this symbol table, the list of symbols within the table, and
-// the symbol namespace of this table.
 typedef struct SymbolTable {
-    // The namespace all of these symbols reside in
     SymbolNamespace ns;
-    
-    // The actual symbols within this symbol table.
     HashMap symbols;
 } SymbolTable;
 
-Symbol symbol_create(Declaration* declaration);
-
-SymbolTable* symbol_table_create(SymbolNamespace ns, SymbolTable* parent);
+SymbolTable symbol_table_create(SymbolNamespace ns);
 void symbol_table_delete(SymbolTable* table);
 
-Symbol* symbol_table_lookup(SymbolTable* table, Identifier* identifier);
+Declaration* symbol_table_lookup(SymbolTable* table, Identifier* identifier);
+bool symbol_table_contains(SymbolTable* table, Identifier* identifier);
+
+void symbol_table_insert(SymbolTable* table, Declaration* symbol);
 
 #endif /* SYMBOL_H */

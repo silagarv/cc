@@ -1,7 +1,18 @@
 CC = clang-19
-CFLAGS = -Wall -Wextra -Wpedantic -std=c99 -g3 -O0
-CFLAGS += -Wshadow -Wno-unused-parameter -Wno-unused-function \
-	-Wno-unused-variable -Wno-switch -Wvla -ferror-limit=0
+CFLAGS = -Wall \
+	-Wextra \
+	-Wpedantic \
+	-std=c99 \
+	-g3 \
+	-O0
+CFLAGS += -Wshadow \
+	-Wno-unused-parameter \
+	-Wno-unused-variable \
+	-Wno-unused-function \
+	-Wno-switch \
+	-Wvla \
+	-ferror-limit=0
+
 # CFLAGS += -fanalyzer
 # CFLAGS += -flto
 
@@ -50,8 +61,10 @@ PARSE = src/parse/ast_allocator.c \
 	src/parse/expression.c \
 	src/parse/statement.c \
 	src/parse/declaration.c \
+	src/parse/symbol.c \
 	src/parse/ast.c \
-	src/parse/parser.c
+	src/parse/parser.c \
+	src/parse/typecheck.c
 
 SRC = $(UTIL) $(FILES) $(LEX) $(PARSE) $(DRIVER) 
 
