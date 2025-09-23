@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "util/str.h"
+#include "parse/ast_allocator.h"
 #include "files/location.h"
 #include "lex/identifier_table.h"
 
@@ -91,17 +91,14 @@ typedef struct TypeBase {
     // What kind of type this is
     TypeKind type;
 
-    // Where was this declared (if not builtin)
-    Location declaration;
+    // Is this type considered complete (very important)...
+    bool is_complete;
 
     // What is the size of this type?
     size_t type_size;
 
     // What is the alignment for this type?
     size_t type_alignment;
-
-    // Is this type considered complete (very important)...
-    bool is_complete;
 } TypeBase;
 
 // Both imaginairy and complex types have an underlying type which is either
@@ -188,11 +185,26 @@ union Type {
     TypeTypedef type_typedef;
 };
 
-// TODO: how can we implement a type tree so that we are able to quickly and 
-// easily compare types???????
-typedef struct TypeTree {
-    void* data;
-} TypeTree;
+// TODO: should I instead implement some kind of way where types can be compared
+// via pointer equality instead of having to possible walk a large type tree
+typedef struct TypeBuiltins {
+    Type* type_void;
+    Type* type_bool;
+    Type* type_char;
+    Type* type_signed_char;
+    Type* type_unsigned_char;
+    Type* type_signed_short;
+    Type* type_unsigned_short;
+    Type* type_signed_int;
+    Type* type_unsigned_int;
+    Type* type_signed_long;
+    Type* type_unsigned_long;
+    Type* type_signed_long_long;
+    Type* type_unsigned_long_long;
+    Type* type_float;
+    Type* type_double;
+    Type* type_long_double;
+} TypeBuiltins;
 
 // Some functions to check for specific type qualifiers
 bool type_qualifier_is_const(TypeQualifiers qualifiers);
@@ -200,6 +212,8 @@ bool type_qualifier_is_restrict(TypeQualifiers qualifiers);
 bool type_qualifier_is_volatile(TypeQualifiers qualifiers);
 bool type_qualifier_already_has(TypeQualifiers qualifiers, TypeQualifiers has);
 bool type_specifier_has(TypeSpecifier current, TypeSpecifier new);
+
+TypeBuiltins type_builtins_initialise(AstAllocator* allocator);
 
 // Functions to compare types and test if they are equal...
 bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2);

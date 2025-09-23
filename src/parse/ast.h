@@ -4,7 +4,10 @@
 #include <stddef.h>
 
 #include "parse/ast_allocator.h"
-
+#include "parse/type.h"
+#include "parse/expression.h"
+#include "parse/declaration.h"
+#include "parse/initializer.h"
 #include "parse/statement.h"
 
 // this struct contains all of the current context information e.g. current
@@ -16,6 +19,13 @@ typedef struct AstContext {
     Statement* current_breakable; // for giving switch, for, do while, and while breaks'
     Statement* current_switch; // the current switch statement.
 } AstContext;
+
+// This represents the abstract syntax tree for a translation unit.
+typedef struct Ast {
+    AstAllocator ast_allocator;
+    TypeBuiltins base_types;
+    DeclarationVector top_level_decls;
+} Ast;
 
 // Functions to push the current ast context and save it into the stack in a
 // non-allocated variable (just a struct to pointers)
@@ -34,10 +44,7 @@ Statement* ast_context_current_iterable(const AstContext* context);
 Statement* ast_context_current_breakable(const AstContext* context);
 Statement* ast_context_current_switch(const AstContext* context);
 
-// This represents the abstract syntax tree for a translation unit.
-typedef struct Ast {
-    AstAllocator ast_allocator;
-    DeclarationVector top_level_decls;
-} Ast;
+Ast ast_create(void);
+void ast_delete(Ast* ast);
 
 #endif /* AST_H */

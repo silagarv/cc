@@ -328,9 +328,7 @@ static bool is_statement_start(Parser* parser, const Token* tok);
 // enumeration and character constants
 static Expression* parse_integer_constant(Parser* parser);
 static Expression* parse_floating_constant(Parser* parser);
-static Expression* parse_enumeration_constant(Parser* parser);
 static Expression* parse_character_constant(Parser* parser);
-static Expression* parse_constant(Parser* parser);
 
 static Expression* parse_primary_expression(Parser* parser);
 static Expression* parse_postfix_expression(Parser* parser);
@@ -412,6 +410,7 @@ static bool has_declaration_specifier(Parser* parser, const Token* tok);
 static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser);
 
 static TypeQualifiers parse_type_qualifier_list(Parser* parser);
+static TypeQualifiers parse_type_qualifier_list_opt(Parser* parser);
 
 static Declaration* parse_specifier_qualifier_list(Parser* parser);
 static Declaration* parse_struct_declarator(Parser* parser);
@@ -1959,17 +1958,14 @@ static void parse_declarator(Parser* parser, Declarator* declarator)
     // If we get a pointer before our declarator do this first.
     if (is_match(parser, TOKEN_STAR))
     {
-        Location star_location = match(parser, TOKEN_STAR);
+        Location star_location = consume(parser);
 
-        // TODO: I want to make this better maybe have a function to do this...
-        TypeQualifiers qualifiers = TYPE_QUALIFIER_NONE;
-        if (has_match(parser, type_qualifier, type_qualifier_count))
-        {
-            qualifiers = parse_type_qualifier_list(parser);
-        }
+        TypeQualifiers qualifiers = parse_type_qualifier_list_opt(parser);
 
-        // Hold off on pushing the pointer declarator, we want bind it to the
-        // identifier correctly...
+        // Hold off on pushing the pointer declarator. So that the correct
+        // precedence of the declarators can be achieved. Instead we will just
+        // recurse so that we can parse other declarators first.
+        
         parse_declarator(parser, declarator);
 
         declarator_push_pointer(declarator, qualifiers);
@@ -1986,24 +1982,6 @@ static Declaration* parse_init_declarator(Parser* parser,
     Declarator declarator = declarator_create();
     
     parse_declarator(parser, &declarator);
-
-    for (size_t i = 0; i < declarator_piece_vector_size(&declarator.pieces); i++)
-    {
-        DeclaratorPiece piece = declarator_piece_vector_get(&declarator.pieces, i);
-
-        if (piece.base.type == DECLARATOR_PIECE_ARRAY)
-        {
-            printf("array\n");
-        }
-        else if (piece.base.type == DECLARATOR_PIECE_POINTER)
-        {
-            printf("pointer\n");
-        }
-        else
-        {
-            printf("function");
-        }
-    }
 
     Initializer* initializer = NULL;
     Location equal_location = LOCATION_INVALID;
@@ -2234,19 +2212,20 @@ static void parse_direct_declarator(Parser* parser, Declarator* declarator)
         return;
     }
 
-    while (true)
+    while (is_match(parser, TOKEN_LPAREN) || is_match(parser, TOKEN_LBRACKET))
     {
         if (is_match(parser, TOKEN_LPAREN))
         {
             parse_function_declarator(parser, declarator);
+
+            continue;
         }
-        else if (is_match(parser, TOKEN_LBRACKET))
+        
+        if (is_match(parser, TOKEN_LBRACKET))
         {
             parse_array_declarator(parser, declarator);
-        }
-        else
-        {
-            break;
+
+            continue;
         }
     }
 }
@@ -2312,6 +2291,7 @@ static void parse_abstract_declarator(Parser* parser, Declarator* declarator,
 }
 
 // TODO: should I eliminate the recursion here?
+// TODO: should I even keep this function around???
 static void parse_pointer(Parser* parser, Declarator* declarator)
 {
     Location star_location = match(parser, TOKEN_STAR);
@@ -2339,10 +2319,23 @@ static TypeQualifiers parse_type_qualifier_list(Parser* parser)
     {
         TypeQualifiers new_qualifier = parse_type_qualifier(parser);
         qualifers |= new_qualifier;
-    } 
+
+        // TODO: should we maybe warn if we get it again? TODO: this would
+        // require us keeping track of the location of the different qualifiers
+    }
     while (has_match(parser, type_qualifier, type_qualifier_count)); 
 
     return qualifers;
+}
+
+static TypeQualifiers parse_type_qualifier_list_opt(Parser* parser)
+{
+    if (!has_match(parser, type_qualifier, type_qualifier_count))
+    {
+        return TYPE_QUALIFIER_NONE;
+    }
+
+    return parse_type_qualifier_list(parser);
 }
 
 static Declaration* parse_specifier_qualifier_list(Parser* parser)
@@ -2668,6 +2661,23 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser)
     Type* type = NULL;
 
     // TODO: should this be converted into a switch to be faster?
+    while (true)
+    {
+        switch (current_token_type(parser))
+        {
+            case TOKEN_INT:
+            {
+                Location int_loc = consume(parser);
+                
+                
+
+                break;
+            }
+
+
+        }
+    }
+
     while (has_declaration_specifier(parser, current_token(parser)))
     {
         const Token* token = current_token(parser);
@@ -2797,7 +2807,7 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser)
     }
     else if (!type && (type_spec == TYPE_SPECIFIER_NONE))
     {
-        diag_error("not type specifiers; not assuming int just yet");
+        // diag_error("not type specifiers; not assuming int just yet");
     }
     // TODO: add check here for if we have specifiers AND a type...
 
@@ -2891,9 +2901,7 @@ static void parse_translation_unit_internal(Parser* parser)
 
 void parse_translation_unit(TokenStream* stream, LineMap* map)
 {
-    Parser parser = {.stream = stream, .map = map};
-    parser.ast.ast_allocator = ast_allocator_create();
-    parser.ast.top_level_decls = declaration_vector_create(1);
+    Parser parser = {.stream = stream, .map = map, .ast = ast_create()};
 
     parse_translation_unit_internal(&parser);
 
