@@ -2388,8 +2388,12 @@ static Declaration* parse_struct_declarator(Parser* parser)
         return NULL;
     }
 
-    // TODO: not sure.
-    parse_declarator(parser, NULL);
+    // TODO: not sure yet. But this is needed to avoid a segfault...
+    Declarator declarator = declarator_create();
+
+    parse_declarator(parser, &declarator);
+
+    declarator_delete(&declarator);
 
     // If we maybe have a bitfield after
     if (is_match(parser, TOKEN_COMMA))
@@ -2649,167 +2653,294 @@ static bool has_declaration_specifier(Parser* parser, const Token* tok)
             || is_typename_start(parser, tok);
 }
 
+static void storage_specifier_add(Parser* parser, TypeStorageSpecifier* current,
+        TypeStorageSpecifier to_add)
+{
+    if (*current != TYPE_STORAGE_SPECIFIER_NONE)
+    {
+        parse_error(parser, "got additional storage specifier");
+        return;
+    }
+
+    *current = to_add;
+}
+
+static void qualifier_add(Parser* parser, TypeQualifiers* current,
+        TypeQualifiers to_add)
+{
+    if (*current & to_add)
+    {
+        parse_error(parser, "got duplicate qualifier");
+        return;
+    }
+
+    *current |= to_add;
+}
+
+static void function_specifier_add(Parser* parser,
+        TypeFunctionSpecifier* current, TypeFunctionSpecifier to_add)
+{
+    if (*current & to_add)
+    {
+        parse_error(parser, "got duplicate function specifier");
+        return;
+    }
+
+    *current |= to_add;
+}
+
+static void complex_specifier_add(Parser* parser, TypeComplexSpecifier* current,
+        TypeComplexSpecifier to_add)
+{
+    if (*current != TYPE_COMPLEX_SPECIFIER_NONE)
+    {
+        parse_error(parser, "got duplicate complex specifier");
+        return;
+    }
+
+    *current = to_add;
+}
+
+static void width_specifier_add(Parser* parser, TypeSpecifierWidth* current,
+        TypeSpecifierWidth to_add)
+{
+    if (*current == TYPE_SPECIFIER_WIDTH_NONE)
+    {
+        *current = to_add;
+    }
+    else if (*current == TYPE_SPECIFIER_WIDTH_LONG && 
+            to_add == TYPE_SPECIFIER_WIDTH_LONG_LONG)
+    {
+        *current = to_add;
+    }
+    else
+    {
+        parse_error(parser, "cannot add type specifier");
+    }
+}
+
+static void sign_specifier_add(Parser* parser, TypeSpecifierSign* current,
+        TypeSpecifierSign to_add)
+{
+    if (*current != TYPE_SPECIFIER_SIGN_NONE)
+    {
+        parse_error(parser, "got duplicate sign specifier");
+        return;
+    }
+
+    *current = to_add;
+}
+
+static void type_specifier_add(Parser* parser, TypeSpecifierType* current,
+        TypeSpecifierType to_add)
+{
+    if (*current != TYPE_SPECIFIER_TYPE_NONE)
+    {
+        parse_error(parser, "cannot combine with previous type specifier");
+        return;
+    }
+
+    *current = to_add;
+}
+
 static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser)
 {
     // Variables to help us build the declaration specifiers
     TypeStorageSpecifier storage_spec = TYPE_STORAGE_SPECIFIER_NONE;
     TypeQualifiers qualifiers = TYPE_QUALIFIER_NONE;
     TypeFunctionSpecifier function_spec = TYPE_FUNCTION_SPECIFIER_NONE;
-    TypeSpecifier type_spec = TYPE_SPECIFIER_NONE;
+    TypeSpecifierType type_spec_type = TYPE_SPECIFIER_TYPE_NONE;
+    TypeSpecifierWidth type_spec_width = TYPE_SPECIFIER_WIDTH_NONE;
+    TypeSpecifierSign type_spec_sign = TYPE_SPECIFIER_SIGN_NONE;
+    TypeComplexSpecifier type_complex_spec = TYPE_COMPLEX_SPECIFIER_NONE;
 
     // This is the final type we will use
     Type* type = NULL;
 
-    // TODO: should this be converted into a switch to be faster?
+    // TODO: we now need to re-add how to determine the final type kind...
     while (true)
     {
         switch (current_token_type(parser))
         {
-            case TOKEN_INT:
-            {
-                Location int_loc = consume(parser);
-                
-                
-
+            // Storage specifiers
+            case TOKEN_TYPEDEF:
+                storage_specifier_add(parser, &storage_spec, 
+                        TYPE_STORAGE_SPECIFIER_TYPEDEF);
+                consume(parser);
                 break;
-            }
 
+            case TOKEN_EXTERN:
+                storage_specifier_add(parser, &storage_spec, 
+                        TYPE_STORAGE_SPECIFIER_EXTERN);
+                consume(parser);
+                break;
 
-        }
-    }
+            case TOKEN_STATIC:
+                storage_specifier_add(parser, &storage_spec, 
+                        TYPE_STORAGE_SPECIFIER_STATIC);
+                consume(parser);
+                break;
 
-    while (has_declaration_specifier(parser, current_token(parser)))
-    {
-        const Token* token = current_token(parser);
+            case TOKEN_AUTO:
+                storage_specifier_add(parser, &storage_spec, 
+                        TYPE_STORAGE_SPECIFIER_AUTO);
+                consume(parser);
+                break;
 
-        if (has_match(parser, storage_class, storage_class_count))
-        {
-            TypeStorageSpecifier new_spec = parse_storage_class_specifier(parser);
+            case TOKEN_REGISTER:
+                storage_specifier_add(parser, &storage_spec, 
+                        TYPE_STORAGE_SPECIFIER_REGISTER);
+                consume(parser);
+                break;
 
-            if (storage_spec != TYPE_STORAGE_SPECIFIER_NONE)
-            {
-                diag_error("already have a storage specifier in declaration");
+            // Qualifiers
+            case TOKEN_CONST:
+                qualifier_add(parser, &qualifiers, TYPE_QUALIFIER_CONST);
+                consume(parser);
+                break;
 
-                continue;
-            }
+            case TOKEN_VOLATILE:
+                qualifier_add(parser, &qualifiers, TYPE_QUALIFIER_VOLATILE);
+                consume(parser);
+                break;
+
+            case TOKEN_RESTRICT:
+                qualifier_add(parser, &qualifiers, TYPE_QUALIFIER_RESTRICT);
+                consume(parser);
+                break;
+                
+            // Function specifier
+            case TOKEN_INLINE:
+                function_specifier_add(parser, &function_spec,
+                        TYPE_FUNCTION_SPECIFIER_INLINE);
+                consume(parser);
+                break;
+
+            // Width specifiers
+            case TOKEN_SHORT:
+                width_specifier_add(parser, &type_spec_width,
+                        TYPE_SPECIFIER_WIDTH_SHORT);
+                consume(parser);
+                break;
+
+            case TOKEN_LONG:
+                if (type_spec_width == TYPE_SPECIFIER_WIDTH_LONG)
+                {
+                    width_specifier_add(parser, &type_spec_width,
+                        TYPE_SPECIFIER_WIDTH_LONG_LONG);
+                }
+                else
+                {
+                    width_specifier_add(parser, &type_spec_width,
+                        TYPE_SPECIFIER_WIDTH_LONG);
+                }
+                consume(parser);
+                break;
+
+            // Sign specifiers
+            case TOKEN_SIGNED:
+                sign_specifier_add(parser, &type_spec_sign,
+                        TYPE_SPECIFIER_SIGN_SIGNED);
+                consume(parser);
+                break;
+
+            case TOKEN_UNSIGNED:
+                sign_specifier_add(parser, &type_spec_sign,
+                        TYPE_SPECIFIER_SIGN_UNSIGNED);
+                consume(parser);
+                break;
+
+            // Complex specifiers here
+            case TOKEN__COMPLEX:
+                complex_specifier_add(parser, &type_complex_spec, 
+                        TYPE_COMPLEX_SPECIFIER_COMPLEX);
+                consume(parser);
+                break;
+
+            case TOKEN__IMAGINARY:
+                complex_specifier_add(parser, &type_complex_spec, 
+                        TYPE_COMPLEX_SPECIFIER_IMAGINAIRY);
+                consume(parser);
+                break;
+
+            // normal specifiers are below
+            case TOKEN_VOID:
+                type_specifier_add(parser, &type_spec_type, 
+                        TYPE_SPECIFIER_TYPE_VOID);
+                consume(parser);
+                break;
+
+            case TOKEN_CHAR:
+                type_specifier_add(parser, &type_spec_type, 
+                        TYPE_SPECIFIER_TYPE_CHAR);
+                consume(parser);
+                break;
+
+            case TOKEN_INT:
+                type_specifier_add(parser, &type_spec_type, 
+                        TYPE_SPECIFIER_TYPE_INT);
+                consume(parser);
+                break;
+
+            case TOKEN_FLOAT:
+                type_specifier_add(parser, &type_spec_type, 
+                        TYPE_SPECIFIER_TYPE_FLOAT);
+                consume(parser);
+                break;
             
-            storage_spec = new_spec;
+            case TOKEN_DOUBLE:
+                type_specifier_add(parser, &type_spec_type, 
+                        TYPE_SPECIFIER_TYPE_DOUBLE);
+                consume(parser);
+                break;
 
-            continue;
-        }
-        else if (has_match(parser, type_qualifier, type_qualifier_count))
-        {
-            TypeQualifiers new_qualifier = parse_type_qualifier(parser);
+            case TOKEN__BOOL:
+                type_specifier_add(parser, &type_spec_type, 
+                        TYPE_SPECIFIER_TYPE_BOOL);
+                consume(parser);
+                break;
 
-            if (type_qualifier_already_has(qualifiers, new_qualifier))
-            {
-                diag_warning("already have qualifier got a double up");
-            }
-
-            qualifiers |= new_qualifier;
-
-            continue;
-        }
-        else if (has_match(parser, function_specificer, function_specificer_count))
-        {
-            TypeFunctionSpecifier new_spec =  parse_function_specificer(parser);
-
-            if (function_spec != TYPE_FUNCTION_SPECIFIER_NONE)
-            {
-                diag_warning("already have 'inline' specifier");
-
-                continue;
-            }
-
-            function_spec = TYPE_FUNCTION_SPECIFIER_INLINE;
-            
-            continue;
-        }
-        else if (is_typename_start(parser, token))
-        {
-            // If we have a enum, struct, or union we will want to parse those
-            // sepereately. Otherwise we will want to get the 
-            if (has_match(parser, (TokenType[]) {TOKEN_UNION, TOKEN_STRUCT}, 2))
-            {
-                // Parse a compound type here
+            case TOKEN_STRUCT:
+                type_specifier_add(parser, &type_spec_type, 
+                        TYPE_SPECIFIER_TYPE_STRUCT);
                 parse_struct_or_union_specifier(parser);
-            }
-            else if (is_match(parser, TOKEN_ENUM))
-            {
+                break;
+
+            case TOKEN_UNION:
+                type_specifier_add(parser, &type_spec_type, 
+                        TYPE_SPECIFIER_TYPE_UNION);
+                parse_struct_or_union_specifier(parser);
+                break;
+                    
+            // TODO: we may want to change / modify these later
+            case TOKEN_ENUM:
+                type_specifier_add(parser, &type_spec_type, 
+                        TYPE_SPECIFIER_TYPE_ENUM);
                 parse_enum_specificer(parser);
-            }
-            else if (is_match(parser, TOKEN_IDENTIFIER))
-            {
-                // TODO: here we will eventually want some system to look ahead
-                // here and check maybe if were done or not if we don't get
-                // a typedef name
+                break;
+            
+            // TODO: for now just fall through but later we will check for 
+            // TODO: typenames and will have to possible consume or maybe even
+            // TODO: say we're done here.
 
-                // TODO: also adding a check here for if we already have 
-                // specifiers or not...
+            // Special case of identifier, could be a specifier or could be
+            // nothing.
+            case TOKEN_IDENTIFIER:
+                /* FALLTHROUGH */
+                
+                // Basically, if we're type specifier none and this is a typedef
+                // the use that type. Otherwise, if we aren't none then we are
+                // done looking for specifiers (in theory...)
 
-                panic("currently unreachable");
-            }
-            else
-            {
-                TypeSpecifier new_spec = parse_type_specifier(parser);
-
-                // Here we we have a type specifier and it isn't a long specifier
-                if (type_specifier_has(type_spec, new_spec)
-                        && (new_spec != TYPE_SPECIFIER_LONG))
-                {
-                    diag_error("already recieved type specifier");
-
-                    continue;
-                }
-                else if (new_spec == TYPE_SPECIFIER_LONG)
-                {
-                    // Check for 2 cases:
-                    // 1. we don't have it so just add it
-                    // 2. We already have the specifier long to upgrade it to
-                    //    long long
-                    // 3. we have long long already so make an error
-                    if (!(type_spec & TYPE_SPECIFIER_LONG))
-                    {
-                        type_spec |= new_spec;
-                    }
-                    else if (type_spec & TYPE_SPECIFIER_LONG 
-                            && !(type_spec & TYPE_SPECIFIER_LONG_LONG))
-                    {
-                        type_spec |= TYPE_SPECIFIER_LONG_LONG;
-                    }
-                    else
-                    {
-                        assert(type_specifier_has(type_spec, TYPE_SPECIFIER_LONG_LONG));
-
-                        diag_error("long long long is was too long!");
-                    }
-
-                    continue;
-                }
-
-                // Otherwise just add the specifier and continue
-                type_spec |= new_spec;
-
-                continue;
-            }
-        }
-        else
-        {
-            panic("unreachable");
+            default:
+                goto done_specifiers;
         }
     }
 
-    // TODO: here if we have no type yet but have type specifiers we will need
-    // to deal with that and determine the type
-    if (!type && (type_spec != TYPE_SPECIFIER_NONE))
-    {
-        type = type_from_declaration_specifiers(parser, type_spec);
-    }
-    else if (!type && (type_spec == TYPE_SPECIFIER_NONE))
-    {
-        // diag_error("not type specifiers; not assuming int just yet");
-    }
-    // TODO: add check here for if we have specifiers AND a type...
+    // TODO: we have found all of the specifiers, we now need to go and maybe
+    // determine the exact type of what we have found
+
+done_specifiers:;
 
     // Here we finally build and return our declaration specifiers
     DeclarationSpecifiers specifiers = 

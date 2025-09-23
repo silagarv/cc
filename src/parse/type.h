@@ -54,9 +54,44 @@ typedef enum TypeStorageSpecifier {
 } TypeStorageSpecifier;
 
 typedef enum TypeFunctionSpecifier {
-    TYPE_FUNCTION_SPECIFIER_NONE,
-    TYPE_FUNCTION_SPECIFIER_INLINE
+    TYPE_FUNCTION_SPECIFIER_NONE = 0,
+    TYPE_FUNCTION_SPECIFIER_INLINE = 1 << 0
 } TypeFunctionSpecifier;
+
+typedef enum TypeSpecifierType {
+    TYPE_SPECIFIER_TYPE_NONE,
+    TYPE_SPECIFIER_TYPE_VOID,
+    TYPE_SPECIFIER_TYPE_CHAR,
+    TYPE_SPECIFIER_TYPE_INT,
+    TYPE_SPECIFIER_TYPE_FLOAT,
+    TYPE_SPECIFIER_TYPE_DOUBLE,
+    TYPE_SPECIFIER_TYPE_BOOL,
+    TYPE_SPECIFIER_TYPE_COMPLEX,
+    TYPE_SPECIFIER_TYPE_IMAGINAIRY,
+    TYPE_SPECIFIER_TYPE_ENUM,
+    TYPE_SPECIFIER_TYPE_STRUCT,
+    TYPE_SPECIFIER_TYPE_UNION,
+    TYPE_SPECIFIER_TYPE_TYPENAME
+} TypeSpecifierType;
+
+typedef enum TypeSpecifierWidth {
+    TYPE_SPECIFIER_WIDTH_NONE = 0,
+    TYPE_SPECIFIER_WIDTH_SHORT = 1 << 0,
+    TYPE_SPECIFIER_WIDTH_LONG = 1 << 1,
+    TYPE_SPECIFIER_WIDTH_LONG_LONG = 1 << 2
+} TypeSpecifierWidth;
+
+typedef enum TypeSpecifierSign {
+    TYPE_SPECIFIER_SIGN_NONE,
+    TYPE_SPECIFIER_SIGN_SIGNED,
+    TYPE_SPECIFIER_SIGN_UNSIGNED,
+} TypeSpecifierSign;
+
+typedef enum TypeComplexSpecifier {
+    TYPE_COMPLEX_SPECIFIER_NONE,
+    TYPE_COMPLEX_SPECIFIER_COMPLEX,
+    TYPE_COMPLEX_SPECIFIER_IMAGINAIRY
+} TypeComplexSpecifier;
 
 // This is only used while parsing a declaration with an inbuilt type
 typedef enum TypeSpecifier {
