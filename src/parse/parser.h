@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+#include "driver/diagnostic.h"
 #include "files/location.h"
 #include "files/line_map.h"
 
@@ -16,6 +17,8 @@
 // #include "parse/scope.h"
 
 typedef struct Parser {
+    DiagnosticManager* dm;
+
     // The preprocessor that is used to parse this file.
     Preprocessor* pp;
 
@@ -40,6 +43,6 @@ typedef struct Parser {
     // TODO: track brackets???
 } Parser;
 
-void parse_translation_unit(Preprocessor* pp);
+void parse_translation_unit(DiagnosticManager* dm, Preprocessor* pp);
 
 #endif /* PARSER_H */

@@ -5,12 +5,12 @@ CFLAGS = -Wall \
 	-std=c99 \
 	-g3 \
 	-O0
-CFLAGS += -Wshadow \
-	-Wno-unused-parameter \
+CFLAGS += -Wno-unused-parameter \
 	-Wno-unused-variable \
 	-Wno-unused-function \
 	-Wno-unused-but-set-variable \
 	-Wno-switch \
+	-Wshadow \
 	-Wvla \
 	-ferror-limit=0
 

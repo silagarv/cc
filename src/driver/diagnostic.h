@@ -4,10 +4,13 @@
 #include <stdarg.h>
 #include <stdbool.h>
 
+#include "files/location.h"
+#include "files/source_manager.h"
+
 // An enum containing all of the diagnostics that we have.
 typedef enum DiagnosticType {
     DIAGNOSTIC_ERROR_START,
-    
+
     DIAGNOSTIC_ERROR_END,
 
     DIAGNOSTIC_WARNING_START,
@@ -15,26 +18,37 @@ typedef enum DiagnosticType {
     DIAGNOSTIC_WARNING_END
 } DiagnosticType;
 
-bool diagnostic_is_warning(DiagnosticType type);
+typedef struct DiagnosticColours {
+    char* fatal;
+    char* error;
+    char* warning;
+    char* note;
+    char* help;
+    char* white;
+    char* highlight;
+    char* reset_highlight;
+    char* reset_all;
+} DiagnosticColours;
 
 typedef struct DiagnosticManager {
-    void* data;
+    DiagnosticColours colours;
+    SourceManager* sm;
 } DiagnosticManager;
 
-// TODO: should we implement a diagnostic queue maybe? so that we can have 
-// a multithreaded compiler with different translation units being compiled
-// simultaneously and then have diagnostics in flight from all of them? and then
-// also get LTO for free since we have all of the translation units loaded into
-// memory already
+DiagnosticManager diagnostic_manager_init(SourceManager* sm, bool colours);
 
-void diag_init(void);
+void diagnostic_error(DiagnosticManager* dm, const char* fmt, ...);
+void diagnostic_warning(DiagnosticManager* dm, const char* fmt, ...);
+void diagnostic_note(DiagnosticManager* dm, const char* fmt, ...);
+void diagnostic_help(DiagnosticManager* dm, const char* fmt, ...);
 
-void diag_fatal_error(const char* fmt, ...);
-void diag_error(const char* fmt, ...);
-void diag_warning(const char* fmt, ...);
-void diag_note(const char* fmt, ...);
-void diag_help(const char* fmt, ...);
-
-void diag_verror(const char* fmt, va_list args);
+void diagnostic_error_at(DiagnosticManager* dm, Location loc,
+        const char* fmt, ...);
+void diagnostic_warning_at(DiagnosticManager* dm, Location loc,
+        const char* fmt, ...);
+void diagnostic_note_at(DiagnosticManager* dm, Location loc,
+        const char* fmt, ...);
+void diagnostic_help_at(DiagnosticManager* dm, Location loc,
+        const char* fmt, ...);
 
 #endif /* DIAGNOSTIC_H */

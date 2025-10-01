@@ -36,19 +36,16 @@
 
 int compiler_main(int argc, char** argv)
 {
-    diag_init();
-
-    // TODO: I think this might be better to do as a translation unit type thing
-
     SourceManager sm = source_manager();
+    DiagnosticManager dm = diagnostic_manager_init(&sm, true);
+
     Filepath path = FILEPATH_STATIC_INIT("test.c");
     SourceFile* source = source_manager_create_filepath(&sm, path);
     assert(source);
-    
-    IdentifierTable identifier_table = identifier_table_create();
-    
+
+    IdentifierTable identifier_table = identifier_table_create();    
     Preprocessor pp = preprocessor_create(&sm, &identifier_table, source);
-    parse_translation_unit(&pp);
+    parse_translation_unit(&dm, &pp);
 
     identifier_table_delete(&identifier_table);
     source_manager_delete(&sm);
