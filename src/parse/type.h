@@ -88,31 +88,10 @@ typedef enum TypeSpecifierSign {
 } TypeSpecifierSign;
 
 typedef enum TypeComplexSpecifier {
-    TYPE_COMPLEX_SPECIFIER_NONE,
-    TYPE_COMPLEX_SPECIFIER_COMPLEX,
-    TYPE_COMPLEX_SPECIFIER_IMAGINAIRY
+    TYPE_SPECIFIER_COMPLEX_NONE,
+    TYPE_SPECIFIER_COMPLEX_COMPLEX,
+    TYPE_SPECIFIER_COMPLEX_IMAGINAIRY
 } TypeComplexSpecifier;
-
-// This is only used while parsing a declaration with an inbuilt type
-typedef enum TypeSpecifier {
-    // All of the base specifiers are listed here
-    TYPE_SPECIFIER_NONE = 0,
-    TYPE_SPECIFIER_VOID = 1 << 0,
-    TYPE_SPECIFIER_CHAR = 1 << 1,
-    TYPE_SPECIFIER_SHORT = 1 << 2,
-    TYPE_SPECIFIER_INT = 1 << 3,
-    TYPE_SPECIFIER_LONG = 1 << 4,
-    TYPE_SPECIFIER_FLOAT = 1 << 5,
-    TYPE_SPECIFIER_DOUBLE = 1 << 6,
-    TYPE_SPECIFIER_SIGNED = 1 << 7,
-    TYPE_SPECIFIER_UNSIGNED = 1 << 8,
-    TYPE_SPECIFIER_BOOL = 1 << 9,
-    TYPE_SPECIFIER_COMPLEX = 1 << 10,
-    TYPE_SPECIFIER_IMAGINAIRY = 1 << 11,
-
-    // These are ones which we need to actually be able to use the information
-    TYPE_SPECIFIER_LONG_LONG = 1 << 12,
-} TypeSpecifier;
 
 typedef union Type Type;
 
@@ -246,9 +225,18 @@ bool type_qualifier_is_const(TypeQualifiers qualifiers);
 bool type_qualifier_is_restrict(TypeQualifiers qualifiers);
 bool type_qualifier_is_volatile(TypeQualifiers qualifiers);
 bool type_qualifier_already_has(TypeQualifiers qualifiers, TypeQualifiers has);
-bool type_specifier_has(TypeSpecifier current, TypeSpecifier new);
 
-TypeBuiltins type_builtins_initialise(AstAllocator* allocator);
+TypeBuiltins type_builtins_initialise(AstAllocator* allocator);// Functions to compare types and test if they are equal...
+bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2);
+bool qualifier_type_is_equal_canonical(const QualifiedType* t1, 
+        const QualifiedType* t2);
+
+Type* type_create_pointer(AstAllocator* allocator, Type* base_type,
+        TypeQualifiers qualifiers);
+
+
+
+
 
 // Functions to compare types and test if they are equal...
 bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2);

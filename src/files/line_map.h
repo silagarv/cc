@@ -17,10 +17,6 @@ typedef struct ResolvedLocation {
     uint32_t col;
 } ResolvedLocation;
 
-// A line map representing the lines within a map
-// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-// lol wtf was I on when I wrote that haha
-
 // A structure that we will use to go from a files overall location and it's
 // ranges back to a location triplet. This is eagerly built at the moment but
 // eventually I want to be able to lazily build this structure. Also eventually

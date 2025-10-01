@@ -43,7 +43,10 @@ void hash_map_delete(HashMap* map)
     {
         if (map->entries[i].key != NULL && map->entries[i].key != GRAVE_YARD_KEY)
         {
-            map->free_func(map->entries[i].key, map->entries[i].data);
+            if (map->free_func != NULL)
+            {
+                map->free_func(map->entries[i].key, map->entries[i].data);
+            }
         }
     }
 

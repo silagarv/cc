@@ -9,6 +9,7 @@ CFLAGS += -Wshadow \
 	-Wno-unused-parameter \
 	-Wno-unused-variable \
 	-Wno-unused-function \
+	-Wno-unused-but-set-variable \
 	-Wno-switch \
 	-Wvla \
 	-ferror-limit=0
@@ -57,6 +58,7 @@ LEX = src/lex/identifier_table.c \
 
 PARSE = src/parse/ast_allocator.c \
 	src/parse/type.c \
+	src/parse/symbol.c \
 	src/parse/literal_parser.c \
 	src/parse/expression.c \
 	src/parse/statement.c \

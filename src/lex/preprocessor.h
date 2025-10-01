@@ -1,6 +1,9 @@
 #ifndef PREPROCESSOR_H
 #define PREPROCESSOR_H
 
+#include "files/filepath.h"
+#include "lex/identifier_table.h"
+#include "lex/token.h"
 #include "util/buffer.h"
 #include "util/hash_map.h"
 
@@ -16,17 +19,19 @@ typedef struct Preprocessor {
     // e.g. printing diagnostics during parsing for instance. 
     SourceManager* sm;
 
+    IdentifierTable* identifiers;
+
     // The header finder used to search for headers within the source
     HeaderFinder hf;
 
     // The lexer -> but todo, create a lexer stack or something
     Lexer lexer;
-
-    // A macro map where the key's in the map are the macro names and the data
-    // is the macro struct themselves
-    HashMap macros;
 } Preprocessor;
 
-Preprocessor preprocessor_create(SourceManager* sm);
+Preprocessor preprocessor_create(SourceManager* sm, 
+        IdentifierTable* identifiers,SourceFile* starting_file);
+
+bool preprocessor_advance_token(Preprocessor* pp, Token* token);
+TokenType preprocessor_peek_next_token_type(Preprocessor* pp);
 
 #endif /* PREPROCESSOR_H */

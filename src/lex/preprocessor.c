@@ -9,6 +9,7 @@
 #include "files/file_manager.h"
 #include "files/filepath.h"
 #include "files/source_manager.h"
+#include "lex/lexer.h"
 #include "util/buffer.h"
 #include "util/str.h"
 
@@ -42,10 +43,26 @@ static void preprocessor_add_defines(Preprocessor* pp)
 }
 
 
-Preprocessor preprocessor_create(SourceManager* sm)
+Preprocessor preprocessor_create(SourceManager* sm, 
+        IdentifierTable* identifiers,SourceFile* starting_file)
 {
-    Preprocessor pp = {0};
+    Preprocessor pp = (Preprocessor)
+    {
+        .sm = sm,
+        .identifiers = identifiers,
+        .lexer = lexer_create(identifiers, starting_file)
+    };
 
     return pp;
+}
+
+bool preprocessor_advance_token(Preprocessor* pp, Token* token)
+{
+    return lexer_get_next(&pp->lexer, token);
+}
+
+TokenType preprocessor_peek_next_token_type(Preprocessor* pp)
+{
+    return lexer_get_next_next_type(&pp->lexer);
 }
 

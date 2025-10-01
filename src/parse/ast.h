@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 #include "parse/ast_allocator.h"
+#include "parse/symbol.h"
 #include "parse/type.h"
 #include "parse/expression.h"
 #include "parse/declaration.h"
@@ -23,7 +24,9 @@ typedef struct AstContext {
 // This represents the abstract syntax tree for a translation unit.
 typedef struct Ast {
     AstAllocator ast_allocator;
+
     TypeBuiltins base_types;
+
     DeclarationVector top_level_decls;
 } Ast;
 

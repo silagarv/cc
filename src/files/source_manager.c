@@ -61,6 +61,11 @@ Filepath* source_file_get_name(const SourceFile* sf)
     return &sf->file_buffer->path;
 }
 
+Location source_file_get_start_location(const SourceFile* sf)
+{
+    return sf->start_location;
+}
+
 bool source_file_is_include(const SourceFile* sf)
 {
     panic("TODO: figure out how we will represent includes");
@@ -103,7 +108,8 @@ static SourceFile* source_manager_assign_file(SourceManager* sm, FileBuffer* fb,
         Location include)
 {
     // Create the source file
-    SourceFile* sf = source_file_create(sm->next_id, sm->next_source_location, include, fb);
+    SourceFile* sf = source_file_create(sm->next_id, sm->next_source_location,
+            include, fb);
 
     // Increment our file id's and determine the sm's new highest location
     sm->next_id++;

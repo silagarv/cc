@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "lex/preprocessor.h"
 #include "parse/symbol.h"
 #include "util/buffer.h"
 #include "util/panic.h"
@@ -53,39 +54,29 @@ static const size_t type_specifier_count = countof(type_specifier);
 static const size_t type_qualifier_count = countof(type_qualifier);
 static const size_t function_specificer_count = countof(function_specificer);
 
-static bool is_valid_stream_position(TokenStream* stream)
-{
-    return stream->current_token < stream->count;
-}
-
 // Return the type of the current token in a token stream
 static TokenType token_stream_current_type(TokenStream* stream)
 {
-    assert(is_valid_stream_position(stream));
     return stream->tokens[stream->current_token].type;
 }
 
 static TokenType token_stream_next_type(TokenStream* stream)
 {
-    assert(is_valid_stream_position(stream));
     return stream->tokens[stream->current_token + 1].type;
 }
 
 static Token* token_stream_current(TokenStream* stream)
 {
-    assert(is_valid_stream_position(stream));
     return &stream->tokens[stream->current_token];
 }
 
 static Token* token_stream_next(TokenStream* stream)
 {
-    assert(is_valid_stream_position(stream));
     return &stream->tokens[stream->current_token + 1];
 }
 
 static void token_stream_advance(TokenStream* stream)
 {
-    assert(is_valid_stream_position(stream));
     assert(token_stream_current_type(stream) != TOKEN_EOF);
     stream->current_token++;
 }
@@ -125,10 +116,6 @@ static bool is_next_match(Parser* parser, TokenType type);
 
 static void parse_error(Parser* parser, const char* fmt, ...)
 {
-    Token* tok = current_token(parser);   
-
-    ResolvedLocation loc = line_map_resolve_location(parser->map, tok->loc);
-    fprintf(stderr, "%u:%u\n", loc.line, loc.col);
     va_list args;
     va_start(args, fmt);
     diag_verror(fmt, args);
@@ -179,48 +166,39 @@ static bool is_in_recover_set(Parser* parser, TokenType type)
 // current production.
 static Token* current_token(Parser* parser)
 {
-    return token_stream_current(parser->stream);
-}
-
-static Token* next_token(Parser* parser)
-{
-    return token_stream_next(parser->stream);
+    return &parser->token;
 }
 
 static TokenType current_token_type(Parser* parser)
 {
-    return token_stream_current_type(parser->stream);
+    return parser->token.type;
 }
 
 static TokenType next_token_type(Parser* parser)
 {
-    return token_stream_next_type(parser->stream);
+    return preprocessor_peek_next_token_type(parser->pp);
 }
 
 static Location current_token_start_location(Parser* parser)
-{
-    Token* current = token_stream_current(parser->stream);
-    
-    return current->loc;
+{    
+    return parser->token.loc;
 }
 
 static Location current_token_end_location(Parser* parser)
 {
-    Token* current = token_stream_current(parser->stream);
-    
-    return current->end;
+    return parser->token.end;
 }
 
 // Methods for mathing a token type or unconditionally consuming a token.
 static Location match(Parser* parser, TokenType type)
 {
-    if (token_stream_current_type(parser->stream) == type)
+    if (current_token_type(parser) == type)
     {
-        const Token* current = current_token(parser);
+        Location location = current_token_start_location(parser);
 
-        token_stream_advance(parser->stream);
+        consume(parser);
 
-        return current->loc;
+        return location;
     }
 
     parse_error(parser, "expected '%s' but got '%s'", 
@@ -228,28 +206,40 @@ static Location match(Parser* parser, TokenType type)
             token_type_get_name(current_token_type(parser))
         );
 
-    // panic("failed to match token... TODO: finish this method");
-
     return LOCATION_INVALID;
 }
 
 static Location consume(Parser* parser)
 {
-    const Token* current = current_token(parser);
+    Location location = current_token_start_location(parser);
 
-    token_stream_advance(parser->stream);
+    token_free_data(&parser->token);
 
-    return current->loc;
+    preprocessor_advance_token(parser->pp, &parser->token);
+
+    return location;
+}
+
+static bool try_match(Parser* parser, TokenType type)
+{
+    if (current_token_type(parser) == type)
+    {
+        consume(parser);
+
+        return true;
+    }
+
+    return false;
 }
 
 static bool is_match(Parser* parser, TokenType type)
 {
-    return token_stream_current_type(parser->stream) == type;
+    return current_token_type(parser) == type;
 }
 
 static bool has_match(Parser* parser, const TokenType* types, size_t count)
 {
-    const TokenType current = token_stream_current_type(parser->stream);
+    const TokenType current = current_token_type(parser);
 
     for (size_t i = 0; i < count; i++)
     {
@@ -264,7 +254,7 @@ static bool has_match(Parser* parser, const TokenType* types, size_t count)
 
 static bool is_next_match(Parser* parser, TokenType type)
 {
-    return token_stream_next_type(parser->stream) == type;
+    return preprocessor_peek_next_token_type(parser->pp) == type;
 }
 
 static void eat_until(Parser* parser, TokenType type)
@@ -401,10 +391,7 @@ static void parse_paramater_type_list(Parser* parser, Declarator* declarator);
 static Declaration* parse_type_specificer(Parser* parser);
 
 // Functions for us getting our declaration specifiers
-static TypeFunctionSpecifier parse_function_specificer(Parser* parser);
 static TypeQualifiers parse_type_qualifier(Parser* parser);
-static TypeStorageSpecifier parse_storage_class_specifier(Parser* parser);
-static TypeSpecifier parse_type_specifier(Parser* parser);
 
 static bool has_declaration_specifier(Parser* parser, const Token* tok);
 static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser);
@@ -412,7 +399,6 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser);
 static TypeQualifiers parse_type_qualifier_list(Parser* parser);
 static TypeQualifiers parse_type_qualifier_list_opt(Parser* parser);
 
-static Declaration* parse_specifier_qualifier_list(Parser* parser);
 static Declaration* parse_struct_declarator(Parser* parser);
 static Declaration* parse_struct_declarator_list(Parser* parser);
 static Declaration* parse_struct_declaration(Parser* parser);
@@ -451,14 +437,14 @@ static bool is_typename_start(Parser* parser, const Token* tok)
         case TOKEN_STRUCT:
         case TOKEN_UNION:
         case TOKEN_ENUM:
-        // case TOKEN_EXTERN:
-        // case TOKEN_STATIC:
-        // case TOKEN_TYPEDEF:
-        // case TOKEN_INLINE:
-        // case TOKEN_CONST:
-        // case TOKEN_VOLATILE:
-        // case TOKEN_REGISTER:
-        // case TOKEN_AUTO:
+        case TOKEN_EXTERN:
+        case TOKEN_STATIC:
+        case TOKEN_TYPEDEF:
+        case TOKEN_INLINE:
+        case TOKEN_CONST:
+        case TOKEN_VOLATILE:
+        case TOKEN_REGISTER:
+        case TOKEN_AUTO:
             return true;
 
         case TOKEN_IDENTIFIER:
@@ -559,20 +545,21 @@ static Expression* parse_primary_expression(Parser* parser)
         case TOKEN_IDENTIFIER:
         {
             Identifier* identifier = current->data.identifier;
+            Location location = consume(parser);
 
             // TODO: here we will have to check if the identifier is a typename
-
-            Location location = consume(parser);
+            // TODO: will also have to check if the identifier is in the symbol
+            // TODO: table at all
 
             return NULL;
         }
 
         case TOKEN_NUMBER:
         {
-            consume(parser);
-
             IntegerValue value = {0};
             const bool success = parse_integer_literal(&value, current);
+
+            consume(parser);
 
             Expression* expr;
             if (!success)
@@ -599,20 +586,19 @@ static Expression* parse_primary_expression(Parser* parser)
                 string_count++;
             }
 
-            StringLiteral string = {0};
-            const bool success = parse_string_literal(&string, current, string_count);
+            // StringLiteral string = {0};
+            // const bool success = parse_string_literal(&string, current, string_count);
 
-            Expression* expr;
-            if (!success)
-            {
-                diag_error("string concatenation and conversion failed");
+            // if (!success)
+            // {
+            diag_error("string concatenation and conversion failed");
 
                 // expr = create_error_expression(current);
-            }
-            else
-            {
+            // }
+            // else
+            // {
                 // expr = create_string_expression(current, &string);
-            }
+            // }
 
             return NULL;
         }
@@ -620,10 +606,10 @@ static Expression* parse_primary_expression(Parser* parser)
         case TOKEN_CHARACTER:
         case TOKEN_WIDE_CHARACTER:
         {
-            consume(parser);
-
             CharValue value = {0};
             const bool success = parse_char_literal(&value, current);
+
+            consume(parser);
 
             Expression* expr;
             if (!success)
@@ -824,21 +810,24 @@ static Expression* parse_unary_expression(Parser* parser)
         case TOKEN_SIZEOF:
         {
             Location sizeof_loc = consume(parser);
-            if (is_match(parser, TOKEN_LPAREN) && 
-                    is_typename_start(parser, next_token(parser)))
+            if (is_match(parser, TOKEN_LPAREN))
             {
                 Location lparen_loc = consume(parser);
-                Declaration* decl = parse_type_name(parser);
+
+                if (is_typename_start(parser, current_token(parser)))
+                {
+                    Declaration* decl = parse_type_name(parser);
+                }
+                else
+                {
+                    Expression* expr = parse_expression(parser);
+                }
+
                 Location rparen_loc = match(parser, TOKEN_RPAREN);
-                // TODO: create sizeof expression
-                return NULL;
             }
             else
             {
-                Expression* expr = parse_unary_expression(parser);
-                
-                // TODO: create sizeof expression
-                return NULL;
+                parse_unary_expression(parser);
             }
         }
 
@@ -849,11 +838,24 @@ static Expression* parse_unary_expression(Parser* parser)
 
 static Expression* parse_cast_expression(Parser* parser)
 {
+    // TODO: current hack. If we eat the lparen and don't have a typename next
+    // TODO: then we parse a normal expression. This means it will never get
+    // TODO: called in parse primary expression. This is not great so we will
+    // TODO: wanting to be fixing this soon!
+
     /* ( type-name ) cast-expression */
-    while (is_match(parser, TOKEN_LPAREN) && 
-            is_typename_start(parser, next_token(parser)))
+    while (is_match(parser, TOKEN_LPAREN))
     {
         consume(parser);
+
+        if (!is_typename_start(parser, current_token(parser)))
+        {
+            parse_expression(parser);
+
+            match(parser, TOKEN_RPAREN);
+
+            return NULL;
+        }
 
         Declaration* type = parse_type_name(parser);
         
@@ -1319,12 +1321,23 @@ static Statement* parse_label_statement(Parser* parser)
 {
     // Get the identifier from the current token.
     Identifier* identifier = current_token(parser)->data.identifier;
-
     Location label_loc = consume(parser);
     Location colon_loc = consume(parser);
 
+    // TODO: this is not correct as if the label is used implicitly this won't
+    // TODO: work as intended!!
+    if (symbol_table_lookup(&parser->symbols, identifier))
+    {
+        parse_error(parser, "already got label '%s'", identifier->string.ptr);
+
+        return NULL;
+    }
+
+    // Create and insert the label into the symbol table so that we can referece
+    // it for later.
     Declaration* label_decl = declaration_create_label(
             &parser->ast.ast_allocator, identifier, label_loc, false);
+    symbol_table_insert(&parser->symbols, label_decl);
 
     // TODO: need to fix parsing here since labels should have a statement after
     // them. So will need some kind of statement start function and then have
@@ -1337,8 +1350,7 @@ static Statement* parse_label_statement(Parser* parser)
 
 static Statement* parse_case_statement(Parser* parser)
 {
-    Statement* current_switch = 
-            ast_context_current_switch(&parser->current_context);
+    Statement* current_switch = ast_context_current_switch(&parser->current_context);
     if (!current_switch)
     {
         parse_error(parser, "case statement not in switch statement");
@@ -1686,7 +1698,7 @@ static Statement* parse_empty_statement(Parser* parser)
 
 static Statement* parse_error_statement(Parser* parser)
 {
-    eat_until_and(parser, TOKEN_SEMI);eat_until_and(parser, TOKEN_SEMI);
+    eat_until_and(parser, TOKEN_SEMI);
 
     return statement_create_error(&parser->ast.ast_allocator);
 }
@@ -1735,7 +1747,7 @@ static Statement* parse_statement(Parser* parser)
             return parse_empty_statement(parser);
 
         case TOKEN_IDENTIFIER:
-            if (next_token_type(parser) == TOKEN_COLON)
+            if (is_next_match(parser, TOKEN_COLON))
             {
                 return parse_label_statement(parser);
             }
@@ -1745,7 +1757,7 @@ static Statement* parse_statement(Parser* parser)
         default: 
         {
             const Token* current = current_token(parser);
-            if (has_declaration_specifier(parser, current))
+            if (is_typename_start(parser, current))
             {
                 return parse_declaration_statement(parser);
             }
@@ -1781,76 +1793,6 @@ static Declaration* parse_typedef_name(Parser* parser)
     // TODO: fix this later
     match(parser, TOKEN_IDENTIFIER);
  
-    return NULL;
-}
-
-static Declaration* parse_enumerator(Parser* parser)
-{
-    if (!is_match(parser, TOKEN_IDENTIFIER))
-    {
-        // TODO: we're in trouble!
-    }
-
-    Token* current = current_token(parser);
-    
-    match(parser, TOKEN_IDENTIFIER);
-    
-    Location equal_location = LOCATION_INVALID;
-    Expression* expression = NULL;
-    if (is_match(parser, TOKEN_EQUAL))
-    {
-        equal_location = consume(parser);
-        expression = parse_constant_expression(parser);
-    }
-    (void) equal_location;
-    (void) expression;
-
-    // TODO: we need to create the enumerator and try to fold the expression.
-
-    return NULL;
-}
-
-static Declaration* parse_enumerator_list(Parser* parser)
-{
-    parse_enumerator(parser);
-
-    while (is_match(parser, TOKEN_COMMA) && !is_next_match(parser, TOKEN_RCURLY))
-    {
-        consume(parser);
-
-        parse_enumerator(parser);
-    }
- 
-    return NULL;
-}
-
-static Declaration* parse_enum_specificer(Parser* parser)
-{
-    Location enum_location = consume(parser);
-
-    Identifier* identifier = NULL;
-    Location identifier_loc = LOCATION_INVALID;
-    if (is_match(parser, TOKEN_IDENTIFIER))
-    {
-        identifier = current_token(parser)->data.identifier;
-        identifier_loc = consume(parser);
-    }
-    (void) identifier;
-    (void) identifier_loc;
-
-    // Here we should match a left curly
-    Location opening_curly = match(parser, TOKEN_LCURLY);
-
-    parse_enumerator_list(parser);
-
-    // Match the trailing comma as required.
-    if (is_match(parser, TOKEN_COMMA))
-    {
-        consume(parser);
-    }
-
-    Location closing_curly = match(parser, TOKEN_RCURLY);
-
     return NULL;
 }
 
@@ -1917,7 +1859,7 @@ static Initializer* parse_initializer(Parser* parser)
         parse_assignment_expression(parser);
     }
 
- 
+
     return NULL;
 }
 
@@ -1984,23 +1926,33 @@ static Declaration* parse_init_declarator(Parser* parser,
     parse_declarator(parser, &declarator);
 
     Initializer* initializer = NULL;
-    Location equal_location = LOCATION_INVALID;
     if (is_match(parser, TOKEN_EQUAL))
     {
-        equal_location = consume(parser);
+        consume(parser);
+        
         initializer = parse_initializer(parser);
     }
 
-    // TODO: we have the specifiers and we have the pieces we can create the
-    // TODO: declaration. and free the declarator. Note that we should also
-    // TODO: return the declaration once we have created it.
+    // TODO: we will need to properly determine the type from the declarator...
+    Declaration* declaration = declaration_create_variable(
+            &parser->ast.ast_allocator, declarator.identifier_location,
+            declarator.identifier, (QualifiedType) {0}, 
+            specifiers->storage_spec, initializer);
+
+    if (symbol_table_contains(&parser->symbols, declarator.identifier))
+    {
+        parse_error(parser, "got duplicate definition of %s", 
+                declarator.identifier->string.ptr);
+        
+    }
+    else
+    {
+        symbol_table_insert(&parser->symbols, declaration);
+    }
 
     declarator_delete(&declarator);
-
-    (void) initializer;
-    (void) equal_location;
     
-    return NULL;
+    return declaration;
 }
 
 static Declaration* parse_init_declarator_list(Parser* parser,
@@ -2067,10 +2019,9 @@ static Declaration* parse_paramater_declaration(Parser* parser)
     // stage then the first token
 
     Declarator declarator = declarator_create();
-
     parse_declarator(parser, &declarator);
 
-    // TODO: create the declaration below...
+    // TODO: turn into declaration...
 
     declarator_delete(&declarator);
 
@@ -2296,18 +2247,23 @@ static void parse_pointer(Parser* parser, Declarator* declarator)
 {
     Location star_location = match(parser, TOKEN_STAR);
 
-    TypeQualifiers qualifiers = TYPE_QUALIFIER_NONE;
-    while (has_match(parser, type_qualifier, type_qualifier_count))
-    {
-        TypeQualifiers new_qualifier = parse_type_qualifier(parser);
-        qualifiers |= new_qualifier;
-    }
+    TypeQualifiers qualifiers = parse_type_qualifier_list_opt(parser);
+
     declarator_push_pointer(declarator, qualifiers);
     
     if (is_match(parser, TOKEN_STAR))
     {
         parse_pointer(parser, declarator);
     }
+}
+
+// TODO: I REALLY WANT TO REMOVE THIS BUT DONT KNOW HOW. SHOULD I MAKE LIKE AN
+// INCREMENTAL PARSING FOR DECLARATION SPECIFIERS????
+static TypeQualifiers parse_type_qualifier(Parser* parser)
+{
+    consume(parser);
+
+    return TYPE_QUALIFIER_NONE;
 }
 
 static TypeQualifiers parse_type_qualifier_list(Parser* parser)
@@ -2336,41 +2292,6 @@ static TypeQualifiers parse_type_qualifier_list_opt(Parser* parser)
     }
 
     return parse_type_qualifier_list(parser);
-}
-
-static Declaration* parse_specifier_qualifier_list(Parser* parser)
-{
-    if (has_match(parser, type_qualifier, type_qualifier_count))
-    {
-        parse_type_qualifier(parser);
-    }
-    else if (has_match(parser, type_specifier, type_specifier_count))
-    {
-        parse_type_specifier(parser);
-    }
-    else
-    {
-        match(parser, TOKEN_EOF);
-
-        panic("expected specifier or qualifier");
-    }
-
-    // TODO: this could be a bit cleaner????
-
-    while (has_match(parser, type_qualifier, type_qualifier_count)
-            || has_match(parser, type_specifier, type_specifier_count))
-    {
-        if (has_match(parser, type_qualifier, type_qualifier_count))
-        {
-            parse_type_qualifier(parser);
-        }
-        else if (has_match(parser, type_specifier, type_specifier_count))
-        {
-            parse_type_specifier(parser);
-        }
-    }
-
-    return NULL;
 }
 
 static Declaration* parse_struct_declarator(Parser* parser)
@@ -2422,7 +2343,8 @@ static Declaration* parse_struct_declarator_list(Parser* parser)
 
 static Declaration* parse_struct_declaration(Parser* parser)
 {
-    parse_specifier_qualifier_list(parser);
+    DeclarationSpecifiers specifier = parse_declaration_specifiers(parser);
+
     parse_struct_declarator_list(parser);
 
     match(parser, TOKEN_SEMI);
@@ -2467,190 +2389,122 @@ static Declaration* parse_struct_or_union_specifier(Parser* parser)
     return NULL;
 }
 
-static TypeFunctionSpecifier parse_function_specificer(Parser* parser)
+static Type* type_from_declaration_specifiers(Parser* parser)
 {
-    assert(has_match(parser, function_specificer, function_specificer_count));
-
-    consume(parser);
-    
-    return TYPE_FUNCTION_SPECIFIER_INLINE;
-}
-
-static TypeQualifiers parse_type_qualifier(Parser* parser)
-{
-    TokenType type = current_token_type(parser);
-    consume(parser);
-
-    switch (type) 
-    {
-        case TOKEN_CONST: return TYPE_QUALIFIER_CONST;
-        case TOKEN_RESTRICT: return TYPE_QUALIFIER_RESTRICT;
-        case TOKEN_VOLATILE: return TYPE_QUALIFIER_VOLATILE;
-
-        default: panic("unreachable"); return TYPE_QUALIFIER_NONE;
-    }
-}
-
-static TypeStorageSpecifier parse_storage_class_specifier(Parser* parser)
-{
-    TokenType type = current_token_type(parser);
-    consume(parser);
-
-    switch (type)
-    {
-        case TOKEN_TYPEDEF: return TYPE_STORAGE_SPECIFIER_TYPEDEF;
-        case TOKEN_EXTERN: return TYPE_STORAGE_SPECIFIER_EXTERN;
-        case TOKEN_STATIC: return TYPE_STORAGE_SPECIFIER_STATIC;
-        case TOKEN_AUTO: return TYPE_STORAGE_SPECIFIER_AUTO;
-        case TOKEN_REGISTER: return TYPE_STORAGE_SPECIFIER_REGISTER;
-        default: panic("unreachable"); return TYPE_STORAGE_SPECIFIER_NONE;
-    }
-}
-
-static bool is_builtin_type_token(Parser* parser)
-{
-    static const TokenType builtin_type_tokens[] = {TOKEN_VOID, TOKEN_CHAR,
-            TOKEN_SHORT, TOKEN_INT, TOKEN_LONG, TOKEN_FLOAT, TOKEN_DOUBLE,
-            TOKEN_SIGNED, TOKEN_UNSIGNED, TOKEN__BOOL, TOKEN__COMPLEX,
-            TOKEN__IMAGINARY};
-    const size_t builtin_type_tokens_size = countof(builtin_type_tokens);
-
-    return has_match(parser, builtin_type_tokens, builtin_type_tokens_size);
-}
-
-static Type* parse_builtin_type(Parser* parser)
-{
-    while (is_builtin_type_token(parser))
-    {
-        consume(parser);
-    }
-
-    return NULL;
-}
-
-// TODO: I think this here should return a type
-static TypeSpecifier parse_type_specifier(Parser* parser)
-{
-    assert(is_typename_start(parser, current_token(parser)));
-
-    TokenType type = current_token_type(parser);
-    consume(parser);
-
-    switch (type)
-    {
-        case TOKEN_VOID: return TYPE_SPECIFIER_VOID;
-        case TOKEN_CHAR: return TYPE_SPECIFIER_CHAR;
-        case TOKEN_SHORT: return TYPE_SPECIFIER_SHORT;
-        case TOKEN_INT: return TYPE_SPECIFIER_INT;
-        case TOKEN_LONG: return TYPE_SPECIFIER_LONG;
-        case TOKEN_FLOAT: return TYPE_SPECIFIER_FLOAT;
-        case TOKEN_DOUBLE: return TYPE_SPECIFIER_DOUBLE;
-        case TOKEN_SIGNED: return TYPE_SPECIFIER_SIGNED;
-        case TOKEN_UNSIGNED: return TYPE_SPECIFIER_UNSIGNED;
-        case TOKEN__BOOL: return TYPE_SPECIFIER_BOOL;
-        case TOKEN__COMPLEX: return TYPE_SPECIFIER_COMPLEX;
-        case TOKEN__IMAGINARY: return TYPE_SPECIFIER_IMAGINAIRY;
-
-        default: panic("unreachable"); return TYPE_SPECIFIER_NONE;
-    }
-}
-
-static TypeKind determine_type_kind(TypeSpecifier specifiers)
-{
-    // TODO: what do we do about _Complex and _Imaginairy
-    switch (specifiers) 
-    {
-        case TYPE_SPECIFIER_VOID:
-            return TYPE_VOID;
-
-        case TYPE_SPECIFIER_CHAR:
-            return TYPE_CHAR;
-
-        case TYPE_SPECIFIER_CHAR | TYPE_SPECIFIER_SIGNED:
-            return TYPE_S_CHAR;
-
-        case TYPE_SPECIFIER_CHAR | TYPE_SPECIFIER_UNSIGNED:
-            return TYPE_U_CHAR;
-
-        case TYPE_SPECIFIER_SHORT:
-        case TYPE_SPECIFIER_SHORT | TYPE_SPECIFIER_SIGNED:
-        case TYPE_SPECIFIER_SHORT | TYPE_SPECIFIER_INT:
-        case TYPE_SPECIFIER_SHORT | TYPE_SPECIFIER_SIGNED | TYPE_SPECIFIER_INT:
-            return TYPE_S_SHORT;
-
-        case TYPE_SPECIFIER_SHORT | TYPE_SPECIFIER_UNSIGNED:
-        case TYPE_SPECIFIER_SHORT | TYPE_SPECIFIER_UNSIGNED | TYPE_SPECIFIER_INT:
-            return TYPE_U_SHORT;
-
-        case TYPE_SPECIFIER_INT:
-        case TYPE_SPECIFIER_SIGNED:
-        case TYPE_SPECIFIER_INT | TYPE_SPECIFIER_SIGNED:
-            return TYPE_S_INT;
-        
-        case TYPE_SPECIFIER_UNSIGNED:
-        case TYPE_SPECIFIER_INT | TYPE_SPECIFIER_UNSIGNED:
-            return TYPE_U_INT;
-
-        case TYPE_SPECIFIER_LONG:
-        case TYPE_SPECIFIER_LONG | TYPE_SPECIFIER_SIGNED:
-        case TYPE_SPECIFIER_LONG | TYPE_SPECIFIER_INT:
-        case TYPE_SPECIFIER_LONG | TYPE_SPECIFIER_SIGNED | TYPE_SPECIFIER_INT:
-            return TYPE_S_LONG;
-
-        case TYPE_SPECIFIER_LONG | TYPE_SPECIFIER_UNSIGNED:
-        case TYPE_SPECIFIER_LONG | TYPE_SPECIFIER_UNSIGNED | TYPE_SPECIFIER_INT:
-            return TYPE_U_LONG;
-
-        // NOTE: for both ll and ull types we need the long part at the end
-        // since we will need to give accurate error messages too!
-        case TYPE_SPECIFIER_LONG_LONG | TYPE_SPECIFIER_LONG:
-        case TYPE_SPECIFIER_LONG_LONG | TYPE_SPECIFIER_SIGNED | TYPE_SPECIFIER_LONG:
-        case TYPE_SPECIFIER_LONG_LONG | TYPE_SPECIFIER_INT | TYPE_SPECIFIER_LONG:
-        case TYPE_SPECIFIER_LONG_LONG | TYPE_SPECIFIER_INT | TYPE_SPECIFIER_SIGNED
-                | TYPE_SPECIFIER_LONG:
-            return TYPE_S_LONG_LONG;
-
-        case TYPE_SPECIFIER_LONG_LONG | TYPE_SPECIFIER_UNSIGNED | TYPE_SPECIFIER_LONG:
-        case TYPE_SPECIFIER_LONG_LONG | TYPE_SPECIFIER_UNSIGNED
-                | TYPE_SPECIFIER_INT | TYPE_SPECIFIER_LONG:
-            return TYPE_U_LONG_LONG;
-
-        case TYPE_SPECIFIER_FLOAT:
-            return TYPE_FLOAT;
-
-        case TYPE_SPECIFIER_DOUBLE:
-            return TYPE_DOUBLE;
-
-        case TYPE_SPECIFIER_LONG | TYPE_SPECIFIER_DOUBLE:
-            return TYPE_LONG_DOUBLE;
-
-        case TYPE_SPECIFIER_BOOL:
-            return TYPE_BOOL;
-
-        default:
-            // TODO: basically unlimited ammount of error messages we could
-            // create but lets not do that just yet
-            diag_error("invalid type specifier combination");
-
-            return TYPE_ERROR;
-    }
-}
-
-static Type* type_from_declaration_specifiers(Parser* parser, TypeSpecifier specifiers)
-{
-    TypeKind kind = determine_type_kind(specifiers);
-    
     // TODO: we will need to get the type fro mthe typekind
+    return NULL;
+}
+
+static Declaration* parse_enumerator_list(Parser* parser)
+{
+    while (true)
+    {
+        // Here parse the enumerator declaration placing it in the symbol table
+        if (!is_match(parser, TOKEN_IDENTIFIER))
+        {
+            parse_error(parser, "expected identifier");
+
+            eat_until(parser, TOKEN_RCURLY);
+
+            break;
+        }
+
+        Identifier* identifier = current_token(parser)->data.identifier;
+        Location identifier_loc = consume(parser);
+
+        Location equal_loc = LOCATION_INVALID;
+        Expression* expression = NULL;
+        if (is_match(parser, TOKEN_EQUAL))
+        {
+            equal_loc = consume(parser);
+            expression = parse_constant_expression(parser);
+        }
+
+        // Here we should make sure to actually build the enumeration and note
+        // that we will also need to keep track of the previous declaration so
+        // that we can correctly assign numbers to it.
+
+        // Now see if we are at the end and finish the definition        
+        if (!is_match(parser, TOKEN_RCURLY) && !is_match(parser, TOKEN_COMMA))
+        {
+            parse_error(parser, "expected ',' after enumerator");
+
+            // TODO: we could have better recovery here... for example eating
+            // until EITHER a right curly or comma would be better.
+            eat_until(parser, TOKEN_RCURLY);
+
+            break;
+        }
+
+        // Here we can consume the comma.
+        if (is_match(parser, TOKEN_COMMA))
+        {
+            consume(parser);
+        }
+
+        // Finally check for a trailing '}'
+        if (is_match(parser, TOKEN_RCURLY))
+        {
+            break;
+        }
+    }
 
     return NULL;
 }
 
-static bool has_declaration_specifier(Parser* parser, const Token* tok)
+// TODO: i think we should change the return type of this here. It probably
+// shouldn't be a full declaration. Maybe just a
+static Declaration* parse_enum_specificer(Parser* parser)
 {
-    return has_match(parser, storage_class, storage_class_count)
-            || has_match(parser, type_qualifier, type_qualifier_count)
-            || has_match(parser, function_specificer, function_specificer_count)
-            || is_typename_start(parser, tok);
+    Location enum_location = consume(parser);
+
+    // We need to have a match for one of these here otherwise we have a problem
+    if (!is_match(parser, TOKEN_IDENTIFIER) && !is_match(parser, TOKEN_LCURLY))
+    {
+        parse_error(parser, "expected identifier or '{'");
+
+        eat_until(parser, TOKEN_SEMI);
+
+        return NULL;
+    }
+
+    Identifier* identifier = NULL;
+    Location identifier_loc = LOCATION_INVALID;
+    if (is_match(parser, TOKEN_IDENTIFIER))
+    {
+        identifier = current_token(parser)->data.identifier;
+        identifier_loc = consume(parser);
+    }
+
+    // If we had an identifier we will need to check it is not currently in the
+    // tag namespace. Also should add the identifier into the tag namespace if 
+    // we get it.
+    if (identifier)
+    {
+        // TODO: check...
+    }
+
+    // TODO: create an enumeration declaration, so that we can add the 
+    // enumerators to the enum as we parse then (if needed)
+
+    // Here we should match a left curly
+    Location opening_curly = match(parser, TOKEN_LCURLY);
+
+    // Check for this common mistake.
+    if (is_match(parser, TOKEN_RCURLY))
+    {
+        parse_error(parser, "cannot have an empty enum");
+
+        consume(parser);
+
+        return NULL;
+    }
+
+    parse_enumerator_list(parser);
+
+    Location closing_curly = match(parser, TOKEN_RCURLY);
+
+    return NULL;
 }
 
 static void storage_specifier_add(Parser* parser, TypeStorageSpecifier* current,
@@ -2692,7 +2546,7 @@ static void function_specifier_add(Parser* parser,
 static void complex_specifier_add(Parser* parser, TypeComplexSpecifier* current,
         TypeComplexSpecifier to_add)
 {
-    if (*current != TYPE_COMPLEX_SPECIFIER_NONE)
+    if (*current != TYPE_SPECIFIER_COMPLEX_NONE)
     {
         parse_error(parser, "got duplicate complex specifier");
         return;
@@ -2752,12 +2606,15 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser)
     TypeSpecifierType type_spec_type = TYPE_SPECIFIER_TYPE_NONE;
     TypeSpecifierWidth type_spec_width = TYPE_SPECIFIER_WIDTH_NONE;
     TypeSpecifierSign type_spec_sign = TYPE_SPECIFIER_SIGN_NONE;
-    TypeComplexSpecifier type_complex_spec = TYPE_COMPLEX_SPECIFIER_NONE;
+    TypeComplexSpecifier type_spec_complex = TYPE_SPECIFIER_COMPLEX_NONE;
 
     // This is the final type we will use
     Type* type = NULL;
 
-    // TODO: we now need to re-add how to determine the final type kind...
+    // TODO: I also want to change it so that the token is consumed when we are
+    // trying to add each thing to the declaration specifiers, but this will
+    // require implementing a better diagnostic mechanism which right now is not
+    // the time to do... :(
     while (true)
     {
         switch (current_token_type(parser))
@@ -2852,14 +2709,14 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser)
 
             // Complex specifiers here
             case TOKEN__COMPLEX:
-                complex_specifier_add(parser, &type_complex_spec, 
-                        TYPE_COMPLEX_SPECIFIER_COMPLEX);
+                complex_specifier_add(parser, &type_spec_complex, 
+                        TYPE_SPECIFIER_COMPLEX_COMPLEX);
                 consume(parser);
                 break;
 
             case TOKEN__IMAGINARY:
-                complex_specifier_add(parser, &type_complex_spec, 
-                        TYPE_COMPLEX_SPECIFIER_IMAGINAIRY);
+                complex_specifier_add(parser, &type_spec_complex, 
+                        TYPE_SPECIFIER_COMPLEX_IMAGINAIRY);
                 consume(parser);
                 break;
 
@@ -2919,31 +2776,35 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser)
                 parse_enum_specificer(parser);
                 break;
             
-            // TODO: for now just fall through but later we will check for 
-            // TODO: typenames and will have to possible consume or maybe even
-            // TODO: say we're done here.
-
-            // Special case of identifier, could be a specifier or could be
-            // nothing.
+            // Special case of identifier since we could have a typedef.
             case TOKEN_IDENTIFIER:
+                // If any of the below are true this identifier is considiered
+                // to be part of the direct declarator, even if it is a typedef
+                // Also if this token is not a typename anyways we are also done
+                if (type_spec_sign != TYPE_SPECIFIER_SIGN_NONE ||
+                        type_spec_width != TYPE_SPECIFIER_WIDTH_NONE ||
+                        type_spec_complex != TYPE_SPECIFIER_COMPLEX_NONE ||
+                        type_spec_type != TYPE_SPECIFIER_TYPE_NONE ||
+                        /*!is_typename(current_token(parser))*/0)
+                {
+                    goto done_specifiers;
+                }
+
+                // break; // TODO: uncomment this later.
+
                 /* FALLTHROUGH */
-                
-                // Basically, if we're type specifier none and this is a typedef
-                // the use that type. Otherwise, if we aren't none then we are
-                // done looking for specifiers (in theory...)
 
             default:
                 goto done_specifiers;
         }
     }
 
-    // TODO: we have found all of the specifiers, we now need to go and maybe
-    // determine the exact type of what we have found
-
 done_specifiers:;
+    // TODO: we now need to re-add how to determine the final type kind...
+
 
     // Here we finally build and return our declaration specifiers
-    DeclarationSpecifiers specifiers = 
+    DeclarationSpecifiers specifiers = (DeclarationSpecifiers)
     {
         .function_spec = function_spec,
         .storage_spec = storage_spec,
@@ -2973,13 +2834,15 @@ static Declaration* parse_declaration(Parser* parser)
 }
 
 static Declaration* parse_type_name(Parser* parser)
-{   
+{
+    const TokenType operators[] = {TOKEN_STAR, TOKEN_LPAREN, TOKEN_LBRACKET};
+    const size_t num_operators = countof(operators);
+
     // TODO: this should be parse specifier qualifier list... but idk...
     DeclarationSpecifiers specifiers = parse_declaration_specifiers(parser);
     Declarator declarator = declarator_create();
 
-    if (has_match(parser, 
-            (TokenType[]) {TOKEN_STAR, TOKEN_LPAREN, TOKEN_LBRACKET}, 3))
+    if (has_match(parser, operators, num_operators))
     {
         parse_abstract_declarator(parser, &declarator, &specifiers);
     }
@@ -2998,16 +2861,20 @@ static Declaration* parse_top_level_declaration_or_definition(Parser* parser)
     if (is_match(parser, TOKEN_SEMI))
     {
         consume(parser);
+
+        return decl;
     }
-    else if (is_match(parser, TOKEN_LCURLY))
+
+    if (is_match(parser, TOKEN_LCURLY) && 
+            declaration_is(decl, DECLARATION_FUNCTION))
     {
         Statement* body = parse_compound_statement(parser);
     }
     else
     {
-        match(parser, TOKEN_EOF);
+        parse_error(parser, "expected ';' after declaration");
 
-        panic("expected ';' or '{'");
+        eat_until_and(parser, TOKEN_SEMI);
     }
 
     return decl;
@@ -3028,13 +2895,17 @@ static void parse_translation_unit_internal(Parser* parser)
 
     declaration_vector_free(&parser->ast.top_level_decls, NULL);
     ast_allocator_delete(&parser->ast.ast_allocator);
+    symbol_table_delete(&parser->symbols);
 }
 
-void parse_translation_unit(TokenStream* stream, LineMap* map)
+void parse_translation_unit(Preprocessor* pp)
 {
-    Parser parser = {.stream = stream, .map = map, .ast = ast_create()};
+    Parser parser;
+    parser.pp = pp;
+    preprocessor_advance_token(pp, &parser.token);
+    memset(parser.recover_set, 0, sizeof(parser.recover_set));
+    parser.ast = ast_create();
+    parser.symbols = symbol_table_create(SYMBOL_NAMESPACE_NONE);
 
     parse_translation_unit_internal(&parser);
-
-    return;
 }

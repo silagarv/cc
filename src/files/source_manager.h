@@ -118,6 +118,8 @@ FileBuffer* source_file_get_buffer(const SourceFile* sf);
 // Get the base filename of a source file
 Filepath* source_file_get_name(const SourceFile* sf);
 
+Location source_file_get_start_location(const SourceFile* sf);
+
 // Get if a source file was included from another location
 bool source_file_is_include(const SourceFile* sf);
 

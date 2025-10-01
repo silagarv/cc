@@ -7,22 +7,21 @@
 #include "files/location.h"
 #include "files/line_map.h"
 
+#include "lex/preprocessor.h"
 #include "lex/token.h"
 
 #include "parse/ast.h"
+#include "parse/symbol.h"
 
 // #include "parse/scope.h"
 
-#define PARSER_TOKENS 2
-
 typedef struct Parser {
-    // Current tokens and where we are in the list
-    TokenStream* stream;
-    LineMap* map;
+    // The preprocessor that is used to parse this file.
+    Preprocessor* pp;
 
     // Will need to add context to it as well for parsing loops conditionals
     // and other things
-    Token tokens[PARSER_TOKENS];
+    Token token;
 
     /* our anchor set for recovering from parsing */
     size_t recover_set[TOKEN_LAST];
@@ -32,14 +31,15 @@ typedef struct Parser {
     // large arena so that we can effeciently free and allocate it.
     Ast ast;
 
-    // TODO: should we also store our scopes in here???
     // Stores the current context of the parser for statements and expressions.
     AstContext current_context;
 
+    // For now we will have a basic implementation with this here...
+    SymbolTable symbols;
 
     // TODO: track brackets???
 } Parser;
 
-void parse_translation_unit(TokenStream* stream, LineMap* map);
+void parse_translation_unit(Preprocessor* pp);
 
 #endif /* PARSER_H */

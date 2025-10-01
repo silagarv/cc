@@ -75,6 +75,11 @@ void declarator_set_identifier(Declarator* declarator, Identifier* identifier,
     declarator->identifier_location = identifier_location;
 }
 
+bool declaration_is(const Declaration* decl, DeclarationType type)
+{
+    return decl->base.declaration_type == type;
+}
+
 // This is a function to create a barebones base declaration.
 static Declaration* declaration_create_base(AstAllocator* allocator, 
         size_t size, DeclarationType decl_type, Location location, 
@@ -99,7 +104,15 @@ static Declaration* declaration_create_base(AstAllocator* allocator,
 
 Declaration* declaration_create_variable(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type, 
-        TypeStorageSpecifier storage, Initializer* initializer);
+        TypeStorageSpecifier storage, Initializer* initializer)
+{
+    Declaration* decl = declaration_create_base(allocator,
+            sizeof(DeclarationVariable), DECLARATION_VARIABLE, location, 
+            identifier, type, storage, TYPE_FUNCTION_SPECIFIER_NONE, false);
+    decl->variable.initializer = initializer;
+
+    return decl;
+}
 
 Declaration* declaration_create_label(AstAllocator* allocator, 
         Identifier* identifier, Location location, bool implicit)

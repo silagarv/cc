@@ -2,6 +2,24 @@
 #define DIAGNOSTIC_H
 
 #include <stdarg.h>
+#include <stdbool.h>
+
+// An enum containing all of the diagnostics that we have.
+typedef enum DiagnosticType {
+    DIAGNOSTIC_ERROR_START,
+    
+    DIAGNOSTIC_ERROR_END,
+
+    DIAGNOSTIC_WARNING_START,
+
+    DIAGNOSTIC_WARNING_END
+} DiagnosticType;
+
+bool diagnostic_is_warning(DiagnosticType type);
+
+typedef struct DiagnosticManager {
+    void* data;
+} DiagnosticManager;
 
 // TODO: should we implement a diagnostic queue maybe? so that we can have 
 // a multithreaded compiler with different translation units being compiled

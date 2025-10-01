@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 #include "parse/ast_allocator.h"
 #include "util/buffer.h"
@@ -27,22 +28,6 @@ bool type_qualifier_is_volatile(TypeQualifiers qualifiers)
 bool type_qualifier_already_has(TypeQualifiers qualifiers, TypeQualifiers has)
 {
     return (qualifiers & has) != 0;
-}
-
-bool type_specifier_has(TypeSpecifier current, TypeSpecifier new)
-{
-    return (current & new) != 0;
-}
-
-bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2)
-{
-    return t1->type == t2->type && t1->qualifiers == t2->qualifiers;
-}
-
-bool qualifier_type_is_equal_canonical(const QualifiedType* t1, 
-        const QualifiedType* t2)
-{
-    return t1->type == t2->type;
 }
 
 static Type* type_create_builtin(AstAllocator* allocator, TypeKind kind,
@@ -88,3 +73,18 @@ TypeBuiltins type_builtins_initialise(AstAllocator* allocator)
 
     return builtins;
 }
+
+Type* type_create_pointer(AstAllocator* allocator, Type* base_type,
+        TypeQualifiers qualifiers);
+
+bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2)
+{
+    return t1->type == t2->type && t1->qualifiers == t2->qualifiers;
+}
+
+bool qualifier_type_is_equal_canonical(const QualifiedType* t1, 
+        const QualifiedType* t2)
+{
+    return t1->type == t2->type;
+}
+

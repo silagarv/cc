@@ -7,6 +7,8 @@
 #include <stdbool.h>
 #include <assert.h>
 
+#include "files/file_manager.h"
+#include "files/source_manager.h"
 #include "util/panic.h"
 #include "util/panic.h"
 #include "util/buffer.h"
@@ -43,6 +45,25 @@ Lexer lexer(IdentifierTable* identifiers, const char* buffer_start,
     lexer.start_of_line = true;
     lexer.lexing_directive = false;
     lexer.can_lex_header = false;
+
+    return lexer;
+}
+
+Lexer lexer_create(IdentifierTable* identifiers, SourceFile* source)
+{
+    const FileBuffer* fb = source_file_get_buffer(source);
+    
+    Lexer lexer = (Lexer)
+    {
+        .identifiers = identifiers,
+        .buffer_start = file_buffer_get_start(fb),
+        .buffer_end = file_buffer_get_end(fb),
+        .current_ptr = (char*) file_buffer_get_start(fb),
+        .start_loc = source_file_get_start_location(source),
+        .start_of_line = true,
+        .lexing_directive = false,
+        .can_lex_header = false
+    };
 
     return lexer;
 }
@@ -1336,12 +1357,17 @@ bool lexer_get_next(Lexer* lexer, Token* token)
     return lex_internal(lexer, token);
 }
 
-void token_get_spelling(const Token* token, Buffer buff)
+TokenType lexer_get_next_next_type(Lexer* lexer)
 {
-    return;
-}
+    char* original_position = get_position(lexer);
 
-void token_stringify(const Token* token, Buffer buffer)
-{
-    return;
+    Token next;
+    lexer_get_next(lexer, &next);
+
+    TokenType type = next.type;
+    token_free_data(&next);
+
+    set_position(lexer, original_position);
+
+    return type;
 }

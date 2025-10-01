@@ -34,64 +34,29 @@
 
 #include "lex/identifier_table.h"
 
-int main(int argc, char** argv)
+int compiler_main(int argc, char** argv)
 {
     diag_init();
 
+    // TODO: I think this might be better to do as a translation unit type thing
+
+    SourceManager sm = source_manager();
     Filepath path = FILEPATH_STATIC_INIT("test.c");
-    FileBuffer* fb = file_buffer_try_get(path);
-    if (!fb)
-    {
-        panic("cannot find file!");
-    }
-
-    SourceFile* file = source_file_create(0, 1, 0, fb);
-
-    LineMap map = line_map_create(fb, 0);
-
-    IdentifierTable idents = identifier_table_create();
-    Lexer l = lexer(&idents, fb->buffer_start, fb->buffer_end, 0);
-
-    TokenList tokens = (TokenList)
-    {
-        .tokens = xmalloc(sizeof(Token)),
-        .used = 0,
-        .allocated = 1
-    };
+    SourceFile* source = source_manager_create_filepath(&sm, path);
+    assert(source);
     
-    while (true)
-    {
-        if (tokens.used == tokens.allocated)
-        {
-            tokens.allocated *= 2;
-            tokens.tokens = xrealloc(tokens.tokens, sizeof(Token) * tokens.allocated);
-        }
-        
-        Token* token =  &tokens.tokens[tokens.used];
+    IdentifierTable identifier_table = identifier_table_create();
+    
+    Preprocessor pp = preprocessor_create(&sm, &identifier_table, source);
+    parse_translation_unit(&pp);
 
-        lexer_get_next(&l, token);
+    identifier_table_delete(&identifier_table);
+    source_manager_delete(&sm);
 
-        tokens.used++;
+    return 0;
+}
 
-        if (token->type == TOKEN_EOF)
-        {
-            break;
-        }
-    }
-
-    TokenStream stream = token_list_to_stream(&tokens);
-    parse_translation_unit(&stream, &map);
-
-    for (size_t i = 0; i < tokens.used; i++)
-    {
-        token_free_data(&tokens.tokens[i]);
-    }
-    free(tokens.tokens);
-            
-    identifier_table_delete(&idents);
-
-    line_map_delete(&map);
-
-    file_buffer_free(file->file_buffer);
-    source_file_free(file);
+int main(int argc, char** argv)
+{
+    return compiler_main(argc, argv);
 }

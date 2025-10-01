@@ -230,10 +230,10 @@ void declarator_piece_push_function(Declarator* declarator, bool is_variadic);
 
 // TODO: redo this completely with our ast allocator
 
+bool declaration_is(const Declaration* decl, DeclarationType type);
+
 // Create a declaration of a variable. This declaration will represent a
 // variable that we can use within other places.
-// TODO: add the initializer into the declaration so that we can represent that
-// in the AST.
 Declaration* declaration_create_variable(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type, 
         TypeStorageSpecifier storage, Initializer* initializer);

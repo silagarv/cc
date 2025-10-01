@@ -9,7 +9,7 @@
 #include "files/line_map.h"
 
 typedef struct SourceFileEntry {
-    SourceFile file; // the file this represents
+    SourceFile* file; // the file this represents
     LineMap map; // Map from location to triplet
 } SourceFileEntry;
 
