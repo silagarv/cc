@@ -63,7 +63,7 @@ static void line_map_calculate(LineMap* map, FileBuffer* file)
         }
 
         // Get the range end
-        const Location range_end = calculate_location(base, start, current);
+        const Location range_end = calculate_location(base, start, current) + 1;
 
         // Add the range to the ranges
         location_range_vector_push(&map->ranges, 
@@ -82,7 +82,7 @@ LineMap line_map_create(FileBuffer* file, Location base_location)
         .range = (LocationRange)
         {
             .start = base_location,
-            .end = base_location + (start - end) + 1
+            .end = base_location + (end - start) + 1
         },
         .ranges = location_range_vector_create(1)
     };

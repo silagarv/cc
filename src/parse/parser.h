@@ -17,6 +17,7 @@
 // #include "parse/scope.h"
 
 typedef struct Parser {
+    // How we will give diagnostics.
     DiagnosticManager* dm;
 
     // The preprocessor that is used to parse this file.
@@ -25,6 +26,7 @@ typedef struct Parser {
     // Will need to add context to it as well for parsing loops conditionals
     // and other things
     Token token;
+    Token peek_token;
 
     /* our anchor set for recovering from parsing */
     size_t recover_set[TOKEN_LAST];

@@ -6,9 +6,12 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <string.h>
 
+#include "driver/diagnostic.h"
 #include "files/file_manager.h"
 #include "files/source_manager.h"
+#include "util/arena.h"
 #include "util/panic.h"
 #include "util/panic.h"
 #include "util/buffer.h"
@@ -27,34 +30,15 @@
 #define NUMBER_START_SIZE (10)
 #define STRING_START_SIZE (10)
 
-Lexer lexer(IdentifierTable* identifiers, const char* buffer_start,
-        const char* buffer_end, Location start_loc)
-{
-    assert(*buffer_end == '\0');
-
-    Lexer lexer;
-    lexer.identifiers = identifiers;
-
-    lexer.buffer_start = buffer_start;
-    lexer.buffer_end = buffer_end;
-
-    lexer.current_ptr = (char*) buffer_start;
-
-    lexer.start_loc = start_loc;
-
-    lexer.start_of_line = true;
-    lexer.lexing_directive = false;
-    lexer.can_lex_header = false;
-
-    return lexer;
-}
-
-Lexer lexer_create(IdentifierTable* identifiers, SourceFile* source)
+Lexer lexer_create(DiagnosticManager* dm, Arena* literal_arena,
+        IdentifierTable* identifiers, SourceFile* source)
 {
     const FileBuffer* fb = source_file_get_buffer(source);
     
     Lexer lexer = (Lexer)
     {
+        .dm = dm,
+        .literal_arena = literal_arena,
         .identifiers = identifiers,
         .buffer_start = file_buffer_get_start(fb),
         .buffer_end = file_buffer_get_end(fb),
@@ -296,6 +280,9 @@ static void skip_line_comment(Lexer* lexer)
         if (current == '\0' && at_eof(lexer))
         {
             // TODO: maybe issue warning about comment ending the thing
+            diagnostic_warning_at(lexer->dm, get_curr_location(lexer),
+                    "no newline at end of file");
+
             break;
         }
 
@@ -324,13 +311,33 @@ static void skip_block_comment(Lexer* lexer)
 
         if (current == '\0' && at_eof(lexer))
         {
-            /* TODO: issue warning about unterminated comment */
+            // TODO: this diagnostic should probably be at the start location
+            // TODO: of the comment not at the end of file
+            diagnostic_error_at(lexer->dm, get_curr_location(lexer),
+                    "unterminated /* comment");
 
             break;
         }
 
         consume_char(lexer);
     } while (true);
+}
+
+static TokenData lexer_create_literal_node(Lexer* lexer, Buffer* buffer)
+{
+    // Mode the buffers data into the memory and delete the buffer
+    LiteralNode* node = arena_allocate_size(lexer->literal_arena,
+            sizeof(LiteralNode));
+    node->value.ptr = arena_allocate_size(lexer->literal_arena,
+            buffer_get_len(buffer) + 1);
+    memcpy(node->value.ptr, buffer_get_ptr(buffer), buffer_get_len(buffer) + 1);
+    node->value.len = buffer_get_len(buffer);
+    
+    buffer_free(buffer);
+
+    TokenData data = { .literal = node };
+
+    return data;
 }
 
 static bool try_lex_ucn(Lexer* lexer, Token* token, Buffer* buffer, utf32* value)
@@ -461,90 +468,9 @@ static bool lex_number(Lexer* lexer, Token* token, char* start)
 
     // Finish the number construction
     buffer_make_cstr(&number);
-    token->data = token_create_literal_node(string_from_buffer(&number));
+    token->data = lexer_create_literal_node(lexer, &number);
 
     return true;
-}
-
-static void classify_pp_identifier(Token* token)
-{
-    assert(token_is_identifier(token));
-
-    // TODO: this function will probably need to be ripped out and redone
-
-    // const String* string = &token->data.identifier->value;
-    // switch (string_get(string, 0))
-    // {
-    //     case 'd':
-    //         if (token_equal_string(token, "define"))
-    //         {
-    //             token->type = TOKEN_PP_DEFINE;
-    //         }
-    //         break;
-
-    //     case 'e':
-    //         if (token_equal_string(token, "elif"))
-    //         {
-    //             token->type= TOKEN_PP_ELIF;
-    //         }
-    //         else if (token_equal_string(token, "else"))
-    //         {
-    //             token->type= TOKEN_PP_ELSE;
-    //         }
-    //         else if (token_equal_string(token, "endif"))
-    //         {
-    //             token->type= TOKEN_PP_ENDIF;
-    //         }
-    //         else if (token_equal_string(token, "error"))
-    //         {
-    //             token->type= TOKEN_PP_ERROR;
-    //         }
-    //         break;
-
-    //     case 'i':
-    //         if (token_equal_string(token, "if"))
-    //         {
-    //             token->type= TOKEN_PP_IF;
-    //         }
-    //         else if (token_equal_string(token, "ifdef"))
-    //         {
-    //             token->type= TOKEN_PP_IFDEF;
-    //         }
-    //         else if (token_equal_string(token, "ifndef"))
-    //         {
-    //             token->type= TOKEN_PP_IFNDEF;
-    //         }
-    //         else if (token_equal_string(token, "include"))
-    //         {
-    //             token->type= TOKEN_PP_INCLUDE;
-    //         }
-    //         break;
-
-    //     case 'l':
-    //         if (token_equal_string(token, "line"))
-    //         {
-    //             token->type= TOKEN_PP_LINE;
-    //         }
-    //         break;
-        
-    //     case 'p':
-    //         if (token_equal_string(token, "pragma"))
-    //         {
-    //             token->type= TOKEN_PP_PRAGMA;
-    //         }
-    //         break;
-
-    //     case 'u':
-    //         if (token_equal_string(token, "undef"))
-    //         {
-    //             token->type= TOKEN_PP_UNDEF;
-    //         }
-    //         break;
-        
-    //     default:
-    //         break;
-    // }
-
 }
 
 // TODO: I would like to make this more modular to better support older / newer
@@ -758,7 +684,7 @@ finish_string:
         }
     }
 
-    token->data = token_create_literal_node(string_from_buffer(&string));
+    token->data = lexer_create_literal_node(lexer, &string);
 
     return true;
 }
@@ -837,6 +763,8 @@ retry_lexing:;
         case '\0':
             if (at_eof(lexer))
             {
+                // Warn about no newline at eof
+
                 token->type = TOKEN_EOF;
 
                 return false;
@@ -872,6 +800,15 @@ retry_lexing:;
             /* FALLTHROUGH */
 
         case '\n':
+            // Test to see if we are at the end of the file. If here don't warn
+            // about no newlines at eof since we abviously have them.
+            if (get_curr_char(lexer) == '\0' && at_eof(lexer))
+            {
+                token->type = TOKEN_EOF;
+
+                return false;
+            }
+
             // If we are in a PP directive finish it up
             if (lexer->lexing_directive)
             {
@@ -1340,7 +1277,7 @@ retry_lexing:;
             token->type = TOKEN_UNKNOWN;
 
             Buffer unknown = buffer_from_format("%c", curr);
-            token->data = token_create_literal_node(string_from_buffer(&unknown));
+            token->data = lexer_create_literal_node(lexer, &unknown);
             break;
     }
 
@@ -1355,6 +1292,19 @@ bool lexer_get_next(Lexer* lexer, Token* token)
     reset_token(token);
 
     return lex_internal(lexer, token);
+}
+
+bool lexer_peek(Lexer* lexer, Token* token)
+{
+    char* position = get_position(lexer);
+
+    reset_token(token);
+
+    bool status = lex_internal(lexer, token);
+
+    set_position(lexer, position);
+
+    return status;
 }
 
 TokenType lexer_get_next_next_type(Lexer* lexer)

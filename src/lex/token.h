@@ -148,14 +148,12 @@ typedef enum TokenType {
 
 typedef struct LiteralNode {
     String value;
-    char* starting_ptr;
 } LiteralNode;
 
 // From TokenData we should always be able to retrieve the token spelling back
 typedef union TokenData {
     struct Identifier* identifier;
     LiteralNode* literal;
-    char* starting_ptr;
 } TokenData;
 
 // Different flags for our token to store

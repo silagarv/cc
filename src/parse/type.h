@@ -66,8 +66,6 @@ typedef enum TypeSpecifierType {
     TYPE_SPECIFIER_TYPE_FLOAT,
     TYPE_SPECIFIER_TYPE_DOUBLE,
     TYPE_SPECIFIER_TYPE_BOOL,
-    TYPE_SPECIFIER_TYPE_COMPLEX,
-    TYPE_SPECIFIER_TYPE_IMAGINAIRY,
     TYPE_SPECIFIER_TYPE_ENUM,
     TYPE_SPECIFIER_TYPE_STRUCT,
     TYPE_SPECIFIER_TYPE_UNION,
@@ -87,11 +85,11 @@ typedef enum TypeSpecifierSign {
     TYPE_SPECIFIER_SIGN_UNSIGNED,
 } TypeSpecifierSign;
 
-typedef enum TypeComplexSpecifier {
+typedef enum TypeSpecifierComplex {
     TYPE_SPECIFIER_COMPLEX_NONE,
     TYPE_SPECIFIER_COMPLEX_COMPLEX,
     TYPE_SPECIFIER_COMPLEX_IMAGINAIRY
-} TypeComplexSpecifier;
+} TypeSpecifierComplex;
 
 typedef union Type Type;
 
@@ -219,6 +217,14 @@ typedef struct TypeBuiltins {
     Type* type_double;
     Type* type_long_double;
 } TypeBuiltins;
+
+const char* storage_specifier_to_name(TypeStorageSpecifier specifier);
+const char* type_qualifier_to_name(TypeQualifiers qualifier);
+const char* function_specifier_to_name(TypeFunctionSpecifier function);
+const char* width_specifier_to_name(TypeSpecifierWidth width);
+const char* sign_specifier_to_name(TypeSpecifierSign sign);
+const char* complex_specifier_to_name(TypeSpecifierComplex complex);
+const char* type_specifier_to_name(TypeSpecifierType type);
 
 // Some functions to check for specific type qualifiers
 bool type_qualifier_is_const(TypeQualifiers qualifiers);

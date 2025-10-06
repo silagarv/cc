@@ -43,11 +43,10 @@ int compiler_main(int argc, char** argv)
     SourceFile* source = source_manager_create_filepath(&sm, path);
     assert(source);
 
-    IdentifierTable identifier_table = identifier_table_create();    
-    Preprocessor pp = preprocessor_create(&sm, &identifier_table, source);
+    Preprocessor pp = preprocessor_create(&dm, &sm, source);
     parse_translation_unit(&dm, &pp);
 
-    identifier_table_delete(&identifier_table);
+    preprocessor_delete(&pp);
     source_manager_delete(&sm);
 
     return 0;

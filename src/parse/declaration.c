@@ -102,6 +102,14 @@ static Declaration* declaration_create_base(AstAllocator* allocator,
     return decl;
 }
 
+Declaration* declaration_create_error(AstAllocator* allocator,
+        Location location)
+{
+    return declaration_create_base(allocator, sizeof(DeclarationBase),
+            DECLARATION_ERROR, location, NULL, (QualifiedType) {0},
+            TYPE_STORAGE_SPECIFIER_NONE, TYPE_FUNCTION_SPECIFIER_NONE, false);
+}
+
 Declaration* declaration_create_variable(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type, 
         TypeStorageSpecifier storage, Initializer* initializer)

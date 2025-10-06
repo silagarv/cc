@@ -16,12 +16,18 @@
 
 union Statement;
 
-// A struct to hold all of our declaration specifiers
+// A struct to hold all of our declaration specifiers.
+// TODO: eventually we will want to include locations for all of these so that
+// TODO: we are more able to accurately report errors here.
 typedef struct DeclarationSpecifiers {
     Type* type;
     TypeStorageSpecifier storage_spec;
     TypeQualifiers qualifiers;
     TypeFunctionSpecifier function_spec;
+    TypeSpecifierType type_spec_type;
+    TypeSpecifierWidth type_spec_width;
+    TypeSpecifierSign type_spec_sign;
+    TypeSpecifierComplex type_spec_complex;
 } DeclarationSpecifiers;
 
 typedef enum DeclarationType {
@@ -231,6 +237,10 @@ void declarator_piece_push_function(Declarator* declarator, bool is_variadic);
 // TODO: redo this completely with our ast allocator
 
 bool declaration_is(const Declaration* decl, DeclarationType type);
+
+// Create an error declaraiton
+Declaration* declaration_create_error(AstAllocator* allocator,
+        Location location);
 
 // Create a declaration of a variable. This declaration will represent a
 // variable that we can use within other places.
