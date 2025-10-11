@@ -21,10 +21,11 @@
 vector_of_impl(Declaration*, Declaration, declaration)
 vector_of_impl(DeclaratorPiece, DeclaratorPiece, declarator_piece)
 
-Declarator declarator_create(void)
+Declarator declarator_create(DeclarationSpecifiers* specifiers)
 {
     Declarator declarator = (Declarator)
     {
+        .specifiers = specifiers,
         .identifier = NULL,
         .identifier_location = LOCATION_INVALID,
         .pieces = declarator_piece_vector_create(1)
@@ -49,13 +50,15 @@ void declarator_push_pointer(Declarator* declarator, TypeQualifiers qualifiers)
     declarator_piece_vector_push(&declarator->pieces, piece);
 }
 
-void declarator_push_array(Declarator* declarator,
-        TypeQualifiers qualifiers, Expression* expression, bool is_static,
-        bool is_star)
+void declarator_push_array(Declarator* declarator, Location lbracket,
+        Location rbracket, TypeQualifiers qualifiers, Expression* expression,
+        bool is_static, bool is_star)
 {
     DeclaratorPiece piece = (DeclaratorPiece)
     {
         .array.base.type = DECLARATOR_PIECE_ARRAY,
+        .array.lbracket = lbracket,
+        .array.rbracket = rbracket,
         .array.qualifiers = qualifiers,
         .array.expression = expression,
         .array.is_static = is_static,
@@ -77,6 +80,8 @@ void declarator_set_identifier(Declarator* declarator, Identifier* identifier,
 
 bool declaration_is(const Declaration* decl, DeclarationType type)
 {
+    return true;
+
     return decl->base.declaration_type == type;
 }
 

@@ -13,6 +13,8 @@
 
 // this struct contains all of the current context information e.g. current
 // switch, if, else, etc...
+// TODO: I think that I would also like to put our current scope's and stuff in
+// TODO: here since it would be nice and convenient to use for this.
 typedef struct AstContext {
     void* current_function; // the current function we are parsing
 

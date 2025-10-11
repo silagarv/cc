@@ -13,6 +13,7 @@
 
 #include "parse/ast.h"
 #include "parse/symbol.h"
+#include "parse/semantic.h"
 
 // #include "parse/scope.h"
 
@@ -41,6 +42,8 @@ typedef struct Parser {
 
     // For now we will have a basic implementation with this here...
     SymbolTable symbols;
+
+    SemanticChecker sc;
 
     // TODO: track brackets???
 } Parser;

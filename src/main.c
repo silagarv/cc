@@ -37,7 +37,7 @@
 int compiler_main(int argc, char** argv)
 {
     SourceManager sm = source_manager();
-    DiagnosticManager dm = diagnostic_manager_init(&sm, true);
+    DiagnosticManager dm = diagnostic_manager_init(&sm);
 
     Filepath path = FILEPATH_STATIC_INIT("test.c");
     SourceFile* source = source_manager_create_filepath(&sm, path);

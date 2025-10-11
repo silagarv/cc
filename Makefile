@@ -1,4 +1,4 @@
-CC = clang-19
+CC = clang
 CFLAGS = -Wall \
 	-Wextra \
 	-Wpedantic \
@@ -66,7 +66,7 @@ PARSE = src/parse/ast_allocator.c \
 	src/parse/symbol.c \
 	src/parse/ast.c \
 	src/parse/parser.c \
-	src/parse/typecheck.c
+	src/parse/semantic.c
 
 SRC = $(UTIL) $(FILES) $(LEX) $(PARSE) $(DRIVER) 
 

@@ -16,6 +16,8 @@
 
 union Statement;
 
+typedef union Declaration Declaration;
+
 // A struct to hold all of our declaration specifiers.
 // TODO: eventually we will want to include locations for all of these so that
 // TODO: we are more able to accurately report errors here.
@@ -28,6 +30,8 @@ typedef struct DeclarationSpecifiers {
     TypeSpecifierWidth type_spec_width;
     TypeSpecifierSign type_spec_sign;
     TypeSpecifierComplex type_spec_complex;
+    Location location;
+    Declaration* declaration; // The declaration for a union / struct / enum
 } DeclarationSpecifiers;
 
 typedef enum DeclarationType {
@@ -42,8 +46,6 @@ typedef enum DeclarationType {
     DECLARATION_ENUM, /* an enum */
     DECLARATION_LABEL, /* A label within the source e.g. `foo:` */
 } DeclarationType;
-
-typedef union Declaration Declaration;
 
 // A structure to hold all of the basics needed in a declaration. This helps us
 // to keep track of all of the basic information needed with each subtype of
@@ -183,6 +185,8 @@ typedef struct DeclaratorPiecePointer {
 
 typedef struct DeclaratorPieceArray {
     DeclaratorPieceBase base;
+    Location lbracket;
+    Location rbracket;
     TypeQualifiers qualifiers;
     Expression* expression;
     bool is_static;
@@ -210,22 +214,23 @@ vector_of_decl(DeclaratorPiece, DeclaratorPiece, declarator_piece);
 // declarations correctly. Note that we definitely eventually want this to
 // contain more locations and things that we can use.
 typedef struct Declarator {
+    DeclarationSpecifiers* specifiers;
+
     Identifier* identifier;
     Location identifier_location;
-
     DeclaratorPieceVector pieces;
 } Declarator;
 
-Declarator declarator_create(void);
+Declarator declarator_create(DeclarationSpecifiers* specifiers);
 void declarator_delete(Declarator* declarator);
 
 void declarator_set_identifier(Declarator* declarator, Identifier* identifier,
         Location identifier_location);
 
 void declarator_push_pointer(Declarator* declarator, TypeQualifiers qualifiers);
-void declarator_push_array(Declarator* declarator,
-        TypeQualifiers qualifiers, Expression* expression, bool is_static,
-        bool is_star);
+void declarator_push_array(Declarator* declarator, Location lbracket,
+        Location rbracket, TypeQualifiers qualifiers, Expression* expression,
+        bool is_static, bool is_star);
 
 void declarator_push_function_empty(Declarator* declarator, ...);
 void declarator_push_function_knr(Declarator* declarator, ...);

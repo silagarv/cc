@@ -33,9 +33,11 @@ typedef struct DiagnosticColours {
 typedef struct DiagnosticManager {
     DiagnosticColours colours;
     SourceManager* sm;
+
+    // TODO: keep track of warnings / errors for exit code?
 } DiagnosticManager;
 
-DiagnosticManager diagnostic_manager_init(SourceManager* sm, bool colours);
+DiagnosticManager diagnostic_manager_init(SourceManager* sm);
 
 void diagnostic_error(DiagnosticManager* dm, const char* fmt, ...);
 void diagnostic_warning(DiagnosticManager* dm, const char* fmt, ...);

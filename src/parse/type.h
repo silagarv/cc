@@ -240,10 +240,6 @@ bool qualifier_type_is_equal_canonical(const QualifiedType* t1,
 Type* type_create_pointer(AstAllocator* allocator, Type* base_type,
         TypeQualifiers qualifiers);
 
-
-
-
-
 // Functions to compare types and test if they are equal...
 bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2);
 bool qualifier_type_is_equal_canonical(const QualifiedType* t1, 

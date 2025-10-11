@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <string.h>
 
 #include "parse/ast_allocator.h"
 #include "util/buffer.h"
@@ -69,8 +70,8 @@ const char* complex_specifier_to_name(TypeSpecifierComplex complex)
     switch (complex)
     {
         case TYPE_SPECIFIER_COMPLEX_NONE: return "<internal-error>";
-        case TYPE_SPECIFIER_COMPLEX_COMPLEX: return "complex";
-        case TYPE_SPECIFIER_COMPLEX_IMAGINAIRY: return "imaginairy";
+        case TYPE_SPECIFIER_COMPLEX_COMPLEX: return "_Complex";
+        case TYPE_SPECIFIER_COMPLEX_IMAGINAIRY: return "_Imaginairy";
     }
 }
 
@@ -152,12 +153,23 @@ TypeBuiltins type_builtins_initialise(AstAllocator* allocator)
     builtins.type_double = type_create_builtin(allocator, TYPE_DOUBLE, 8, 8, true);
     builtins.type_long_double = type_create_builtin(allocator, TYPE_LONG_DOUBLE,
             16, 16, true);
+    builtins.type_bool = type_create_builtin(allocator, TYPE_BOOL, 1, 1, true);
 
     return builtins;
 }
 
+static Type* type_create_base(AstAllocator* allocator, TypeKind kind)
+{
+    panic("TODO");
+
+    return NULL;
+}
+
 Type* type_create_pointer(AstAllocator* allocator, Type* base_type,
-        TypeQualifiers qualifiers);
+        TypeQualifiers qualifiers)
+{
+    return NULL;
+}
 
 bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2)
 {

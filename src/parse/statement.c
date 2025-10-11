@@ -291,3 +291,11 @@ Statement* statement_create_declaration(AstAllocator* allocator,
 
     return stmt;
 }
+
+bool statement_is_type(const Statement* stmt, StatementType type)
+{
+    assert(stmt);
+
+    return stmt->base.type == type;
+}
+

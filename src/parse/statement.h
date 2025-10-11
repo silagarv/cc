@@ -321,4 +321,6 @@ Statement* statement_create_empty(AstAllocator* allocator,
 Statement* statement_create_declaration(AstAllocator* allocator,
         Location semi_location, Declaration* declaration);
 
+bool statement_is_type(const Statement* stmt, StatementType type);
+
 #endif /* STATEMENT_H */

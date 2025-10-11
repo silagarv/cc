@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stddef.h>
+#include <unistd.h>
 
 #include "util/panic.h"
 
@@ -44,11 +45,13 @@ static const DiagnosticColours colour_on =
     .reset_all = "\033[0m"
 };
 
-DiagnosticManager diagnostic_manager_init(SourceManager* sm, bool colours)
+DiagnosticManager diagnostic_manager_init(SourceManager* sm)
 {
+    int tty = isatty(STDERR_FILENO);
+
     DiagnosticManager dm;
     dm.sm = sm;
-    dm.colours = colours ? colour_on : colour_off;
+    dm.colours = tty ? colour_on : colour_off;
 
     return dm;
 }
@@ -95,7 +98,7 @@ void diagnostic_internal(DiagnosticManager* dm, DiagnosticKind kind,
             dm->colours.reset_all
         );
     vfprintf(stderr, fmt, ap);
-    printf("\n");
+    fprintf(stderr, "\n");
 }
 
 void diagnostic_error(DiagnosticManager* dm, const char* fmt, ...)
@@ -145,7 +148,7 @@ void diagnostic_internal_at(DiagnosticManager* dm, DiagnosticKind kind,
             dm->colours.reset_all
         );
     vfprintf(stderr, fmt, ap);
-    printf("\n");
+    fprintf(stderr, "\n");
 }
 
 void diagnostic_error_at(DiagnosticManager* dm, Location loc,
