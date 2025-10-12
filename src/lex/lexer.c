@@ -1311,13 +1311,12 @@ TokenType lexer_get_next_next_type(Lexer* lexer)
 {
     char* original_position = get_position(lexer);
 
+    // No need to free and data since any literal is stored in the pp's literal
+    // arena!
     Token next;
     lexer_get_next(lexer, &next);
 
-    TokenType type = next.type;
-    token_free_data(&next);
-
     set_position(lexer, original_position);
 
-    return type;
+    return next.type;
 }

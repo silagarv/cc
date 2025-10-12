@@ -5,12 +5,14 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "driver/diagnostic.h"
 #include "lex/token.h"
 
 // A collected of all of the integer value types
 typedef enum IntegerValueType {
     INTEGER_VALUE_ERROR,
     INTEGER_VALUE_INTEGER,
+    INTEGER_VALUE_UNSIGNED_INTEGER,
     INTEGER_VALUE_LONG,
     INTEGER_VALUE_UNSIGNED_LONG,
     INTEGER_VALUE_LONG_LONG,
@@ -21,11 +23,11 @@ typedef enum IntegerValueType {
 typedef enum IntegerValueSuffix {
     INTEGER_VALUE_SUFFIX_INVALID,
     INTEGER_VALUE_SUFFIX_NONE,
-    INTEGER_VALUE_SUFFIX_U,
     INTEGER_VALUE_SUFFIX_L,
+    INTEGER_VALUE_SUFFIX_LL,
+    INTEGER_VALUE_SUFFIX_U,
     INTEGER_VALUE_SUFFIX_UL,
-    INTEGER_VALUE_SUFFIX_ULL,
-    INTEGER_VALUE_SUFFIX_LL
+    INTEGER_VALUE_SUFFIX_ULL
 } IntegerValueSuffix;
 
 // Currently we only support integer values of up to 64 bits...
@@ -33,9 +35,6 @@ typedef struct IntegerValue {
     IntegerValueType type;
     IntegerValueSuffix suffix;
     uint64_t value;
-    size_t base;
-
-    bool overflow;
 } IntegerValue;
 
 // Enum to represent different floating point value types
@@ -55,6 +54,19 @@ typedef struct FloatingValue {
     bool overflow;
 } FloatingValue;
 
+typedef enum ValueType {
+    VALUE_INTEGER_TYPE,
+    VALUE_FLOATING_TYPE
+} ValueType;
+
+typedef struct LiteralValue {
+    ValueType type;
+    union {
+        IntegerValue integer;
+        FloatingValue floating;
+    } value;
+} LiteralValue;
+
 // A structure to represent a character literal value in memory
 typedef struct CharValue {   
     uint64_t value; // The value of the character itself
@@ -69,9 +81,11 @@ typedef struct StringLiteral {
     bool error;
 } StringLiteral;
 
-bool parse_integer_literal(IntegerValue* value, const Token* token);
-bool parse_floating_literal(FloatingValue* value, const Token* token);
-bool parse_preprocessing_number(const Token* token);
+// bool parse_integer_literal(IntegerValue* value, const Token* token);
+// bool parse_floating_literal(FloatingValue* value, const Token* token);
+
+bool parse_preprocessing_number(LiteralValue* value, DiagnosticManager* dm,
+        const Token* token);
 
 bool parse_char_literal(CharValue* value, const Token* token);
 bool parse_string_literal(StringLiteral* value, const Token* tokens, size_t num_tokens);

@@ -98,6 +98,12 @@ typedef struct ExpressionInteger {
     IntegerValue value;
 } ExpressionInteger;
 
+typedef struct ExpressionFloating {
+    ExpressionBase base;
+    Location num_location;
+    FloatingValue value;
+} ExpressionFloating;
+
 typedef struct ExpressionFloat ExpressionFloat;
 
 typedef struct ExpressionEnumeration {
@@ -204,6 +210,7 @@ union Expression {
     ExpressionBase base;
 
     ExpressionInteger integer;
+    ExpressionFloating floating;
     ExpressionCharacter character;
     ExpressionStringLiteral string;
 
@@ -219,6 +226,9 @@ union Expression {
 };
 
 Expression* expression_create_error(AstAllocator* allocator);
+
+Expression* expression_create_number(AstAllocator* allocator, Location location,
+        LiteralValue value);
 
 Expression* expression_create_array(AstAllocator* allocator, 
         Location lbracket_loc, Location rbracket_loc, Expression* lhs,

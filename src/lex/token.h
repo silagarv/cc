@@ -181,6 +181,7 @@ void token_set_flag(Token* token, TokenFlags flag);
 void token_unset_flag(Token* token, TokenFlags flag);
 bool token_has_flag(const Token* token, TokenFlags flag);
 
+bool token_is_type(const Token* token, TokenType type);
 bool token_is_identifier(const Token* token);
 bool token_is_literal(const Token* token);
 bool token_is_string(const Token* token);

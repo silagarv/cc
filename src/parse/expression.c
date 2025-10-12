@@ -5,6 +5,7 @@
 
 #include "files/location.h"
 #include "parse/ast_allocator.h"
+#include "parse/literal_parser.h"
 #include "parse/type.h"
 
 static Expression* expression_create_base(AstAllocator* allocator, size_t size,
@@ -22,6 +23,43 @@ Expression* expression_create_error(AstAllocator* allocator)
 {
     return expression_create_base(allocator, sizeof(ExpressionError),
             EXPRESSION_ERROR);
+}
+
+static Expression* expression_create_integer(AstAllocator* allocator,
+        Location location, IntegerValue value)
+{
+    Expression* expr = expression_create_base(allocator,
+            sizeof(ExpressionInteger), EXPRESSION_INTEGER_CONSTANT);
+    expr->integer.num_location = location;
+    expr->integer.value = value;
+
+    return expr;
+}
+
+static Expression* expression_create_float(AstAllocator* allocator,
+        Location location, FloatingValue value)
+{
+    Expression* expr = expression_create_base(allocator,
+            sizeof(ExpressionInteger), EXPRESSION_FLOATING_CONSTANT);
+    expr->floating.num_location = location;
+    expr->floating.value = value;
+
+    return expr;
+}
+
+Expression* expression_create_number(AstAllocator* allocator, Location location,
+        LiteralValue value)
+{
+    if (value.type == VALUE_INTEGER_TYPE)
+    {
+        return expression_create_integer(allocator, location,
+                value.value.integer);
+    }
+    else
+    {
+        return expression_create_float(allocator, location,
+                value.value.floating);
+    }
 }
 
 Expression* expression_create_array(AstAllocator* allocator,

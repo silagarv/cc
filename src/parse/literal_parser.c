@@ -1,6 +1,5 @@
 #include "literal_parser.h"
 
-#include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -12,274 +11,404 @@
 #include "util/panic.h"
 #include "util/str.h"
 
-#include "driver/target.h"
+#include "files/location.h"
+
+#include "driver/diagnostic.h"
 
 #include "lex/char_help.h"
 #include "lex/token.h"
 
-static IntegerValueType determine_integer_type_no_suffix(uint64_t value, size_t base)
+static int parse_integer_prefix(const char* string, size_t len, size_t* pos)
 {
-    switch (base)
+    // Any number in a special base should start with a '0'
+    if (string[*pos] != '0')
     {
-        case 10:
-            return INTEGER_VALUE_INTEGER;
-
-        case 8:
-        case 16:
-            return INTEGER_VALUE_INTEGER;
-
-        default:
-            panic("unhandled base");
-            return INTEGER_VALUE_ERROR;
-    }
-}
-
-// Determining the type of value is quite important I think and simply comes
-// down to interpreting the table in 6.4.4.1 whilst taking into account what
-// values can be represented in the target... So I will need to develop the target
-// thing eventually but for now we will REQUIRE x86-64-linux.
-// The sizes it assumes are below
-//
-// TODO: eventually fix this so we can determine the type for an arbitrary target
-static IntegerValueType determine_integer_type(uint64_t value, size_t base, 
-        IntegerValueSuffix suffix)
-{
-    // We need to know target information here... Should we retroactively fit
-    // this onto the compiler or like what?
-    
-
-    // We should probably never return error here
-    return determine_integer_type_no_suffix(value, base);
-}
-
-// We will use a pointer to pos since it think it would be good to check that
-// we reached the end of the string
-static IntegerValueSuffix parse_integer_suffix(const String* string, size_t pos, 
-        size_t len)
-{
-    // Should never try to take the suffix of nothing
-    assert(len != pos);
-
-    const size_t suffix_len = len - pos;
-    // We know we will never have a suffix bigger than ULL and its variants
-    if (suffix_len > 3)
-    {
-        return INTEGER_VALUE_SUFFIX_INVALID;
+        return 10;
     }
 
-    bool has_u = false;
-    bool has_l1 = false;
-    bool has_l2 = false;
-
-    // Note the below works since we can only ever have one of each of u, l, or
-    // ll suffix in an integer number so we check for it
-    while (pos < len)
-    {
-        char current = string_get(string, pos);
-        pos++;
-        
-        // TODO: would a switch make the code below cleaner??
-
-        if ((current == 'u' || current == 'U') && !has_u)
+    // Check if we are a hexadecimal number or technically not.
+    if (string[*pos + 1] == 'x' || string[*pos + 1] == 'X')
+    {   
+        // Technically we aren't a hexadecimal number according to annex a
+        if (string[*pos + 2] == '\0')
         {
-            has_u = true;
-
-            continue;
+            return 10;
         }
 
-        // Here we check for l1 since it will be set if we get any l's
-        if ((current == 'l' || current == 'L') && !has_l1)
-        {
-            has_l1 = true;
-            const char l_type = current;
-            
-            if (string_get(string, pos) == current)
-            {
-                pos++;
-
-                has_l2 = true;
-            }
-
-            continue;
-        }
-
-        // We have got a digit that can never be part of a suffix
-        return INTEGER_VALUE_SUFFIX_INVALID;
-    }
-
-    assert(pos == len);
-
-    // Get if we're ll or l. We restict ourselves so that we can only be one
-    bool is_ll = has_l1 && has_l2; // were ll is we have both l1 and l2
-    bool is_l = has_l1 && !has_l2; // were l if we have l1 but not l2
-
-    assert(is_l ? !has_l2 : true);
-
-    // TODO: this could be a bit cleaner but will work for now...
-    if (has_u)
-    {
-        if (is_l)
-        {
-            return INTEGER_VALUE_SUFFIX_UL;
-        }
-        else if (is_ll)
-        {
-            return INTEGER_VALUE_SUFFIX_ULL;
-        }
-        else
-        {
-            return INTEGER_VALUE_SUFFIX_U;
-        }
+        // Otherwise we got a hex number, increment the position
+        *pos += 2;
+        return 16;
     }
     else
     {
-        if (is_l)
+        // We got an octal constant 
+        *pos += 1;
+        return 8;
+    }
+}
+
+static IntegerValueSuffix parse_integer_suffix(const char* string, size_t len,
+        size_t* pos)
+{
+    // First check if we even have to parse a suffix.
+    if (len == *pos)
+    {
+        return INTEGER_VALUE_SUFFIX_NONE;
+    }
+
+    // Note that on failure we don't want to increment the position since this
+    // helps us give a nice diagnostic and where to show it. So we will use an
+    // additional variable to help us.
+    size_t current_pos = *pos;
+    if (string[current_pos] == 'U' || string[current_pos] == 'u')
+    {
+        current_pos++;
+
+        if (current_pos == len)
         {
+            *pos = current_pos;
+            return INTEGER_VALUE_SUFFIX_U;
+        }
+
+        // Here is our pseudo state machine. All suffix's are valid no matter
+        // the integer type so this is simple enough to implement. Just need to
+        // check each time for the end of the integer string.
+        if (string[current_pos] == 'l' || string[current_pos] == 'L')
+        {
+            char l_type = string[current_pos];
+            current_pos++;
+
+            if (current_pos == len)
+            {
+                *pos = current_pos;
+                return INTEGER_VALUE_SUFFIX_UL;
+            }
+
+            if (string[current_pos] == l_type)
+            {
+                current_pos++;
+
+                if (current_pos == len)
+                {
+                    *pos = current_pos;
+                    return INTEGER_VALUE_SUFFIX_ULL;
+                }
+            }
+        }
+    }
+    else if (string[current_pos] == 'l' || string[current_pos] == 'L')
+    {
+        char l_type = string[current_pos];
+        bool ll = false;
+
+        current_pos++;
+
+        if (current_pos == len)
+        {
+            *pos = current_pos;
             return INTEGER_VALUE_SUFFIX_L;
         }
-        else if (is_ll)
+
+        if (string[current_pos] == l_type)
         {
-            return INTEGER_VALUE_SUFFIX_LL;
+            current_pos++;
+            ll = true;
+
+            if (current_pos == len)
+            {
+                *pos = current_pos;
+                return INTEGER_VALUE_SUFFIX_LL;
+            }
+        }
+
+        if (string[current_pos] == 'u' || string[current_pos] == 'U')
+        {
+            current_pos++;
+
+            if (current_pos == len)
+            {
+                *pos = current_pos;
+                return ll ? INTEGER_VALUE_SUFFIX_ULL : INTEGER_VALUE_SUFFIX_UL;
+            }
         }
     }
 
-    panic("unreachable; we should have got some kind of suffix but didn't");
-    
     return INTEGER_VALUE_SUFFIX_INVALID;
 }
 
-/*
-    intteger-constant:
-        decimal-constant integer-suffix opt
-        octal-constant integer-suffix opt
-        hexadecimal-constant integer-suffix opt
-    
-    decimal-constant:
-        nonzero-digit
-        decimal-constant digit
- 
-    octal-constant:
-        0
-        octal-constant octal-digit
-
-    hexadecimal-constant:
-        hexadecimal-prefix hexadecimal-digit
-        hexadecimal-constant hexadecimal-digit
-        hexadecimal-prefix: one of
-        0x 0X
-*/
-
-// TODO: implementing binary literals here could also be good and quite easy
-// to achieve. Would not be the hardest
-bool parse_integer_literal(IntegerValue* value, const Token* token)
+static IntegerValueType determine_integer_value_type(uint64_t value, int base,
+        IntegerValueSuffix suffix)
 {
-    assert(token_is_literal(token));
-
-    // Get the string we would like to convert
-    const String* to_convert = &token->data.literal->value;
-    const size_t len = string_get_len(to_convert);
-
-    size_t pos = 0;
-
-    // Start with assuming the base is 10
-    size_t base = 10;
-
-    // Check the start to accurately determine the base of the number. The first
-    // digit will tell us if it is a specical case
-    if (string_get(to_convert, pos) == '0')
+    // Below is derived from section 6.4.4.1 of c99 standard
+    // TODO: the base check can probably be combined into the normal checking.
+    switch (suffix)
     {
-        pos++;
+        case INTEGER_VALUE_SUFFIX_ULL:
+            return INTEGER_VALUE_UNSIGNED_LONG_LONG;
 
-        // Now check if the next character. If it is an x, check for a hex digit
-        // afterwards, and if present then we got a Hex number. Otherwise we
-        // have an octal number even if it is an 'x' or 'X'
-        char current = string_get(to_convert, pos);
-        char next = string_get(to_convert, pos + 1);
-
-        if ((current == 'x' || current == 'X') && is_hexadecimal(next))
-        {   
-            // Skip over the 'x' or 'X' but do not skip the next digit
-            pos++;
-
-            base = 16;
-        }
-        else
-        {
-            base = 8;
-        }
-    }
-
-    uint64_t int_value = 0;
-    bool overflow = false;
-    while (pos < len)
-    {
-        char current = string_get(to_convert, pos);
-
-        if (!is_valid_character_in_base(current, base))
-        {
-            // We got a bad character, we could possibly be very invalid here
-            // or we could be able to parse an integer suffix so figure that out
-            // TODO: this will not work if I add binary. maybe instead do:
-            //      if (base == 8 && is_decimal(current)) ????
-            if (base == 8 && current == '9')
+        case INTEGER_VALUE_SUFFIX_LL:
+            if (base == 10)
             {
-                // This is the only BAD case all the others we defer any errors
-                // until we get to the suffix parsing
-                printf("Invalid digit '%c' in contant\n\n", current);
-
-                return false;
+                return INTEGER_VALUE_LONG_LONG;
             }
             else
             {
-                break; // We now want to parse a suffix (or try)
+                if (value <= LLONG_MAX)
+                {
+                    return INTEGER_VALUE_LONG_LONG;
+                }
+                else
+                {
+                    return INTEGER_VALUE_UNSIGNED_LONG_LONG;
+                }
             }
+            break;
+
+        case INTEGER_VALUE_SUFFIX_UL:
+            if (value <= ULONG_MAX)
+            {
+                return INTEGER_VALUE_UNSIGNED_LONG;
+            }
+            else
+            {
+                return INTEGER_VALUE_UNSIGNED_LONG_LONG;
+            }
+            break;
+
+        case INTEGER_VALUE_SUFFIX_L:
+            if (base == 10)
+            {
+                if (value <= LONG_MAX)
+                {
+                    return INTEGER_VALUE_LONG;
+                }
+                else if (value <= LLONG_MAX)
+                {
+                    return INTEGER_VALUE_LONG_LONG;
+                }
+            }
+            else
+            {
+                if (value <= LONG_MAX)
+                {
+                    return INTEGER_VALUE_LONG;
+                }
+                else if (value <= ULONG_MAX)
+                {
+                    return INTEGER_VALUE_UNSIGNED_LONG;
+                }
+                else if (value <= LLONG_MAX)
+                {
+                    return INTEGER_VALUE_LONG_LONG;
+                }
+                else
+                {
+                    return INTEGER_VALUE_UNSIGNED_LONG_LONG;
+                }
+            }
+            break;
+
+        case INTEGER_VALUE_SUFFIX_U:
+            if (value <= UINT_MAX)
+            {
+                return INTEGER_VALUE_UNSIGNED_INTEGER;
+            }
+            else if (value <= ULONG_MAX)
+            {
+                return INTEGER_VALUE_UNSIGNED_LONG;
+            }
+            else
+            {
+                return INTEGER_VALUE_UNSIGNED_LONG_LONG;
+            }
+            break;
+
+        case INTEGER_VALUE_SUFFIX_NONE:
+            if (base == 10)
+            {
+                if (value <= INT_MAX)
+                {
+                    return INTEGER_VALUE_INTEGER;
+                }
+                else if (value <= LONG_MAX)
+                {
+                    return INTEGER_VALUE_LONG;
+                }
+                else if (value <= LLONG_MAX)
+                {
+                    return INTEGER_VALUE_LONG_LONG;
+                }
+            }
+            else
+            {
+                if (value <= INT_MAX)
+                {
+                    return INTEGER_VALUE_INTEGER;
+                }
+                else if (value <= UINT_MAX)
+                {
+                    return INTEGER_VALUE_UNSIGNED_INTEGER;
+                }
+                else if (value <= LONG_MAX)
+                {
+                    return INTEGER_VALUE_LONG;
+                }
+                else if (value <= ULONG_MAX)
+                {
+                    return INTEGER_VALUE_UNSIGNED_LONG;
+                }
+                else if (value <= LLONG_MAX)
+                {
+                    return INTEGER_VALUE_LONG_LONG;
+                }
+                else
+                {
+                    return INTEGER_VALUE_UNSIGNED_LONG_LONG;
+                }
+            }
+            break;
+
+        case INTEGER_VALUE_SUFFIX_INVALID:
+            panic("unreachable");
+            return INTEGER_VALUE_ERROR;
+    }
+
+    return INTEGER_VALUE_ERROR;
+}
+
+bool parse_integer_literal(LiteralValue* value, DiagnosticManager* dm,
+        Location location, const char* string, size_t len)
+{
+    size_t pos = 0;
+
+    // Parse the prefix part
+    int base = parse_integer_prefix(string, len, &pos);
+
+    uint64_t int_val = 0;
+    bool overflow = false;
+    for (; pos < len; pos++)
+    {
+        char current = string[pos];
+
+        // Check if we got a suffix or an error
+        if (!is_valid_character_in_base(current, base))
+        {
+            // Special case of octal constant getting a bad digit. In this we
+            // want to report the error and stop. Otherwise we assume that we
+            // have a suffix we want to parse.
+            if (base == 8 && is_decimal(current))
+            {
+                diagnostic_error_at(dm, location,
+                        "invalid digit '%c' in octal constant", current);
+                return false;
+            }
+
+            break;
         }
 
-        // TODO: issue diagnostic about overflow
-        if (int_value * base < int_value)
+        // Check if the multiplication will overflow
+        if (int_val > UINT64_MAX / (uint64_t) base)
         {
-            printf("Overflowed during conversion\n");
-
             overflow = true;
         }
-        int_value *= base;
-        int_value += convert_character_base(current, base);
 
-        pos++;
-    }
+        // Okay now get the digit and perform the multiplication
+        uint64_t digit = convert_character_base(current, base);
+        uint64_t new_val = int_val * (uint64_t) base;
 
-    IntegerValueSuffix suffix = INTEGER_VALUE_SUFFIX_NONE;
-    if (pos != len)
-    {
-        suffix = parse_integer_suffix(to_convert, pos, len);
-        
-        if (suffix == INTEGER_VALUE_SUFFIX_INVALID)
+        // Now check if addition will overflow the result
+        if (new_val + digit < new_val)
         {
-            printf("Bad integer suffix; cannot continue parsing integer\n");
-
-            return false;
+            overflow = true;
         }
+
+        // Add digit to newval
+        new_val += digit;
+
+        // Set the new int_val
+        int_val = new_val;
     }
 
-    // TODO: we would like to also now determine the integer value type correctly
-    IntegerValueType type = determine_integer_type(int_value, base, suffix);
-    if (type == INTEGER_VALUE_ERROR)
+    // Possibly parse integer suffix and check its validity
+    IntegerValueSuffix suffix = parse_integer_suffix(string, len, &pos);
+    if (suffix == INTEGER_VALUE_SUFFIX_INVALID)
     {
-        printf("Error determining integer value type\n");
-
+        diagnostic_error_at(dm, location,
+                "invalid suffix '%s' on integer constant",
+                string + pos);
         return false;
     }
 
-    value->type = type;
-    value->suffix = suffix;
-    value->value = int_value;
-    value->base = base;
-    value->base = base;
-    
-    value->overflow = overflow;
+    assert(len == pos && "should have parsed entire number or failed");
+
+    // Okay if our suffix was okay but we overflowed, then error here and stop.
+    // This is done last since we consider an invalid suffix worse than an
+    // overflow!
+    if (overflow)
+    {
+        diagnostic_error_at(dm, location,
+                "integer literal is too large to be represented in any "
+                "integer type");
+        return false;
+    }
+
+    // Finally, determine the integer value type.
+    IntegerValueType type = determine_integer_value_type(int_val, base, suffix);
+    // The only way for this to occur is if we have a non-signable integer that
+    // is too large for any / no suffix. The only type it could possible fit in
+    // is the unsigned long long type. We will simply warn about it and move on
+    if (type == INTEGER_VALUE_ERROR)
+    {
+        diagnostic_warning_at(dm, location,
+                "integer constant is so large that it is unsigned");
+        type = INTEGER_VALUE_UNSIGNED_LONG_LONG;
+    }
+
+    // Set the values fields and we are all done!
+    value->type = VALUE_INTEGER_TYPE;
+    value->value.integer.type = type;
+    value->value.integer.suffix = suffix;
+    value->value.integer.value = int_val;
 
     return true;
 }
+
+bool parse_preprocessing_number(LiteralValue* value, DiagnosticManager* dm,
+        const Token* token)
+{
+    assert(token_is_type(token, TOKEN_NUMBER));
+
+    const Location location = token->loc;
+
+    const LiteralNode* literal = token->data.literal;
+    const char* string = literal->value.ptr;
+    size_t len = literal->value.len;
+
+    // TODO: below
+    // First before we actually parse anything we need to figure out if we got
+    // a float or a integer literal as it could be either.
+
+    return parse_integer_literal(value, dm, location, string, len);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // The maximum value we can fit in a char size
 static unsigned int get_char_max_value(void)
