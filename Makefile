@@ -31,7 +31,8 @@ UTIL = src/util/panic.c \
 	src/util/str_view.c \
 	src/util/arena.c \
 	src/util/hash.c \
-	src/util/hash_map.c
+	src/util/hash_map.c \
+	src/util/ptr_set.c
 
 FILES = src/files/filepath.c \
 	src/files/file_manager.c \
@@ -58,12 +59,12 @@ LEX = src/lex/identifier_table.c \
 
 PARSE = src/parse/ast_allocator.c \
 	src/parse/type.c \
-	src/parse/symbol.c \
 	src/parse/literal_parser.c \
 	src/parse/expression.c \
 	src/parse/statement.c \
 	src/parse/declaration.c \
 	src/parse/symbol.c \
+	src/parse/scope.c \
 	src/parse/ast.c \
 	src/parse/parser.c \
 	src/parse/semantic.c

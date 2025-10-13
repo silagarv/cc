@@ -9,8 +9,10 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "parse/scope.h"
 #include "parse/semantic.h"
 #include "util/panic.h"
+#include "util/ptr_set.h"
 #include "util/str.h"
 
 #include "files/location.h"
@@ -491,7 +493,38 @@ static bool is_expression_start(Parser* parser, const Token* tok)
 
 static bool is_statement_start(Parser* parser, const Token* tok)
 {
-    panic("TODO");
+    switch (tok->type)
+    {
+        // All of the easy statement startings
+        case TOKEN_LCURLY:
+        case TOKEN_CASE:
+        case TOKEN_DEFAULT:
+        case TOKEN_IF:
+        case TOKEN_SWITCH:
+        case TOKEN_WHILE:
+        case TOKEN_DO:
+        case TOKEN_FOR:
+        case TOKEN_GOTO:
+        case TOKEN_CONTINUE:
+        case TOKEN_BREAK:
+        case TOKEN_RETURN:
+        case TOKEN_SEMI:
+        case TOKEN_IDENTIFIER:
+            return true;
+
+        default:
+            // Otherwise check if we can start and expression or typename
+            if (is_expression_start(parser, tok))
+            {
+                return true;
+            }
+            else if (is_typename_start(parser, tok))
+            {
+                return true;
+            }
+
+            return false;
+    }
 
     return false;
 }
@@ -532,7 +565,7 @@ static Expression* parse_primary_expression(Parser* parser)
 
             // TODO: when parsing an initializer, we should add the symbol to
             // TODO: the symbol table before looking for it.
-            if (!symbol_table_lookup(&parser->symbols, identifier))
+            if (/*!symbol_table_lookup(&parser->symbols, identifier)*/0)
             {
                 // diagnostic_error_at(parser->dm, location,
                 //         "unknown identifier '%s'", identifier->string.ptr);
@@ -1309,6 +1342,18 @@ static Expression* parse_expression(Parser* parser)
 
 // For parsing statements
 
+static Statement* parse_expected_statement(Parser* parser, const char* ctx)
+{
+    if (!is_statement_start(parser, current_token(parser)))
+    {
+        diagnostic_error_at(parser->dm, current_token_start_location(parser),
+                "expected expression after %s", ctx);
+        return statement_create_error(&parser->ast.ast_allocator);
+    }
+
+    return parse_statement(parser);
+}
+
 static Statement* parse_label_statement(Parser* parser)
 {
     // Get the identifier from the current token.
@@ -1316,39 +1361,29 @@ static Statement* parse_label_statement(Parser* parser)
     Location label_loc = consume(parser);
     Location colon_loc = consume(parser);
 
-    // TODO: we need to still fix parsing where label is for example at the end
-    // of a compound statement...
-
-    // TODO: this is not correct as if the label is used implicitly this won't
-    // TODO: work as intended!!
-    if (symbol_table_lookup(&parser->symbols, identifier))
+    // If semantic checker errors, do not continue.
+    Declaration* label_decl = semantic_checker_act_on_label(&parser->sc,
+            identifier, label_loc);
+    if (!label_decl)
     {
-        diagnostic_error_at(parser->dm, label_loc,
-                "redifinition of label '%s'", identifier->string.ptr);
         return statement_create_error(&parser->ast.ast_allocator);
     }
 
-    // Create and insert the label into the symbol table so that we can referece
-    // it for later.
-    Declaration* label_decl = declaration_create_label(
-            &parser->ast.ast_allocator, identifier, label_loc, false);
-    symbol_table_insert(&parser->symbols, label_decl);
-
-    // TODO: need to fix parsing here since labels should have a statement after
-    // them. So will need some kind of statement start function and then have
-    // errors / warnings after
-    // Statement* body = parse_statement(parser);
+    Statement* body = parse_expected_statement(parser, "label");
 
     return statement_create_label(&parser->ast.ast_allocator, label_loc,
-            colon_loc, label_decl, NULL);
+            colon_loc, label_decl, body);
 }
 
 static Statement* parse_case_statement(Parser* parser)
 {    
     Location case_loc = consume(parser);
     Expression* expr = parse_constant_expression(parser);
-    // TODO: error stuff...
     Location colon_loc = match(parser, TOKEN_COLON);
+
+    // TODO: will need to eventually fold the constant expression
+    IntegerValue value = (IntegerValue) {0};
+    /* evaluate_constant_expression(expr);*/
 
     if (!ast_context_current_switch(&parser->current_context))
     {
@@ -1357,7 +1392,7 @@ static Statement* parse_case_statement(Parser* parser)
         return statement_create_error(&parser->ast.ast_allocator);
     }
 
-    Statement* body = parse_statement(parser);
+    Statement* body = parse_expected_statement(parser, "case label");
 
     return statement_create_case(&parser->ast.ast_allocator, case_loc,
             colon_loc, expr, (IntegerValue) {0}, body,
@@ -1377,22 +1412,42 @@ static Statement* parse_default_statement(Parser* parser)
         return statement_create_error(&parser->ast.ast_allocator);
     }
 
-    Statement* stmt = parse_statement(parser);
+    Statement* stmt = parse_expected_statement(parser, "default label");
 
     return statement_create_default(&parser->ast.ast_allocator, default_loc,
             colon_loc, stmt,
             ast_context_current_switch(&parser->current_context));
 }
 
+static Statement* parse_function_body(Parser* parser)
+{
+    // Create and push our function scope
+    FunctionScope func_scope = function_scope_create();
+    sematic_checker_push_function_scope(&parser->sc, &func_scope);
+
+    Statement* stmt = parse_compound_statement(parser);
+
+    // Check our labels.
+    sematic_checker_act_on_end_of_function(&parser->sc);
+
+    // Delete our function scope
+    sematic_checker_pop_function_scope(&parser->sc);
+    function_scope_delete(&func_scope);
+
+    return stmt;
+}
+
 static Statement* parse_compound_statement(Parser* parser)
 {
     assert(is_match(parser, TOKEN_LCURLY));
 
-    // TODO: push new thino context like...
+    // TODO: need to add this in eventually
+    // Scope scope = scope_new_block(NULL);
+    // semantic_checker_push_scope(&parser->sc, &scope);
 
     Location l_curly = consume(parser);
 
-    StatementVector stmts = statement_vector_create(4);
+    StatementVector stmts = statement_vector_create(32);
     while (!is_match(parser, TOKEN_RCURLY) && !is_match(parser, TOKEN_EOF))
     {
         Statement* stmt = parse_statement(parser);
@@ -1409,6 +1464,9 @@ static Statement* parse_compound_statement(Parser* parser)
     {
         r_curly = consume(parser);
     }
+
+    // TODO: at the end of the function pop the scope before returning the
+    // compound statement
 
     return statement_create_compound(&parser->ast.ast_allocator, l_curly,
             r_curly, &stmts);
@@ -1648,11 +1706,15 @@ static Statement* parse_goto_statement(Parser* parser)
     // Get the identifier name and consume the identifier.
     Identifier* label_name = current_token(parser)->data.identifier;
     Location label_location = consume(parser);
-
     Location semi_loc = parse_trailing_semi(parser, "goto statement");
+    
+    // Get the label from the semantic checker. This should never be null as
+    // we will implicitly create a label
+    Declaration* label = semantic_checker_act_on_goto(&parser->sc, label_name,
+            label_location);
 
     return statement_create_goto(&parser->ast.ast_allocator, goto_loc,
-            semi_loc, NULL);
+            semi_loc, label);
 }
 
 static Statement* parse_continue_statement(Parser* parser)
@@ -1983,6 +2045,9 @@ static Declaration* parse_init_declarator_list(Parser* parser,
 
 static void parse_identifier_list(Parser* parser, Declarator* declarator)
 {
+    // Create our set to keep track of the seen identifiers
+    PtrSet identifiers = pointer_set_create();
+
     do
     {
         if (!is_match(parser, TOKEN_IDENTIFIER))
@@ -2001,24 +2066,33 @@ static void parse_identifier_list(Parser* parser, Declarator* declarator)
             diagnostic_error_at(parser->dm, identifier_loc,
                     "unexpected type name '%s', expected identifier",
                     identifier->string.ptr);
-            // TODO: here should we just eat until close paren or accept this
-            // TODO: and just live with it?
+            eat_until(parser, TOKEN_RPAREN);
+            break;
         }
 
-        // TODO: will need to check if we already have the identifier. And error
-        // TODO: if that is the case...
+        if (pointer_set_contains(&identifiers, identifier))
+        {
+            diagnostic_error_at(parser->dm, identifier_loc,
+                    "redefinition of parameter '%s'",
+                    identifier->string.ptr);
+        }
+        else
+        {
+            pointer_set_insert(&identifiers, identifier);
 
-        // TODO: what if we create a ptr hash map for this, as a util file. But
-        // TODO: im not too sure that I would even have any other use for this.
+            // TODO: I should probably also create a list... so that we can add
+            // TODO: the identifiers to it as our function parameters and then
+            // TODO: later we can add the definitions for them :)
+        }
     }
     while (try_match(parser, TOKEN_COMMA));
+
+    pointer_set_delete(&identifiers);
 }
 
 static Declaration* parse_paramater_declaration(Parser* parser)
 {
     DeclarationSpecifiers specifiers = parse_declaration_specifiers(parser);
-    QualifiedType qual_type = qualified_type_from_declaration_specifiers(
-            &parser->sc, &specifiers);
 
     // TODO: will need to change the parsing to where we can have an optional
     // identifier in the declarator and then diagnose later if we needed one but
@@ -2029,8 +2103,7 @@ static Declaration* parse_paramater_declaration(Parser* parser)
     
     parse_declarator(parser, &declarator);
 
-    // TODO: turn into declaration...
-
+    // TODO: turn into declaration.
     Declaration* declaration = NULL;
 
     declarator_delete(&declarator);
@@ -2074,15 +2147,13 @@ static void parse_function_declarator(Parser* parser, Declarator* declarator)
 
     if (!is_match(parser, TOKEN_RPAREN))
     {
-        // Here we look for an identifier list.
-        if (is_match(parser, TOKEN_IDENTIFIER) &&
-                !is_typename_start(parser, current_token(parser)))
+        if (is_typename_start(parser, current_token(parser)))
         {
-            parse_identifier_list(parser, declarator);
+            parse_paramater_type_list(parser, declarator);
         }
         else
         {
-            parse_paramater_type_list(parser, declarator);
+            parse_identifier_list(parser, declarator);
         }
     }
 
@@ -2092,7 +2163,7 @@ static void parse_function_declarator(Parser* parser, Declarator* declarator)
         // TODO: right paren, then this will never actually recover will :(
         diagnostic_error_at(parser->dm, current_token_start_location(parser),
                 "expected ')'");
-        eat_until(parser, TOKEN_RPAREN);        
+        eat_until(parser, TOKEN_RPAREN);
     }
 
     Location rparen_loc = LOCATION_INVALID;
@@ -2101,7 +2172,7 @@ static void parse_function_declarator(Parser* parser, Declarator* declarator)
         rparen_loc = consume(parser);
     }
 
-    // TODO: create our array declarator here.
+    // TODO: create our function declarator here.
 }
 
 static void parse_array_declarator(Parser* parser, Declarator* declarator)
@@ -2591,10 +2662,8 @@ static Declaration* parse_enum_specificier(Parser* parser)
     if (!is_match(parser, TOKEN_IDENTIFIER) && !is_match(parser, TOKEN_LCURLY))
     {
         diagnostic_error_at(parser->dm, current_token_start_location(parser), 
-                "expected identifier or '{'");
-
+                "expected identifier or '{' after 'enum'");
         eat_until(parser, TOKEN_SEMI);
-
         return declaration_create_error(&parser->ast.ast_allocator,
                 enum_location);
     }
@@ -2607,12 +2676,21 @@ static Declaration* parse_enum_specificier(Parser* parser)
         identifier_loc = consume(parser);
     }
 
+    // TODO: this is wrong for sure. What if we are using the enum as a function
+    // return type after declaring it. We should only look it up and error if 
+    // the user tries to rewrite the definition of the enum...
+
     // If we had an identifier we will need to check it is not currently in the
     // tag namespace. Also should add the identifier into the tag namespace if 
     // we get it.
-    if (identifier)
+    if (identifier &&
+            semantic_checker_lookup_tag(&parser->sc, identifier, false))
     {
-        // TODO: check...
+        diagnostic_error_at(parser->dm, identifier_loc, "redefinition of '%s'",
+                identifier->string.ptr);
+        eat_until(parser, TOKEN_SEMI);
+        return declaration_create_error(&parser->ast.ast_allocator,
+                enum_location);
     }
 
     // TODO: create an enumeration declaration, so that we can add the 
@@ -2945,25 +3023,37 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser)
                 break;
 
             case TOKEN_STRUCT:
+            {
                 declaration_specifiers_add_type(parser, &specifiers,
                         TYPE_SPECIFIER_TYPE_STRUCT);
-                parse_struct_or_union_specifier(parser);
+                Declaration* struct_decl = 
+                        parse_struct_or_union_specifier(parser);
+                // TODO: handle the struct declaration...
                 break;
+            }
 
             case TOKEN_UNION:
+            {
                 declaration_specifiers_add_type(parser, &specifiers,
                         TYPE_SPECIFIER_TYPE_UNION);
-                parse_struct_or_union_specifier(parser);
+                Declaration* union_decl = 
+                        parse_struct_or_union_specifier(parser);
+                // TODO: handle the union declaration...
                 break;
-                    
+            }
+            
             case TOKEN_ENUM:
+            {
                 declaration_specifiers_add_type(parser, &specifiers,
                         TYPE_SPECIFIER_TYPE_ENUM);
-                parse_enum_specificier(parser);
+                Declaration* enum_decl = parse_enum_specificier(parser);
+                // TODO: need to do something with the enum declaration...
                 break;
+            }
             
             // Special case of identifier since we could have a typedef.
             case TOKEN_IDENTIFIER:
+            {
                 // If any of the below are true this identifier is considiered
                 // to be part of the direct declarator, even if it is a typedef
                 // Also if this token is not a typename anyways we are also done
@@ -2982,6 +3072,7 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser)
                 // break;
 
                 /* FALLTHROUGH */
+            }
 
             default:
                 goto done_specifiers;
@@ -3057,12 +3148,12 @@ static Declaration* parse_top_level_declaration_or_definition(Parser* parser)
     if (is_match(parser, TOKEN_LCURLY) && 
             declaration_is(decl, DECLARATION_FUNCTION))
     {
-        Statement* body = parse_compound_statement(parser);
+        Statement* body = parse_function_body(parser);
     }
     else
     {
         diagnostic_error_at(parser->dm, current_token_start_location(parser),
-                "expected ';' after declaration");
+                "expected ';' at end of declaration");
 
         eat_until_and(parser, TOKEN_SEMI);
     }
@@ -3074,18 +3165,22 @@ static void parse_translation_unit_internal(Parser* parser)
 {
     add_recover_token(parser, TOKEN_EOF);
 
+    // Create our file scope which will be used throughout parsing the t-unit
+    Scope file = scope_new_file();
+    semantic_checker_push_scope(&parser->sc, &file);
+
     while (current_token_type(parser) != TOKEN_EOF)
     {
         Declaration* decl = parse_top_level_declaration_or_definition(parser);
-
         declaration_vector_push(&parser->ast.top_level_decls, decl);
     }
 
-    remove_recover_token(parser, TOKEN_EOF);
+    // Here we can pop and delete since all of our needed decl's are in the top
+    // level delcaration vector.
+    semantic_checker_pop_scope(&parser->sc);
+    scope_delete(&file);
 
-    declaration_vector_free(&parser->ast.top_level_decls, NULL);
-    ast_allocator_delete(&parser->ast.ast_allocator);
-    symbol_table_delete(&parser->symbols);
+    remove_recover_token(parser, TOKEN_EOF);
 }
 
 void parse_translation_unit(DiagnosticManager* dm, Preprocessor* pp)
@@ -3097,8 +3192,9 @@ void parse_translation_unit(DiagnosticManager* dm, Preprocessor* pp)
     memset(parser.recover_set, 0, sizeof(parser.recover_set));
     parser.ast = ast_create();
     parser.current_context = (AstContext) {0};
-    parser.symbols = symbol_table_create(SYMBOL_NAMESPACE_NONE);
     parser.sc = sematic_checker_create(dm, &parser.ast);
 
     parse_translation_unit_internal(&parser);
+
+    ast_delete(&parser.ast);
 }

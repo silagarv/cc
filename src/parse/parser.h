@@ -40,9 +40,8 @@ typedef struct Parser {
     // Stores the current context of the parser for statements and expressions.
     AstContext current_context;
 
-    // For now we will have a basic implementation with this here...
-    SymbolTable symbols;
-
+    // The semantic checker taking care of all of our declarations and needed
+    // things for that.
     SemanticChecker sc;
 
     // TODO: track brackets???

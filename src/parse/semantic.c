@@ -1,8 +1,18 @@
 #include "semantic.h"
 
 #include <assert.h>
+#include <stddef.h>
+#include <string.h>
 
+#include "util/buffer.h"
+
+#include "driver/diagnostic.h"
+
+#include "lex/identifier_table.h"
+
+#include "parse/scope.h"
 #include "parse/statement.h"
+#include "parse/symbol.h"
 #include "parse/type.h"
 #include "parse/declaration.h"
 
@@ -11,7 +21,9 @@ SemanticChecker sematic_checker_create(DiagnosticManager* dm, Ast* ast)
     SemanticChecker sc = (SemanticChecker)
     {
         .dm = dm,
-        .ast = ast
+        .ast = ast,
+        .scope = NULL,
+        .function = NULL
     };
 
     return sc;
@@ -285,6 +297,145 @@ QualifiedType semantic_checker_process_declarator(SemanticChecker* sc,
     return (QualifiedType) {0};
 }
 
+void semantic_checker_push_scope(SemanticChecker* sc, Scope* scope)
+{
+    // Set the scopes parent
+    scope_set_parent(scope, sc->scope);
+
+    // Set the sematic checkers scope.
+    sc->scope = scope;
+}
+
+void semantic_checker_pop_scope(SemanticChecker* sc)
+{
+    sc->scope = scope_get_parent(sc->scope);
+}
+
+Scope* semantic_checker_current_scope(SemanticChecker* sc)
+{
+    return sc->scope;
+}
+
+Declaration* semantic_checker_lookup_ordinairy(SemanticChecker* sc,
+        Identifier* identifier, bool recursive)
+{
+    // TODO: should add assert to lookup if we are in ordinariy ns or not
+
+    return scope_lookup_ordinairy(sc->scope, identifier, recursive);
+}
+
+Declaration* semantic_checker_lookup_tag(SemanticChecker* sc,
+        Identifier* identifier, bool recursive)
+{
+    // TODO: should add assert to lookup if we are a tag ns or not
+
+    return scope_lookup_tag(sc->scope, identifier, recursive);
+}
+
+Declaration* semantic_checker_lookup_member(SemanticChecker* sc,
+        Identifier* identifier)
+{
+    assert(scope_is(sc->scope, SCOPE_MEMBER) && "must be a member scope");
+
+    return scope_lookup_member(sc->scope, identifier);
+}
+
+// All of our functions for handling function scopes
+void sematic_checker_push_function_scope(SemanticChecker* sc,
+        FunctionScope* function)
+{
+    assert(!sc->function && "should not have a function scope");
+
+    sc->function = function;
+}
+
+void sematic_checker_pop_function_scope(SemanticChecker* sc)
+{
+    assert(sc->function && "should have a function scope");
+
+    sc->function = NULL;
+}
+
+Declaration* semantic_checker_lookup_label(SemanticChecker* sc,
+        Identifier* name)
+{
+    return function_scope_lookup(sc->function, name, true);
+}
+
+Declaration* semantic_checker_act_on_label(SemanticChecker* sc,
+        Identifier* identifier, Location identifier_location)
+{
+    // Attempt to look up the current declaration from the function scope;
+    Declaration* current = function_scope_lookup(sc->function, identifier,
+            true);
+
+    // If we couldn't find any definition of the label then create and insert
+    // the label into the current function scope.
+    if (!current)
+    {
+        Declaration* declaration = declaration_create_label(
+                &sc->ast->ast_allocator, identifier, identifier_location,
+                false);
+        function_scope_insert(sc->function, declaration);
+        return declaration;
+    }
+
+    // If we're not implicit that means we've seen the label definition before
+    // This is a problem so error and return
+    if (!current->base.implicit)
+    {
+        diagnostic_error_at(sc->dm, identifier_location,
+                "redefinition of label '%s'", identifier->string.ptr);
+        // TODO: add note for original location?
+        return NULL;
+    }
+
+    // If we're here we have seen the label before but only from one or more
+    // goto's. Since we have finally seen the proper definition we want to
+    // overwrite some of the current values
+    current->base.implicit = false;
+    current->base.location = identifier_location;
+
+    return current;
+}
+
+Declaration* semantic_checker_act_on_goto(SemanticChecker* sc,
+        Identifier* identifier, Location identifier_location)
+{
+    // If we already have the label in the function scope return that
+    Declaration* decl = function_scope_lookup(sc->function, identifier, true);
+    if (decl)
+    {
+        return decl;
+    }
+
+    decl = declaration_create_label(&sc->ast->ast_allocator, identifier,
+            identifier_location, true);
+    function_scope_insert(sc->function, decl);
+
+    return decl;
+}
+
+void sematic_checker_act_on_end_of_function(SemanticChecker* sc)
+{
+    for (size_t i = 0; i < declaration_vector_size(&sc->function->used_labels);
+            i++)
+    {
+        // For each declaration lookup the label in the function scope only
+        // allowing for actual label definitions. Then we can error about ones
+        // which were not declared.
+        Declaration* decl = declaration_vector_get(&sc->function->used_labels,
+                i);
+        if (!function_scope_lookup(sc->function, decl->base.identifier, false))
+        {
+            diagnostic_error_at(sc->dm, decl->base.location,
+                    "use of undeclared label '%s'",
+                    decl->base.identifier->string.ptr);
+        }
+
+        // TODO: warn about declared but unused labels?
+    }
+}
 
 Expression* typecheck_expression(Ast* ast, Expression* expression);
 Declaration* typecheck_declaration(Ast* ast, Declaration* expression);

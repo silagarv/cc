@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 #include "parse/ast_allocator.h"
+#include "parse/scope.h"
 #include "parse/symbol.h"
 #include "parse/type.h"
 #include "parse/expression.h"
@@ -16,11 +17,11 @@
 // TODO: I think that I would also like to put our current scope's and stuff in
 // TODO: here since it would be nice and convenient to use for this.
 typedef struct AstContext {
-    void* current_function; // the current function we are parsing
+    Statement* current_iteration;
+    Statement* current_breakable;
+    Statement* current_switch;
 
-    Statement* current_iteration; // for giving continue a top level stmt
-    Statement* current_breakable; // for giving switch, for, do while, and while breaks'
-    Statement* current_switch; // the current switch statement.
+    Scope file_scope;
 } AstContext;
 
 // This represents the abstract syntax tree for a translation unit.
