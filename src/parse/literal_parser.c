@@ -3,9 +3,10 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <string.h>
 #include <wchar.h>
 #include <limits.h>
+#include <math.h>
+#include <float.h>
 #include <assert.h>
 
 #include "util/panic.h"
@@ -20,6 +21,8 @@
 
 static int parse_integer_prefix(const char* string, size_t len, size_t* pos)
 {
+    assert(*pos == 0 && "not at start of integer");
+
     // Any number in a special base should start with a '0'
     if (string[*pos] != '0')
     {
@@ -373,6 +376,312 @@ bool parse_integer_literal(LiteralValue* value, DiagnosticManager* dm,
     return true;
 }
 
+static int parse_float_prefix(const char* string, size_t len, size_t* pos)
+{
+    assert(*pos == 0 && "not at start of integer");
+
+    if (string[0] != '0')
+    {
+        return 10;
+    }
+
+    if (string[1] == 'x' || string[1] == 'X')
+    {
+        if (string[2] == '\0')
+        {
+            return 10;
+        }
+
+        *pos += 1;
+        return 16;
+    }
+
+    return 10;
+}
+
+static FloatingValueSuffix parse_float_suffix(const char* string, size_t len,
+        size_t* pos)
+{
+    // If we have no suffix
+    if (len == *pos)
+    {
+        return FLOATING_VALUE_SUFFIX_NONE;
+    }
+
+    size_t current_pos = *pos;
+    if (string[current_pos] == 'f' || string[current_pos] == 'F')
+    {
+        current_pos++;
+
+        if (current_pos == len)
+        {
+            *pos = current_pos;
+
+            return FLOATING_VALUE_SUFFIX_F;
+        }
+    }
+    else if (string[current_pos] == 'l' || string[current_pos] == 'L')
+    {
+        current_pos++;
+
+        if (current_pos == len)
+        {
+            *pos = current_pos;
+
+            return FLOATING_VALUE_SUFFIX_L;
+        }
+    }
+
+    return FLOATING_VALUE_SUFFIX_ERROR;
+}
+
+bool parse_float_exponent(const char* string, size_t len, size_t* pos,
+        long double* exponent)
+{
+    assert(string[*pos] == 'E' || string[*pos] == 'e');
+
+    *pos += 1;
+
+    // see if we get a plus or minus first as well...
+    bool negative = false;
+    if (string[*pos] == '-')
+    {
+        negative = true;
+        *pos += 1;
+    }
+    else if (string[*pos] == '+')
+    {
+        *pos += 1;
+    }
+    else if (string[*pos] == '\0')
+    {
+        // TODO: somehow issue an error that exponent has no digits
+        return true;
+    }
+
+    // TODO: parse digit sequence...
+    uint64_t value = 0;
+    bool overflow = false;
+    for (; *pos < len; *pos += 1)
+    {
+        char current = string[*pos];
+
+        // We either have an error, a suffix, or are at the end of the string
+        if (!is_decimal(current))
+        {
+            break;
+        }
+
+        // Check if the multiplication will overflow
+        if (value > UINT64_MAX / (uint64_t) 10)
+        {
+            overflow = true;
+        }
+
+        // Okay now get the digit and perform the multiplication
+        uint64_t digit = convert_character_base(current, 10);
+        uint64_t new_val = value * 10;
+
+        // Now check if addition will overflow the result
+        if (new_val + digit < new_val)
+        {
+            overflow = true;
+        }
+
+        // Add digit to newval
+        new_val += digit;
+
+        // Set the new int_val
+        value = new_val;
+    }
+
+    // If we overflow set the value to uint64 max so that the parse should later
+    // error that the float overflowed.
+    if (overflow)
+    {
+        value = UINT64_MAX;
+    }
+
+    // Finally set the exponent value correctly.
+    if (negative)
+    {
+        *exponent = -1.l * (long double) value;
+    }
+    else
+    {
+        *exponent = (long double) value;
+    }   
+
+    return false;
+}
+
+static FloatingValueType determine_float_value_type(FloatingValueSuffix suffix)
+{
+    switch (suffix)
+    {
+        case FLOATING_VALUE_SUFFIX_NONE: return FLOATING_VALUE_DOUBLE;
+        case FLOATING_VALUE_SUFFIX_F: return FLOATING_VALUE_FLOAT;
+        case FLOATING_VALUE_SUFFIX_L: return FLOATING_VALUE_LONG_DOUBLE;
+        default:
+            panic("unreachable");
+            return FLOATING_VALUE_ERROR;
+    }
+}
+
+const char* floating_type_to_name(FloatingValueType type)
+{
+    switch (type)
+    {
+        case FLOATING_VALUE_ERROR:
+            panic("unreachable");
+            return NULL;
+        
+        case FLOATING_VALUE_FLOAT:
+            return "float";
+
+        case FLOATING_VALUE_DOUBLE:
+            return "double";
+
+        case FLOATING_VALUE_LONG_DOUBLE:
+            return "long double";
+    }
+}
+
+static bool check_float_value(long double* value, FloatingValueType type)
+{
+    switch (type)
+    {
+        case FLOATING_VALUE_FLOAT:
+            if (*value > FLT_MAX)
+            {
+                *value = FLT_MAX;
+
+                return true;
+            }
+            return false;
+
+        case FLOATING_VALUE_DOUBLE:
+            if (*value > DBL_MAX)
+            {
+                *value = DBL_MAX;
+
+                return true;
+            }
+            return false;
+
+        case FLOATING_VALUE_LONG_DOUBLE:
+            if (*value > LDBL_MAX)
+            {
+                *value = LDBL_MAX;
+
+                return true;
+            }
+            return false;
+
+        case FLOATING_VALUE_SUFFIX_ERROR:
+            panic("unreachable");
+            break;
+    }
+
+    return false;
+}
+
+bool parse_float_literal(LiteralValue* value, DiagnosticManager* dm,
+        Location location, const char* string, size_t len)
+{
+    size_t pos = 0;
+    int base = parse_float_prefix(string, len, &pos);
+    
+    assert(base == 10 && "hexadecimal floats not supported");
+
+    long double number = 0;
+    long double postdot_multiply = 1E-1;
+    long double exponent = 0;
+    bool dot = false;
+    bool had_exponent = false;
+    
+    for (; pos < len; pos++)
+    {
+        char current = string[pos];
+
+        if (!is_valid_character_in_base(current, base))
+        {
+            if (current == '.')
+            {
+                dot = true;
+                continue;
+            }
+            
+            // Parse the exponent, then break from the loop to go to the last
+            // part to check if we have a suffix or not
+            if (current == 'e' || current == 'E')
+            {
+                bool error = parse_float_exponent(string, len, &pos,
+                        &exponent);
+                if (error)
+                {
+                    diagnostic_error_at(dm, location, "exponent has no digits");
+                    return false;
+                }
+                had_exponent = true;
+            }
+            break;
+        }
+
+        uint64_t digit = convert_character_base(current, base);
+        if (!dot)
+        {
+            // Handle the part before the dot
+            number = (number * 10) + (long double) digit;
+        }
+        else
+        {
+            number = number + (long double) digit * postdot_multiply;
+            postdot_multiply /= 10;
+        }
+    }
+
+     // Finally get the suffix of the number
+    FloatingValueSuffix suffix = parse_float_suffix(string, len, &pos);
+    if (suffix == FLOATING_VALUE_SUFFIX_ERROR)
+    {
+        diagnostic_error_at(dm, location,
+                "invalid suffix '%s' on floating constant", string + pos);
+        return false;
+    }
+
+    assert(len == pos && "should have failed to convert");
+    
+    // First get the type of float that we have.
+    FloatingValueType type = determine_float_value_type(suffix);
+
+    // If had an exponent we need to do some maths here.
+    if (had_exponent)
+    {
+        // TODO: what about really small values. Need to figure this out...
+        exponent = powl(10, exponent);
+        number *= exponent;
+    }
+
+    // TODO: check that we also don't underflow our floats i.e. get way too
+    // small of a value
+    bool error = check_float_value(&number, type);
+    if (error)
+    {   
+        const char* type_name = floating_type_to_name(type);
+        diagnostic_warning_at(dm, location,
+                "floating-point constant too large for type '%s'", type_name);
+    }
+
+    // Finally set up our finished floating value type here.
+    value->type = VALUE_FLOATING_TYPE;
+    value->value.floating.type = type;
+    value->value.floating.suffix = suffix;
+    value->value.floating.value = number;
+
+    return true;
+}
+
 bool parse_preprocessing_number(LiteralValue* value, DiagnosticManager* dm,
         const Token* token)
 {
@@ -384,9 +693,12 @@ bool parse_preprocessing_number(LiteralValue* value, DiagnosticManager* dm,
     const char* string = literal->value.ptr;
     size_t len = literal->value.len;
 
-    // TODO: below
     // First before we actually parse anything we need to figure out if we got
-    // a float or a integer literal as it could be either.
+    // a float or a integer literal as it could be either. Then we can try
+    // the conversion. We need to do this since we could go either way at this
+    // point... Then we also need to redo character and string conversion sadly
+
+    // return parse_float_literal(value, dm, location, string, len);
 
     return parse_integer_literal(value, dm, location, string, len);
 }

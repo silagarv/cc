@@ -1388,7 +1388,7 @@ static Statement* parse_case_statement(Parser* parser)
     if (!ast_context_current_switch(&parser->current_context))
     {
         diagnostic_error_at(parser->dm, case_loc,
-                "case statement not in switch statement");
+                "'case' statement not in switch statement");
         return statement_create_error(&parser->ast.ast_allocator);
     }
 
@@ -1408,7 +1408,7 @@ static Statement* parse_default_statement(Parser* parser)
     if (!ast_context_current_switch(&parser->current_context))
     {
         diagnostic_error_at(parser->dm, default_loc,
-                "default statement not in switch statement");
+                "'default' statement not in switch statement");
         return statement_create_error(&parser->ast.ast_allocator);
     }
 
@@ -1638,7 +1638,8 @@ static Statement* parse_for_statement(Parser* parser)
     }
     else
     {
-        // TODO: ensure this is adequete error recovery
+        // TODO: ensure this is adequete error recovery also change the message
+        // to possibly 'expected expression'
         diagnostic_error_at(parser->dm, current_token_start_location(parser), 
                 "bad initialisation in for statement");
 
@@ -1725,7 +1726,7 @@ static Statement* parse_continue_statement(Parser* parser)
     if (!ast_context_current_iterable(&parser->current_context))
     {
         diagnostic_error_at(parser->dm, continue_loc, 
-                "continue statement not in loop statement");
+                "'continue' statement not in loop statement");
         return statement_create_error(&parser->ast.ast_allocator);
     }
 
@@ -1741,7 +1742,7 @@ static Statement* parse_break_statement(Parser* parser)
     if (!ast_context_current_breakable(&parser->current_context))
     {
         diagnostic_error_at(parser->dm, break_loc,
-                "break statement not in loop or switch statement");
+                "'break' statement not in loop or switch statement");
         return statement_create_error(&parser->ast.ast_allocator);
     }
 
@@ -2007,6 +2008,7 @@ static Declaration* parse_init_declarator(Parser* parser,
     // declarator.
     Declarator declarator = declarator_create(specifiers);
     parse_declarator(parser, &declarator);
+    
     QualifiedType type = semantic_checker_process_declarator(&parser->sc, 
             &declarator);
 
@@ -2545,13 +2547,13 @@ static Declaration* parse_struct_or_union_specifier(Parser* parser)
 {
     assert(has_match(parser, (TokenType[]) {TOKEN_STRUCT, TOKEN_UNION}, 2));
 
-    bool is_struct = (current_token_type(parser) == TOKEN_STRUCT);
+    bool is_struct = is_match(parser, TOKEN_STRUCT);
 
-    Location struct_or_union = consume(parser);
+    Location struct_or_union_loc = consume(parser);
 
     if (!is_match(parser, TOKEN_IDENTIFIER) && !is_match(parser, TOKEN_LCURLY))
     {
-        diagnostic_error_at(parser->dm, struct_or_union,
+        diagnostic_error_at(parser->dm, struct_or_union_loc,
                 "declaration of anonymous struct must be a definition");
         eat_until(parser, TOKEN_SEMI);
     }
@@ -2875,10 +2877,19 @@ static void declaration_specifiers_add_type(Parser* parser,
     }
     else
     {
-        diagnostic_error_at(parser->dm, location,
-                "cannot combine '%s' with previous '%s' type specifier",
-                type_specifier_to_name(type),
-                type_specifier_to_name(specifiers->type_spec_type));
+        if (specifiers->type_spec_type != type)
+        {
+            diagnostic_error_at(parser->dm, location,
+                    "cannot combine '%s' with previous '%s' type specifier",
+                    type_specifier_to_name(type),
+                    type_specifier_to_name(specifiers->type_spec_type));
+        }
+        else
+        {
+            diagnostic_error_at(parser->dm, location,
+                    "got duplicate '%s' type specifier",
+                    type_specifier_to_name(type));
+        }
     }
 }
 
@@ -3091,8 +3102,6 @@ static Declaration* parse_declaration(Parser* parser)
 {
     // First we need to get our declaration specifiers here
     DeclarationSpecifiers specifiers = parse_declaration_specifiers(parser);
-    QualifiedType qual_type = qualified_type_from_declaration_specifiers(
-            &parser->sc, &specifiers);
 
     if (!is_match(parser, TOKEN_SEMI))
     {

@@ -12,7 +12,8 @@ CFLAGS += -Wno-unused-parameter \
 	-Wno-switch \
 	-Wshadow \
 	-Wvla \
-	-ferror-limit=0
+	-ferror-limit=0 \
+	-lm
 
 # CFLAGS += -fanalyzer
 # CFLAGS += -flto
