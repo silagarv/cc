@@ -41,12 +41,18 @@ int compiler_main(int argc, char** argv)
 
     Filepath path = FILEPATH_STATIC_INIT("test.c");
     SourceFile* source = source_manager_create_filepath(&sm, path);
-    assert(source);
+    
+    if (!source)
+    {
+        diagnostic_error(&dm, "no such file '%s'", path.path);
+        goto no_input;
+    }
 
     Preprocessor pp = preprocessor_create(&dm, &sm, source);
     parse_translation_unit(&dm, &pp);
 
     preprocessor_delete(&pp);
+no_input:
     source_manager_delete(&sm);
 
     return 0;
