@@ -606,7 +606,7 @@ bool parse_float_literal(LiteralValue* value, DiagnosticManager* dm,
 
         if (!is_valid_character_in_base(current, base))
         {
-            if (current == '.')
+            if (current == '.' && !dot)
             {
                 dot = true;
                 continue;
