@@ -24,6 +24,7 @@ To building, run 'make' in the cc directory and it wll output an executable name
 - Declaration parsing
     - complete the building of the function types
     - build declarations from the declarator
+    - typedef resolution
     - implement correct semantic analysis for then
     - add to a symbol table
     - will need to then complete enum parsing
