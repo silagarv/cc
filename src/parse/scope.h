@@ -53,7 +53,7 @@ bool scope_is(const Scope* scope, ScopeFlags flags);
 // to errors.
 Scope scope_new_file(void);
 
-Scope scope_new_block(Scope* parent);
+Scope scope_new_block(void);
 
 // TODO: work out how this will work since we can have function prototypes both
 // in file scope and in block scope... e.g. declared in a function as well!!!
@@ -82,6 +82,7 @@ bool scope_contains(const Scope* scope, Identifier* name);
 
 bool scope_add_symbol(const Scope* scope, Declaration* declaration);
 
+// Function scopes are specially for function labels
 FunctionScope function_scope_create(void);
 void function_scope_delete(FunctionScope* scope);
 

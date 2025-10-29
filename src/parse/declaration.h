@@ -171,7 +171,8 @@ vector_of_decl(Declaration*, Declaration, declaration);
 typedef enum DeclaratorPieceType {
     DECLARATOR_PIECE_POINTER,
     DECLARATOR_PIECE_ARRAY,
-    DECLARATOR_PIECE_FUNCTION
+    DECLARATOR_PIECE_FUNCTION,
+    DECLARATOR_PIECE_KNR_FUNCTION
 } DeclaratorPieceType;
 
 typedef struct DeclaratorPieceBase {
@@ -201,11 +202,18 @@ typedef struct DeclaratorPieceFunction {
     bool is_star;
 } DeclaratorPieceFunction;
 
+typedef struct DeclaratorPieceKnrFunction {
+    DeclaratorPieceBase base;
+    Identifier** identifiers;
+    size_t num_identifiers;
+} DeclaratorPieceKnrFunction;
+
 typedef union DeclaratorPiece {
     DeclaratorPieceBase base;
     DeclaratorPiecePointer pointer;
     DeclaratorPieceArray array;
     DeclaratorPieceFunction function;
+    DeclaratorPieceKnrFunction knr_function;
 } DeclaratorPiece;
 
 vector_of_decl(DeclaratorPiece, DeclaratorPiece, declarator_piece);

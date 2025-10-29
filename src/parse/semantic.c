@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "files/location.h"
+#include "parse/expression.h"
 #include "util/buffer.h"
 
 #include "driver/diagnostic.h"
@@ -159,7 +161,12 @@ static QualifiedType add_type_qualifiers(SemanticChecker* sc,
     }
 
     if (type_qualifier_is_const(qualifiers))
-        ; // TODO;
+    {
+        if (type->type_base.type == TYPE_VOID)
+        {
+            ; // TODO: ...
+        }
+    }
 
     if (type_qualifier_is_volatile(qualifiers))
         ; // TODO;
@@ -288,13 +295,112 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
     return add_type_qualifiers(sc, specifiers, type);
 }
 
-static QualifiedType semantic_checker_process_array_declarator(
-        SemanticChecker* sc, DeclaratorPiece piece);
+static void semantic_checker_process_array(SemanticChecker* sc,
+        QualifiedType* type, DeclaratorPiece* piece)
+{
+    assert(piece->base.type == DECLARATOR_PIECE_ARRAY);
 
-QualifiedType semantic_checker_process_declarator(SemanticChecker* sc,
+    DeclaratorPieceArray* array = (DeclaratorPieceArray*) piece;
+    
+    size_t length = 0;
+    bool is_static = false;
+    bool is_star = false;
+    bool is_vla = false;
+
+    if (array->is_static)
+    {
+        diagnostic_error_at(sc->dm, array->lbracket,
+                "static arrays not supported");
+    }
+
+    if (array->is_star)
+    {
+        diagnostic_error_at(sc->dm, array->lbracket,
+                "star arrays not supported");
+    }
+
+    if (array->expression && 
+            array->expression->base.kind != EXPRESSION_INTEGER_CONSTANT)
+    {
+        diagnostic_error_at(sc->dm, array->lbracket,
+                "cannot determine array size at this time");
+    }
+
+    QualifiedType new_type = type_create_array(&sc->ast->ast_allocator, type,
+            length, is_static, is_star, is_vla);
+    *type = new_type;
+}
+
+static void semantic_checker_process_pointer(SemanticChecker* sc,
+        QualifiedType* type, DeclaratorPiece* piece)
+{
+    assert(piece->base.type == DECLARATOR_PIECE_POINTER);
+
+    DeclaratorPiecePointer* pointer = (DeclaratorPiecePointer*) piece;
+
+    // TODO: figure out the restrictions on pointers
+
+    QualifiedType new_type = type_create_pointer(&sc->ast->ast_allocator, type,
+            pointer->qualifiers);
+    *type = new_type;
+}
+
+static void semantic_checker_process_function(SemanticChecker* sc,
+        QualifiedType* type, DeclaratorPiece* piece)
+{
+    ; // TODO: create function delcarator pieces
+}
+
+QualifiedType semantic_checker_process_type(SemanticChecker* sc,
         Declarator* declarator)
 {
-    return (QualifiedType) {0};
+    // First start by getting the type from the declaration specifiers
+    QualifiedType type = qualified_type_from_declaration_specifiers(sc, 
+            declarator->specifiers);
+    
+    // We will want to iterate backwards through our 'stack' or declaration
+    // pieces
+    size_t num_pieces = declarator_piece_vector_size(&declarator->pieces);
+    for (size_t i = 0; i < num_pieces; i++)
+    {   
+        // Iterate backwars this way since size_t will underflow to UINT64_MAX
+        DeclaratorPiece piece = 
+                declarator_piece_vector_get(&declarator->pieces,
+                num_pieces - 1 - i);
+        
+        switch (piece.base.type)
+        {
+            case DECLARATOR_PIECE_ARRAY:
+                semantic_checker_process_array(sc, &type, &piece);
+                break;
+
+            case DECLARATOR_PIECE_POINTER:
+                semantic_checker_process_pointer(sc, &type, &piece);
+                break;
+
+            case DECLARATOR_PIECE_FUNCTION:
+                printf("function\n");
+                break;
+
+            default:
+                panic("unreachable");
+        }
+    }
+
+    type_print(&type);  
+    printf("\n");
+
+    return type;
+}
+
+Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
+        Declarator* declarator)
+{
+    // Process the type since we will want to error with the current vs previous
+    // type if we get a redeclaration, so this will be necessary.
+    QualifiedType type = semantic_checker_process_type(sc, declarator);
+    
+    return NULL;
 }
 
 void semantic_checker_push_scope(SemanticChecker* sc, Scope* scope)

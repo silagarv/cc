@@ -247,10 +247,4 @@ Expression* expression_create_parenthesised(AstAllocator* allocator,
 // TODO: so we will need to set up some stuff here to do that. This will also
 // TODO: be useful for any preprocessor work that we have to do.
 
-bool expression_can_fold(const Expression* expression);
-
-void expression_fold(const Expression* expression);
-
-bool expression_fold_to_bool(const Expression* expression);
-
 #endif /* EXPRESSION_H */

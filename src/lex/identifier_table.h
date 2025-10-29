@@ -4,10 +4,12 @@
 // This file will contain prototypes for our identifier table so that
 // we are able to easily intern identifiers to save 
 
-#include "lex/token.h"
 #include "util/arena.h"
 #include "util/str.h"
 #include "util/hash_map.h"
+#include "util/vec.h"
+
+#include "lex/token.h"
 
 // An identifier within the source.
 typedef struct Identifier {
@@ -24,6 +26,8 @@ typedef struct Identifier {
     // of time when trying to find the right identifier in the identifier table.
     uint32_t hash;
 } Identifier;
+
+vector_of_decl(Identifier*, Identifier, identifier);
 
 // TODO: change identifier allocation to use an arena instead of normal 
 // allocations

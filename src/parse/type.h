@@ -124,14 +124,12 @@ typedef struct TypeUnreal {
 // be known or unknown and we may have done all of the counting ourselves...
 typedef struct TypeArray {
     TypeBase base;
-    Type* element_type; // The individual element type
+    QualifiedType element_type; // the individual element type
     size_t length; // Set if known otherwise 0
 
     // TODO: what do I do about the absolute mess below
-    bool is_size_known; // Do we know a size or at least a minimum size of it
     bool is_static; // is it declared with [static a] for example
-    bool is_variable; // is it declared with [*] (why... so many options)
-    bool is_size_implicit; // Do we know cause we counted all elements or what?
+    bool is_star; // is it declared with [*] (why... so many options)
     bool is_vla; // is it a variable length array
 } TypeArray;
 
@@ -174,7 +172,7 @@ typedef struct TypeFunction {
 // A type to a pointer containing a qualifier type and the base.
 typedef struct TypePointer {
     TypeBase base;
-    QualifiedType underlying_type; // this could be a pointer type as well
+    QualifiedType underlying_type;
 } TypePointer;
 
 // And a typedef
@@ -232,17 +230,27 @@ bool type_qualifier_is_restrict(TypeQualifiers qualifiers);
 bool type_qualifier_is_volatile(TypeQualifiers qualifiers);
 bool type_qualifier_already_has(TypeQualifiers qualifiers, TypeQualifiers has);
 
-TypeBuiltins type_builtins_initialise(AstAllocator* allocator);// Functions to compare types and test if they are equal...
+// Functions to compare types and test if they are equal...
+TypeBuiltins type_builtins_initialise(AstAllocator* allocator);
 bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2);
 bool qualifier_type_is_equal_canonical(const QualifiedType* t1, 
         const QualifiedType* t2);
 
-Type* type_create_pointer(AstAllocator* allocator, Type* base_type,
-        TypeQualifiers qualifiers);
+// Functions for creating and maniputing types
+QualifiedType type_create_pointer(AstAllocator* allocator,
+        QualifiedType* base_type, TypeQualifiers qualifiers);
+QualifiedType type_create_array(AstAllocator* allocator,
+        QualifiedType* element_type, size_t length, bool is_static,
+        bool is_star, bool is_vla);
+QualifiedType type_create_function(AstAllocator* allocator,
+        QualifiedType* return_type, QualifiedType** paramaters,
+        size_t num_paramaters, bool unspecified_paramters, bool variadic);
 
 // Functions to compare types and test if they are equal...
 bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2);
 bool qualifier_type_is_equal_canonical(const QualifiedType* t1, 
         const QualifiedType* t2);
+
+void type_print(const QualifiedType* t1);
 
 #endif /* TYPE_H */

@@ -7,9 +7,12 @@
 #include "util/str.h"
 #include "util/hash.h"
 #include "util/hash_map.h"
+#include "util/vec.h"
 
 #include "lex/char_help.h"
 #include "lex/token.h"
+
+vector_of_impl(Identifier*, Identifier, identifier)
 
 // Create a malloced identifier structure with an owned string inside of it
 Identifier* identifier_create(String str)

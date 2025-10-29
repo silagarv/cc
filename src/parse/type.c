@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
+#include <sys/cdefs.h>
 
 #include "parse/ast_allocator.h"
 #include "util/buffer.h"
@@ -158,17 +159,59 @@ TypeBuiltins type_builtins_initialise(AstAllocator* allocator)
     return builtins;
 }
 
-static Type* type_create_base(AstAllocator* allocator, TypeKind kind)
+static Type* type_create_base(AstAllocator* allocator, size_t alloc_size,
+        TypeKind kind, size_t size, size_t align, bool complete)
 {
-    panic("TODO");
+    Type* type = ast_allocator_alloc(allocator, alloc_size);
+    type->type_base.type = kind;
+    type->type_base.type_size = size;
+    type->type_base.type_alignment = align;
+    type->type_base.is_complete = complete;
 
-    return NULL;
+    return type;
 }
 
-Type* type_create_pointer(AstAllocator* allocator, Type* base_type,
-        TypeQualifiers qualifiers)
+QualifiedType type_create_pointer(AstAllocator* allocator,
+        QualifiedType* base_type, TypeQualifiers qualifiers)
 {
-    return NULL;
+    // Simply create a pointer type and set the underlying type
+    Type* type = type_create_base(allocator, sizeof(TypePointer), TYPE_POINTER,
+            8, 8, true);
+    type->type_pointer.underlying_type = *base_type;
+
+    return (QualifiedType) {qualifiers, type};
+}
+
+QualifiedType type_create_array(AstAllocator* allocator,
+        QualifiedType* element_type, size_t length, bool is_static,
+        bool is_star, bool is_vla)
+{
+    // Get the size of the array if the length if known
+    size_t size = length * element_type->type->type_base.type_size;
+
+    // Array of unknown length are incomplete types
+    bool is_complete = (length == 0) ? false : true;
+
+    // Need to determine the size and align or the array.
+    Type* type = type_create_base(allocator, sizeof(TypeArray), TYPE_ARRAY,
+            size, element_type->type->type_base.type_alignment, is_complete);
+    type->type_array.element_type = *element_type;
+    type->type_array.length = length;
+    type->type_array.is_static = is_static;
+    type->type_array.is_star = is_star;
+    type->type_array.is_vla = is_vla;
+
+    // Cannot really add qualifiers to arrays
+    return (QualifiedType) {TYPE_QUALIFIER_NONE, type};
+}
+
+QualifiedType type_create_function(AstAllocator* allocator,
+        QualifiedType* return_type, QualifiedType** paramaters,
+        size_t num_paramaters, bool unspecified_paramters, bool variadic)
+{
+
+
+    return (QualifiedType) {0};
 }
 
 bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2)
@@ -180,5 +223,29 @@ bool qualifier_type_is_equal_canonical(const QualifiedType* t1,
         const QualifiedType* t2)
 {
     return t1->type == t2->type;
+}
+
+void type_print(const QualifiedType* t1)
+{
+    switch (t1->type->type_base.type)
+    {
+        case TYPE_S_INT:
+            printf("int ");
+            break;
+
+        case TYPE_U_INT:
+            printf("unsigned int ");
+            break;
+
+        case TYPE_POINTER:
+            printf("pointer to ");
+            type_print(&t1->type->type_pointer.underlying_type);
+            break;
+
+        case TYPE_ARRAY:
+            printf("array of ");
+            type_print(&t1->type->type_array.element_type);
+            break;
+    }
 }
 

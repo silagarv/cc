@@ -682,6 +682,60 @@ bool parse_float_literal(LiteralValue* value, DiagnosticManager* dm,
     return true;
 }
 
+static ValueType determine_value_type(const char* string, size_t len)
+{
+    size_t pos = 0;
+    int base = 10;
+
+    // Check if length > 2
+    if (string[0] == '0')
+    {
+        if ((string[1] == 'x' || string[1] == 'X') && len > 2)
+        {
+            base = 16;
+
+            pos += 2;
+        }
+        else
+        {
+            base = 8;
+
+            pos++;
+        }
+    }
+
+    for (; pos < len; pos++)
+    {
+        char current = string[pos];
+        
+        // Can simply keep going if we're at a valid character in the base
+        if (is_valid_character_in_base(current, base))
+        {
+            continue;
+        }
+
+        // A dot means we certainly have a floating value
+        if (current == '.')
+        {
+            return VALUE_FLOATING_TYPE;
+        }
+
+        if (current == 'p' || current == 'P')
+        {
+            return VALUE_FLOATING_TYPE;
+        }
+
+        if (current == 'e' || current == 'E')
+        {
+            return VALUE_FLOATING_TYPE;
+        }
+    }
+
+    // If we get to the end and haven't seen any floating point stuff we got
+    // and integer value type.
+    return VALUE_INTEGER_TYPE;
+} 
+
 bool parse_preprocessing_number(LiteralValue* value, DiagnosticManager* dm,
         const Token* token)
 {
@@ -697,10 +751,14 @@ bool parse_preprocessing_number(LiteralValue* value, DiagnosticManager* dm,
     // a float or a integer literal as it could be either. Then we can try
     // the conversion. We need to do this since we could go either way at this
     // point... Then we also need to redo character and string conversion sadly
-
-    // return parse_float_literal(value, dm, location, string, len);
-
-    return parse_integer_literal(value, dm, location, string, len);
+    if (determine_value_type(string, len) == VALUE_FLOATING_TYPE)
+    {
+        return parse_float_literal(value, dm, location, string, len);
+    }
+    else
+    {
+        return parse_integer_literal(value, dm, location, string, len);
+    }
 }
 
 

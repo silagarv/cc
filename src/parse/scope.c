@@ -35,12 +35,15 @@ Scope scope_new_file(void)
 // think about. e.g. additional block scopes within functions should not
 // inherit the function flag for labels. But scopes should inherit for example
 // switch and that kind of thing.
-Scope scope_new_block(Scope* previous)
+Scope scope_new_block(void)
 {
     Scope scope = (Scope)
     {
         .flags = SCOPE_DECL,
-        .parent = previous
+        .parent = NULL,
+        .ordinairy = {0},//symbol_table_create(),
+        .tag = {0},//symbol_table_create(),
+        .members = {0}
     };
 
     return scope;
@@ -53,7 +56,7 @@ void scope_delete(Scope* scope)
 
 void scope_set_parent(Scope* scope, Scope* parent)
 {
-    assert(scope->parent == NULL && "scope should not have a parent");
+    assert(scope->parent == NULL);
 
     scope->parent = parent;
 }
