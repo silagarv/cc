@@ -4,6 +4,7 @@
 
 #include <stdlib.h>
 
+vector_of_impl(Location, Location, location)
 vector_of_impl(LocationRange, LocationRange, location_range)
 
 // Check if a location is valid or invalid

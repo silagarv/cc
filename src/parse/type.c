@@ -214,6 +214,16 @@ QualifiedType type_create_function(AstAllocator* allocator,
     return (QualifiedType) {0};
 }
 
+bool qualified_type_is(const QualifiedType* type, TypeKind kind)
+{
+    if (type->type == NULL)
+    {
+        return false;
+    }
+
+    return type->type->type_base.type == kind;
+}
+
 bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2)
 {
     return t1->type == t2->type && t1->qualifiers == t2->qualifiers;
@@ -227,6 +237,21 @@ bool qualifier_type_is_equal_canonical(const QualifiedType* t1,
 
 void type_print(const QualifiedType* t1)
 {
+    if (t1->qualifiers & TYPE_QUALIFIER_CONST)
+    {
+        printf("const ");
+    }
+
+    if (t1->qualifiers & TYPE_QUALIFIER_VOLATILE)
+    {
+        printf("volatile ");
+    }
+
+    if (t1->qualifiers & TYPE_QUALIFIER_RESTRICT)
+    {
+        printf("restrict ");
+    }
+
     switch (t1->type->type_base.type)
     {
         case TYPE_S_INT:
@@ -235,6 +260,18 @@ void type_print(const QualifiedType* t1)
 
         case TYPE_U_INT:
             printf("unsigned int ");
+            break;
+
+        case TYPE_S_SHORT:
+            printf("short ");
+            break;
+
+        case TYPE_U_SHORT:
+            printf("unsigned short");
+            break;
+
+        case TYPE_CHAR:
+            printf("char");
             break;
 
         case TYPE_POINTER:

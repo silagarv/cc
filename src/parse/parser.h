@@ -29,6 +29,12 @@ typedef struct Parser {
     Token token;
     Token peek_token;
 
+    // Count of the current parens, brackets, and braces for ensuring matched
+    // braces at the end of the function.
+    size_t paren_count;
+    size_t bracket_count;
+    size_t brace_count;
+
     /* our anchor set for recovering from parsing */
     size_t recover_set[TOKEN_LAST];
 

@@ -20,11 +20,13 @@ Scope scope_new_file(void)
     // File scope should only have the normal namespcae and the tag namespace.
     Scope scope = (Scope)
     {
-        .flags = SCOPE_DECL,
-        .ordinairy = {0},
-        .tag = {0},
+        .flags = SCOPE_FILE,
+        .ordinairy = symbol_table_create(),
+        .tag = symbol_table_create(),
         .members = {0},
-        .parent = NULL
+        .has_ordinairy = true,
+        .has_tag = true,
+        .has_members = false,
     };
 
     return scope;
@@ -39,11 +41,48 @@ Scope scope_new_block(void)
 {
     Scope scope = (Scope)
     {
-        .flags = SCOPE_DECL,
+        .flags = SCOPE_FILE,
         .parent = NULL,
-        .ordinairy = {0},//symbol_table_create(),
-        .tag = {0},//symbol_table_create(),
-        .members = {0}
+        .ordinairy = symbol_table_create(),
+        .tag = symbol_table_create(),
+        .members = {0},
+        .has_ordinairy = true,
+        .has_tag = true,
+        .has_members = false,
+    };
+
+    return scope;
+}
+
+Scope scope_new_function_prototype(void)
+{
+    Scope scope = (Scope)
+    {
+        .flags = SCOPE_FILE,
+        .parent = NULL,
+        .ordinairy = symbol_table_create(),
+        .tag = symbol_table_create(),
+        .members = {0},
+        .has_ordinairy = true,
+        .has_tag = true,
+        .has_members = false,
+    };
+
+    return scope;
+}
+
+Scope scope_new_member(void)
+{
+    Scope scope = (Scope)
+    {
+        .flags = SCOPE_FILE,
+        .parent = NULL,
+        .ordinairy = {0},
+        .tag = {0},
+        .members = symbol_table_create(),
+        .has_ordinairy = false,
+        .has_tag = false,
+        .has_members = true,
     };
 
     return scope;
@@ -51,7 +90,20 @@ Scope scope_new_block(void)
 
 void scope_delete(Scope* scope)
 {
-    // TODO: work this out...
+    if (scope->has_ordinairy)
+    {
+        symbol_table_delete(&scope->ordinairy);
+    }
+
+    if (scope->has_tag)
+    {
+        symbol_table_delete(&scope->tag);
+    }
+
+    if (scope->has_members)
+    {
+        symbol_table_delete(&scope->members);
+    }
 }
 
 void scope_set_parent(Scope* scope, Scope* parent)
@@ -104,6 +156,20 @@ Declaration* scope_lookup_tag(Scope* scope, Identifier* name,
     }
 
     return NULL;
+}
+
+void scope_insert_ordinairy(Scope* scope, Declaration* declaration)
+{
+    assert(!scope_lookup_ordinairy(scope, declaration->base.identifier, false));
+
+    symbol_table_insert(&scope->ordinairy, declaration);
+}
+
+void scope_insert_tag(Scope* scope, Declaration* declaration)
+{
+    assert(!scope_lookup_tag(scope, declaration->base.identifier, false));
+
+    symbol_table_insert(&scope->tag, declaration);
 }
 
 Declaration* scope_lookup_member(Scope* scope, Identifier* name)

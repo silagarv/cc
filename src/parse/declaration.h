@@ -45,6 +45,7 @@ typedef enum DeclarationType {
     DECLARATION_ENUM_CONSTANT, /* constants within an enum */
     DECLARATION_ENUM, /* an enum */
     DECLARATION_LABEL, /* A label within the source e.g. `foo:` */
+    DECLARATION_LIST /* A list of declarations */
 } DeclarationType;
 
 // A structure to hold all of the basics needed in a declaration. This helps us
@@ -138,6 +139,17 @@ typedef struct DeclarationLabel {
     bool used;
 } DeclarationLabel;
 
+typedef struct DeclarationList {
+    // The base declaration. The only field used here should be the type of
+    // declaration since eash individual declaration could be of different
+    // types
+    DeclarationBase base;
+
+    // The actual declarations that we have
+    Declaration* declarations;
+    size_t num_declaration;
+} DeclarationList;
+
 union Declaration {
     // The base declaration. Used by all of the specialised declatation like
     // structs as the first member so that we can do type punning and pointer
@@ -162,6 +174,9 @@ union Declaration {
     // label and could be implicitly constructed. However, this will be checked
     // for at some stage.
     DeclarationLabel label;
+
+    // A list of multiple declarations
+    DeclarationList list;
 };
 
 vector_of_decl(Declaration*, Declaration, declaration);
@@ -199,7 +214,6 @@ typedef struct DeclaratorPieceFunction {
     Declaration** paramaters;
     size_t num_paramaters;
     bool is_variadic;
-    bool is_star;
 } DeclaratorPieceFunction;
 
 typedef struct DeclaratorPieceKnrFunction {
@@ -218,19 +232,37 @@ typedef union DeclaratorPiece {
 
 vector_of_decl(DeclaratorPiece, DeclaratorPiece, declarator_piece);
 
+// Where is this declaration trying to be definied
+typedef enum DeclaratorContext {
+    DECLARATION_CONTEXT_FILE,
+    DECLARATION_CONTEXT_STRUCT,
+    DECLARATION_CONTEXT_FUNCTION_PARAM,
+    DECLARATION_CONTEXT_BLOCK,
+    DECLARATION_CONTEXT_TYPE_NAME
+} DeclaratorContext;
+
 // Here is our declarator vector that we are going to use to help us parse
 // declarations correctly. Note that we definitely eventually want this to
 // contain more locations and things that we can use.
 typedef struct Declarator {
+    DeclaratorContext context;
     DeclarationSpecifiers* specifiers;
 
     Identifier* identifier;
     Location identifier_location;
     DeclaratorPieceVector pieces;
+
+    bool invalid;
 } Declarator;
 
-Declarator declarator_create(DeclarationSpecifiers* specifiers);
+DeclarationSpecifiers declaration_specifiers_create(Location location);
+
+Declarator declarator_create(DeclarationSpecifiers* specifiers,
+        DeclaratorContext context);
 void declarator_delete(Declarator* declarator);
+
+void declarator_set_invalid(Declarator* declarator);
+bool declarator_is_invalid(const Declarator* declarator);
 
 void declarator_set_identifier(Declarator* declarator, Identifier* identifier,
         Location identifier_location);
@@ -242,7 +274,8 @@ void declarator_push_array(Declarator* declarator, Location lbracket,
 
 void declarator_push_function_empty(Declarator* declarator, ...);
 void declarator_push_function_knr(Declarator* declarator, ...);
-void declarator_push_function(Declarator* declarator, ...);
+void declarator_push_function(Declarator* declarator, AstAllocator* allocator,
+        DeclarationVector* params, bool is_variadic);
 
 // TODO: this will need some stuff added to it
 void declarator_piece_push_function(Declarator* declarator, bool is_variadic);
@@ -250,6 +283,7 @@ void declarator_piece_push_function(Declarator* declarator, bool is_variadic);
 // TODO: redo this completely with our ast allocator
 
 bool declaration_is(const Declaration* decl, DeclarationType type);
+bool declaration_has_identifier(const Declaration* decl);
 
 // Create an error declaraiton
 Declaration* declaration_create_error(AstAllocator* allocator,
@@ -265,5 +299,9 @@ Declaration* declaration_create_variable(AstAllocator* allocator,
 // if this label was implictly constructed.
 Declaration* declaration_create_label(AstAllocator* allocator, 
         Identifier* identifier, Location location, bool implicit);
+
+bool declaration_function_has_body(Declaration* declaraiton);
+void declaration_function_set_body(Declaration* declaraiton,
+        union Statement* body);
 
 #endif /* DECLARATION_H */

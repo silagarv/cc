@@ -7,6 +7,7 @@
 #include "util/str.h"
 
 #include "files/location.h"
+#include "util/vec.h"
 
 struct Identifier;
 
@@ -177,6 +178,8 @@ typedef struct Token {
     TokenData data; // data the token needs
 } Token;
 
+vector_of_decl(Token, Token, token);
+
 void token_set_flag(Token* token, TokenFlags flag);
 void token_unset_flag(Token* token, TokenFlags flag);
 bool token_has_flag(const Token* token, TokenFlags flag);
@@ -214,19 +217,5 @@ const char* token_get_name(Token* tok);
 const char* token_get_string(Token* tok);
 
 bool token_equal_string(Token* tok, const char* str);
-
-
-
-
-
-
-
-
-TokenList token_list_allocate(void);
-void token_list_free(TokenList* list);
-
-Token* token_list_next(TokenList* list);
-
-TokenStream token_list_to_stream(const TokenList* list);
 
 #endif /* TOKEN_H */

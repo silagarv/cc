@@ -16,12 +16,10 @@
 
 // TODO: below is probably not needed...
 typedef enum ScopeFlags {
-    SCOPE_DECL = 1 << 0,
-    SCOPE_BREAK = 1 << 1,
-    SCOPE_CONTINUE = 1 << 2,
-    SCOPE_SWITCH = 1 << 3,
-    SCOPE_FUNCTION = 1 << 4,
-    SCOPE_MEMBER = 1 << 5, // Note this is also for unions too (for the members)
+    SCOPE_FILE = 1 << 0, // File scope?
+    SCOPE_BLOCK = 1 << 1, // Block scope
+    SCOPE_FUNCTION = 1 << 2, // Function declaration
+    SCOPE_MEMBER = 1 << 3, // structs / unions
 } ScopeFlags;
 
 // Add some sort of a symbol table in here
@@ -34,6 +32,12 @@ typedef struct Scope {
     SymbolTable ordinairy;
     SymbolTable tag;
     SymbolTable members;
+
+    // Which symbol tables are active and need to be destroyed when popping the
+    // scope
+    bool has_ordinairy;
+    bool has_tag;
+    bool has_members;
 
     // The direct parent scope of this one, or null if at file level
     struct Scope* parent;
@@ -48,23 +52,10 @@ typedef struct FunctionScope {
 
 bool scope_is(const Scope* scope, ScopeFlags flags);
 
-// Create a new file scope this should only really need to be called once for
-// each translation unit and calling this multiple times in each unit may lead
-// to errors.
 Scope scope_new_file(void);
-
 Scope scope_new_block(void);
-
-// TODO: work out how this will work since we can have function prototypes both
-// in file scope and in block scope... e.g. declared in a function as well!!!
-Scope scope_new_function_prototype(Scope* parent_file);
-
-// Create a new function scope, in order to do this we require that we have a
-// parent block scope. This is since the standard requires that we have function
-// definitions (not declarations) in a block scope. So we will need to create a
-// block scope in the file before we create one of these scopes.
-Scope scope_new_function(Scope* parent_file, Scope* parent_function_prototype,
-        Scope* parent_block, Scope* parent_function);
+Scope scope_new_function_prototype(void);
+Scope scope_new_member(void);
 
 void scope_delete(Scope* scope);
 
@@ -75,6 +66,11 @@ Declaration* scope_lookup_ordinairy(Scope* scope, Identifier* name,
         bool recursive);
 Declaration* scope_lookup_tag(Scope* scope, Identifier* name,
         bool recursive);
+
+void scope_insert_ordinairy(Scope* scope, Declaration* declaration);
+void scope_insert_tag(Scope* scope, Declaration* declaration);
+
+// TODO: i think I will get rid of 'members'
 Declaration* scope_lookup_member(Scope* scope, Identifier* name);
 
 // Should be changed to type + recursive

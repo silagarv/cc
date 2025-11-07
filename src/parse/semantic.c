@@ -6,6 +6,8 @@
 
 #include "files/location.h"
 #include "parse/expression.h"
+#include "parse/initializer.h"
+#include "parse/parser.h"
 #include "util/buffer.h"
 
 #include "driver/diagnostic.h"
@@ -17,6 +19,7 @@
 #include "parse/symbol.h"
 #include "parse/type.h"
 #include "parse/declaration.h"
+#include "util/panic.h"
 
 SemanticChecker sematic_checker_create(DiagnosticManager* dm, Ast* ast)
 {
@@ -138,7 +141,7 @@ void declaration_specifiers_finish(SemanticChecker* sc,
     {
         case TYPE_SPECIFIER_TYPE_NONE:
             diagnostic_error_at(sc->dm, specifiers->location,
-                    "type specifier missing; defaults to 'int'");
+                    "type specifier missing, defaults to 'int'");
             specifiers->type_spec_type = TYPE_SPECIFIER_TYPE_INT;
             break;
 
@@ -157,7 +160,13 @@ static QualifiedType add_type_qualifiers(SemanticChecker* sc,
     
     if (type_qualifier_is_restrict(qualifiers))
     {
-        // TODO: check if we have a pointer type?
+        // If it's not a pointer remove it and issue and error
+        if (type->type_base.type != TYPE_POINTER)
+        {
+            qualifiers &= ~TYPE_QUALIFIER_RESTRICT;
+            diagnostic_error_at(sc->dm, specifiers->location,
+                    "restrict requires a pointer");
+        }
     }
 
     if (type_qualifier_is_const(qualifiers))
@@ -282,10 +291,7 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
 
         case TYPE_SPECIFIER_TYPE_TYPENAME:
             panic("unimplemented -> typename should be in specifiers");
-            break;        
-
-        default:
-            panic("unknown type");                
+            break;           
     }
 
     assert(type != NULL);
@@ -296,27 +302,67 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
 }
 
 static void semantic_checker_process_array(SemanticChecker* sc,
-        QualifiedType* type, DeclaratorPiece* piece)
+        QualifiedType* type, DeclaratorPiece* piece, DeclaratorContext context)
 {
     assert(piece->base.type == DECLARATOR_PIECE_ARRAY);
 
     DeclaratorPieceArray* array = (DeclaratorPieceArray*) piece;
     
+    TypeQualifiers qualifiers = TYPE_QUALIFIER_NONE;
     size_t length = 0;
     bool is_static = false;
     bool is_star = false;
     bool is_vla = false;
 
+    // Check if static is allowed here
     if (array->is_static)
     {
-        diagnostic_error_at(sc->dm, array->lbracket,
-                "static arrays not supported");
+        if (context != DECLARATION_CONTEXT_FUNCTION_PARAM)
+        {
+            diagnostic_error_at(sc->dm, array->lbracket,
+                    "'static' used in array declarator outside of function "
+                    "prototype");
+        }
+        else
+        {
+            is_static = true;
+        }
     }
 
+    // Check our type qualifiers
+    if (array->qualifiers != TYPE_QUALIFIER_NONE)
+    {
+        if (context != DECLARATION_CONTEXT_FUNCTION_PARAM)
+        {
+            diagnostic_error_at(sc->dm, array->lbracket,
+                    "type qualifier used in array declarator outside of "
+                    "function prototype");
+        }
+        else
+        {
+            qualifiers = array->qualifiers;
+        }
+    }
+
+    // Check if we are allowed star arrays here
     if (array->is_star)
     {
-        diagnostic_error_at(sc->dm, array->lbracket,
-                "star arrays not supported");
+        if (context != DECLARATION_CONTEXT_FUNCTION_PARAM)
+        {
+            diagnostic_error_at(sc->dm, array->lbracket,
+                    "star modifier used outside of function prototype");
+        }
+        else if (is_static)
+        {
+            diagnostic_error_at(sc->dm, array->lbracket,
+                    "'static' may not not be used with an unspecifier "
+                    "variable length array size");
+        }
+        else
+        {
+            is_star = true;
+            is_vla = true;
+        }
     }
 
     if (array->expression && 
@@ -326,13 +372,20 @@ static void semantic_checker_process_array(SemanticChecker* sc,
                 "cannot determine array size at this time");
     }
 
+    // Finally, we need to check if the array's element type is a complete type
+    if (/*is_complete_type(type)*/0)
+    {
+        ; /* error */
+    }
+
+    // Finally create and set the new type
     QualifiedType new_type = type_create_array(&sc->ast->ast_allocator, type,
             length, is_static, is_star, is_vla);
     *type = new_type;
 }
 
 static void semantic_checker_process_pointer(SemanticChecker* sc,
-        QualifiedType* type, DeclaratorPiece* piece)
+        QualifiedType* type, DeclaratorPiece* piece, DeclaratorContext context)
 {
     assert(piece->base.type == DECLARATOR_PIECE_POINTER);
 
@@ -346,14 +399,26 @@ static void semantic_checker_process_pointer(SemanticChecker* sc,
 }
 
 static void semantic_checker_process_function(SemanticChecker* sc,
-        QualifiedType* type, DeclaratorPiece* piece)
+        QualifiedType* type, DeclaratorPiece* piece, DeclaratorContext context)
 {
-    ; // TODO: create function delcarator pieces
+    assert(piece->base.type == DECLARATOR_PIECE_FUNCTION);
+
+    DeclaratorPieceFunction* function = (DeclaratorPieceFunction*) piece;
+
+    printf("processing function piece\n");
+
+    // TODO: figure out what needs checking...
+
 }
 
 QualifiedType semantic_checker_process_type(SemanticChecker* sc,
         Declarator* declarator)
 {
+    // TODO: now that we have the declarator context we can acccept / decline
+    // TODO: vmt and vla's
+
+    DeclaratorContext context = declarator->context;
+
     // First start by getting the type from the declaration specifiers
     QualifiedType type = qualified_type_from_declaration_specifiers(sc, 
             declarator->specifiers);
@@ -371,19 +436,20 @@ QualifiedType semantic_checker_process_type(SemanticChecker* sc,
         switch (piece.base.type)
         {
             case DECLARATOR_PIECE_ARRAY:
-                semantic_checker_process_array(sc, &type, &piece);
+                semantic_checker_process_array(sc, &type, &piece, context);
                 break;
 
             case DECLARATOR_PIECE_POINTER:
-                semantic_checker_process_pointer(sc, &type, &piece);
+                semantic_checker_process_pointer(sc, &type, &piece, context);
                 break;
 
             case DECLARATOR_PIECE_FUNCTION:
-                printf("function\n");
+                semantic_checker_process_function(sc, &type, &piece, context);
                 break;
 
-            default:
-                panic("unreachable");
+            case DECLARATOR_PIECE_KNR_FUNCTION:
+                panic("unimplemented knr function piece processing");
+                break;
         }
     }
 
@@ -393,14 +459,154 @@ QualifiedType semantic_checker_process_type(SemanticChecker* sc,
     return type;
 }
 
-Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
+Declaration* semantic_checker_process_function_param(SemanticChecker* sc,
         Declarator* declarator)
 {
-    // Process the type since we will want to error with the current vs previous
-    // type if we get a redeclaration, so this will be necessary.
+    // Make sure we are actually processing a function param
+    assert(declarator->context == DECLARATION_CONTEXT_FUNCTION_PARAM);
+
+    QualifiedType type = semantic_checker_process_type(sc, declarator);
+
+    // Check that we have no storage specifier other then register
+    TypeStorageSpecifier storage = declarator->specifiers->storage_spec;
+    if (storage != TYPE_STORAGE_SPECIFIER_NONE && 
+            storage != TYPE_STORAGE_SPECIFIER_REGISTER)
+    {
+        diagnostic_error_at(sc->dm, declarator->specifiers->location,
+                "invalid storage class specifier in function declarator");
+        storage = TYPE_STORAGE_SPECIFIER_NONE;
+    }
+
+    // TODO: Also need to check that we don't have an incomplete type
+
+    return declaration_create_variable(&sc->ast->ast_allocator,
+            declarator->identifier_location, declarator->identifier, type, 
+            storage, NULL);
+}
+
+Declaration* semantic_checker_process_variable(SemanticChecker* sc,
+        Declarator* declarator, QualifiedType type, Location equal_loc,
+        Initializer* initializer)
+{
+    // Extract important things from the declarator
+    const DeclarationSpecifiers* specifiers = declarator->specifiers;
+    Identifier* identifier = declarator->identifier;
+    Location identifer_loc = declarator->identifier_location;
+
+    // Check the storage is valid
+    TypeStorageSpecifier storage = specifiers->storage_spec;
+    assert(storage != TYPE_STORAGE_SPECIFIER_TYPEDEF);
+    switch (declarator->context)
+    {
+        // All of these three cases should be handled seperately
+        case DECLARATION_CONTEXT_STRUCT:
+        case DECLARATION_CONTEXT_FUNCTION_PARAM:
+        case DECLARATION_CONTEXT_TYPE_NAME:
+            panic("bad context type!");
+            return NULL;
+
+        case DECLARATION_CONTEXT_BLOCK:
+            // TODO: figure out the constraints on this...
+            // panic("todo -> block context");
+            break;
+
+        case DECLARATION_CONTEXT_FILE:
+            if (storage == TYPE_STORAGE_SPECIFIER_REGISTER ||
+                    storage == TYPE_STORAGE_SPECIFIER_AUTO)
+            {
+                diagnostic_error_at(sc->dm, identifer_loc,
+                        "illegal storage class '%s' on file scoped variable",
+                        storage_specifier_to_name(storage));
+            }
+            break;
+    }
+
+    // Also check that no function specifiers were given
+    if (specifiers->function_spec != TYPE_FUNCTION_SPECIFIER_NONE)
+    {
+        diagnostic_error_at(sc->dm, identifer_loc,
+                "'%s' can only appear on functions",
+                function_specifier_to_name(specifiers->function_spec));
+    }
+
+    Declaration* declaration = declaration_create_variable(
+            &sc->ast->ast_allocator, identifer_loc, identifier, type, storage,
+            initializer);
+    
+    // TODO: now that we have the declaration we can process the initializer
+
+    // Okay now we have create our variable we can add the declaration into the
+    // current scope if it doesn't already contain this identifier
+    Declaration* previous = scope_lookup_ordinairy(sc->scope, identifier,
+            false);
+    if (previous == NULL)
+    {
+        // It wasn't in the scope at all so we can simply insert it and we're
+        // done.
+        scope_insert_ordinairy(sc->scope, declaration);
+    }
+    else
+    {
+        // Otherwise we need to check if they are the same type, and that we
+        // have not already have some kind of initializer for it yet. But also
+        // checking if we've had it yet or not is for some reason different if
+        // we are at file scope :(
+
+        // TODO: for file scope only it is okay if:
+        // TODO:    same type
+        // TODO:    only 1 initializer
+        // TODO:    no extern initializer
+
+        diagnostic_error_at(sc->dm, identifer_loc, "redefinition of '%s'",
+                identifier->string.ptr);
+    }
+
+    return declaration;
+}
+
+Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
+        Declarator* declarator, Location equals, Initializer* initializer)
+{
+    // Don't even try if we have an invalid declarator. This is mainly here
+    // to simplify the logic of the parsing functions.
+    if (declarator->invalid)
+    {
+        return NULL;
+    }
+
+    // If we got an invalid declarator bail early
+    if (declarator->identifier == NULL)
+    {
+        return NULL;
+    }
+
+    // Regardless of what needs to be done next we must figure our the type
+    // from the declarator.
     QualifiedType type = semantic_checker_process_type(sc, declarator);
     
-    return NULL;
+    // The main different types of declarations we will have to handle are below
+    if (declarator->specifiers->storage_spec == TYPE_STORAGE_SPECIFIER_TYPEDEF)
+    {
+        // TODO: handle typedef
+        panic("cannot handle typedef at this time");
+        return NULL;
+    }
+    else if (qualified_type_is(&type, TYPE_FUNCTION))
+    {
+        if (initializer != NULL)
+        {
+            // TODO: error about initializer;
+        }
+
+        // TODO: handle function
+        panic("should not handle functions at this time");
+        return NULL;
+    }
+    else
+    {
+        return semantic_checker_process_variable(sc, declarator, type, equals,
+                initializer);
+    }
 }
 
 void semantic_checker_push_scope(SemanticChecker* sc, Scope* scope)

@@ -35,6 +35,13 @@
 
 #define countof(array) (sizeof(array) / sizeof(array[0]))
 
+typedef enum RecoverFlags {
+    RECOVER_NONE = 0, // No flags
+    RECOVER_EAT_TOKEN = 1 << 0, // Do we eat the token we want to stop on?
+    RECOVER_STOP_AT_SEMI = 1 << 0, // Do we stop at semi even if it's not the
+                                   // token we're looking for
+} RecoverFlags;
+
 // Below are the start set for some of the specifiers / qualifiers
 static const TokenType storage_class[] = {TOKEN_TYPEDEF, TOKEN_EXTERN, 
         TOKEN_STATIC,TOKEN_AUTO,TOKEN_REGISTER};
@@ -182,6 +189,51 @@ static Location match(Parser* parser, TokenType type)
 
 static Location consume(Parser* parser)
 {
+    // This method helps us to automatically track the braces and brackets!
+    switch (current_token_type(parser))
+    {   
+        // Bail out this probably wasn't intended
+        case TOKEN_EOF:
+            panic("attempting to consume EOF token!");
+            break;
+
+        case TOKEN_LPAREN:
+            parser->paren_count++;
+            break;
+
+        case TOKEN_RPAREN:
+            if (parser->paren_count)
+            {
+                parser->paren_count--;
+            }
+            break;
+
+        case TOKEN_LBRACKET:
+            parser->bracket_count++;
+            break;
+
+        case TOKEN_RBRACKET:
+            if(parser->bracket_count)
+            {
+                parser->bracket_count--;
+            }
+            break;
+
+        case TOKEN_LCURLY:
+            parser->brace_count++;
+            break;
+
+        case TOKEN_RCURLY:
+            if(parser->brace_count)
+            {
+                parser->brace_count--;
+            }
+            break;
+
+        default:
+            break;
+    }
+
     Location location = current_token_start_location(parser);
 
     preprocessor_advance_token(parser->pp, &parser->token);
@@ -189,9 +241,14 @@ static Location consume(Parser* parser)
     return location;
 }
 
+static bool is_match(Parser* parser, TokenType type)
+{
+    return current_token_type(parser) == type;
+}
+
 static bool try_match(Parser* parser, TokenType type)
 {
-    if (current_token_type(parser) == type)
+    if (is_match(parser, type))
     {
         consume(parser);
 
@@ -199,11 +256,6 @@ static bool try_match(Parser* parser, TokenType type)
     }
 
     return false;
-}
-
-static bool is_match(Parser* parser, TokenType type)
-{
-    return current_token_type(parser) == type;
 }
 
 static bool has_match(Parser* parser, const TokenType* types, size_t count)
@@ -226,61 +278,117 @@ static bool is_next_match(Parser* parser, TokenType type)
     return preprocessor_peek_next_token_type(parser->pp) == type;
 }
 
-static void eat_until(Parser* parser, TokenType type)
+static void recover_many(Parser* parser, TokenType* types, size_t num_types,
+        RecoverFlags flags)
 {
-    while (!is_match(parser, type) && !is_match(parser, TOKEN_EOF))
-    {
-        consume(parser);
-    }
-}
-
-static void eat_until_v(Parser* parser, const TokenType *types, size_t count)
-{
-    while (!has_match(parser, types, count))
-    {
-        consume(parser);
-    }
-}
-
-static void eat_until_and(Parser* parser, TokenType type)
-{
-    while (!is_match(parser, type) && !is_match(parser, TOKEN_EOF))
-    {
-        consume(parser);
-    }
-
-    if (is_match(parser, type))
-    {
-        consume(parser);
-    }
-}
-
-static void eat_until_recover(Parser* parser)
-{
+    bool has_skipped = false;
     while (true)
     {
-        TokenType type = current_token_type(parser);
-
-        if (is_in_recover_set(parser, type))
+        // Check if we got to a token we wanted to stop at        
+        if (has_match(parser, types, num_types))
         {
-            break;
+            // If we're meant to eat it do so
+            if (flags & RECOVER_EAT_TOKEN)
+            {
+                consume(parser);
+            }
+
+            return;
         }
 
-        consume(parser);
+        TokenType current = current_token_type(parser);
+        switch (current)
+        {
+            // Don't want to accidentally consume this
+            case TOKEN_EOF:
+                return;
+
+            // For each of our paren thesis types make sure we try to balance
+            // then as best as possible
+            case TOKEN_LPAREN:
+                consume(parser);
+                recover_many(parser, (TokenType[]) {TOKEN_RPAREN}, 1,
+                        RECOVER_EAT_TOKEN);
+                break;
+
+            case TOKEN_LBRACKET:
+                consume(parser);
+                recover_many(parser, (TokenType[]) {TOKEN_RBRACKET}, 1, 
+                        RECOVER_EAT_TOKEN);
+                break;
+
+            case TOKEN_LCURLY:
+                consume(parser);
+                recover_many(parser, (TokenType[]) {TOKEN_RCURLY}, 1, 
+                        RECOVER_EAT_TOKEN);
+                break;
+
+            // For our closing types we need to do something different
+            case TOKEN_RPAREN:
+                // If we have parens and this is not the problem token. We can
+                // assume we are done since the parse seems to want to finish
+                // handling some other production.
+                if (parser->paren_count && has_skipped)
+                {
+                    return;
+                }
+                consume(parser);
+                break;
+
+            case TOKEN_RBRACKET:
+                // If we have parens and this is not the problem token. We can
+                // assume we are done since the parse seems to want to finish
+                // handling some other production.
+                if (parser->bracket_count && has_skipped)
+                {
+                    return;
+                }
+                consume(parser);
+                break;
+                
+            case TOKEN_RCURLY:
+                // If we have parens and this is not the problem token. We can
+                // assume we are done since the parse seems to want to finish
+                // handling some other production.
+                if (parser->brace_count && has_skipped)
+                {
+                    return;
+                }
+                consume(parser);
+                break;
+
+            // Check if we were meant to stop at a semi
+            case TOKEN_SEMI:
+                if (flags & RECOVER_STOP_AT_SEMI)
+                {
+                    return;
+                }
+
+            /* FALLTHROUGH */
+
+            default:
+                consume(parser);
+                break;
+        }
+        has_skipped = true;
     }
 }
 
-// A parsing method to synchronise the stream of tokens in the event of an error
-// will go until we hit the a token in the recovery set. This is using panic mode
-// recovery and this should work pretty well in c...
-static void recover(Parser* parser, TokenType type)
+static void recover(Parser* parser, TokenType type, RecoverFlags flags)
 {
-    eat_until(parser, type);
+    recover_many(parser, (TokenType[]) {type}, 1, flags);
+}
 
-    if (!is_match(parser, TOKEN_EOF))
-    {
-        consume(parser);
-    }
+static void recover_two(Parser* parser, TokenType type1, TokenType type2,
+        RecoverFlags flags)
+{
+    recover_many(parser, (TokenType[]) {type1, type2}, 2, flags);
+}
+
+static void recover_three(Parser* parser, TokenType type1, TokenType type2,
+        TokenType type3, RecoverFlags flags)
+{
+    recover_many(parser, (TokenType[]) {type1, type2, type3}, 3, flags);
 }
 
 static bool is_typename_start(Parser* parser, const Token* tok);
@@ -334,9 +442,9 @@ static Initializer* parse_initializer_list(Parser* parser);
 static void parse_declarator(Parser* parser, Declarator* declarator);
 
 static Declaration* parse_init_declarator(Parser* parser,
-        DeclarationSpecifiers* specifiers);
+        DeclarationSpecifiers* specifiers, DeclaratorContext context);
 static Declaration* parse_init_declarator_list(Parser* parser,
-        DeclarationSpecifiers* specifiers);
+        DeclarationSpecifiers* specifiers, DeclaratorContext context);
 
 static Declaration* parse_typedef_name(Parser* parser);
 static Declaration* parse_enumerator_list(Parser* parser);
@@ -390,7 +498,7 @@ static Declaration* parse_struct_declaration(Parser* parser);
 static Declaration* parse_struct_declaration_list(Parser* parser);
 static Declaration* parse_struct_or_union_specifier(Parser* parser);
 
-static Declaration* parse_declaration(Parser* parser);
+static Declaration* parse_declaration(Parser* parser, DeclaratorContext ctx);
 
 static QualifiedType parse_type_name(Parser* parser);
 
@@ -544,6 +652,9 @@ static bool is_string_token(Parser* parser, const Token* tok)
 
 static Expression* parse_primary_expression(Parser* parser)
 {
+    static const TokenType string_tokens[] = {TOKEN_STRING, TOKEN_WIDE_STRING};
+    static const size_t num_string_tokens = countof(string_tokens);
+
     switch (current_token_type(parser))
     {
         case TOKEN_LPAREN:
@@ -597,12 +708,12 @@ static Expression* parse_primary_expression(Parser* parser)
 
         case TOKEN_NUMBER:
         {
-            Token current = *current_token(parser);
+            Token number_tok = *current_token(parser);
             Location loc = consume(parser);
 
             LiteralValue value = {0};
             bool success = parse_preprocessing_number(&value, parser->dm,
-                    &current);
+                    &number_tok);
             
             if (!success)
             {
@@ -615,49 +726,68 @@ static Expression* parse_primary_expression(Parser* parser)
             }
         }
 
-        case TOKEN_STRING:
-        case TOKEN_WIDE_STRING:
-        {
-            // TODO: get a vector of all of the different strings we want to
-            // concatenate and all of their locations.
-
-
-            Location start_loc = current_token_start_location(parser);
-
-            size_t string_count = 0;
-            while (is_string_token(parser, current_token(parser)))
-            {
-                consume(parser);
-                string_count++;
-            }
-
-            diagnostic_error_at(parser->dm, start_loc,
-                    "string concatenation and conversion not implented");
-
-            panic("above");
-
-            return NULL;
-        }
-        
         case TOKEN_CHARACTER:
         case TOKEN_WIDE_CHARACTER:
         {
-            Token current = *current_token(parser);
+            bool wide = is_match(parser, TOKEN_WIDE_CHARACTER);
+            
+            Token char_token = *current_token(parser);
             Location loc = consume(parser);
 
             CharValue value = {0};
-            bool success = parse_char_literal(&value, &current);
+            bool success = parse_char_literal(&value, parser->dm, &char_token,
+                    wide);
 
             if (!success)
             {
-                diagnostic_error_at(parser->dm, loc,
-                        "character conversion failed");
-
                 return expression_create_error(&parser->ast.ast_allocator);
             }
             else
             {
-                // expr = create_character_expression(current, &value);
+                return expression_create_character(&parser->ast.ast_allocator,
+                        loc, value);
+            }
+        }
+
+        case TOKEN_STRING:
+        case TOKEN_WIDE_STRING:
+        {
+            TokenVector toks = token_vector_create(1);
+            LocationVector locs = location_vector_create(1);
+
+            // Track if the token is wide to make conversion easier
+            bool wide = false;
+            do
+            {
+                if (is_match(parser, TOKEN_WIDE_STRING))
+                {
+                    wide = true;
+                }
+
+                Token string_token = *current_token(parser);
+                Location token_loc = consume(parser);
+
+                token_vector_push(&toks, string_token);
+                location_vector_push(&locs, token_loc);
+            }
+            while (has_match(parser, string_tokens, num_string_tokens));
+
+            // Attempt the conversion using the information we have here
+            StringLiteral string;
+            bool conversion = parse_string_literal(&parser->ast.ast_allocator,
+                    &string, parser->dm, toks, locs, wide);
+
+            // Make sure to free our vectors after we are done with them.
+            token_vector_free(&toks, NULL);
+            location_vector_free(&locs, NULL);
+
+            if (!conversion)
+            {
+                diagnostic_error(parser->dm, "string conversion failed");
+            }
+            else
+            {
+                // printf("%s\n", string.string.ptr);
             }
 
             return NULL;
@@ -714,13 +844,15 @@ static Expression* parse_postfix_expression(Parser* parser)
             case TOKEN_DOT:
             {
                 Location op_loc = consume(parser);
-                // if (!is_match(parser, TOKEN_IDENTIFIER))
-                // {
-                //     diagnostic_error_at(parser->dm,
-                //             current_token_start_location(parser),
-                //             "expected identifier after '.'");
-                //     eat_until(parser, TOKEN_IDENTIFIER);
-                // }
+
+                if (!is_match(parser, TOKEN_IDENTIFIER))
+                {
+                    diagnostic_error_at(parser->dm,
+                            current_token_start_location(parser),
+                            "expected identifier");
+                    recover(parser, TOKEN_SEMI, RECOVER_NONE);
+                    return expression_create_error(&parser->ast.ast_allocator);
+                }
 
                 Identifier* identifier = current_token(parser)->data.identifier;
                 Location identifier_loc = consume(parser);
@@ -733,7 +865,15 @@ static Expression* parse_postfix_expression(Parser* parser)
             {
                 Location op_loc = consume(parser);
 
-                // TODO: check that we actually have an identifier.
+                if (!is_match(parser, TOKEN_IDENTIFIER))
+                {
+                    diagnostic_error_at(parser->dm,
+                            current_token_start_location(parser),
+                            "expected identifier");
+                    recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
+                    return expression_create_error(&parser->ast.ast_allocator);
+                }
+
                 Identifier* identifier = current_token(parser)->data.identifier;
                 Location identifier_loc = consume(parser);
 
@@ -989,7 +1129,6 @@ static Expression* parse_additive_expression(Parser* parser)
                 break;
         }
         Location op_loc = consume(parser);
-
         Expression* rhs = parse_multiplicative_expression(parser);
 
         expr = expression_create_binary(&parser->ast.ast_allocator, type, 
@@ -1102,7 +1241,6 @@ static Expression* parse_equality_expression(Parser* parser)
         }
         
         Location op_loc = consume(parser);
-
         Expression* rhs = parse_relational_expression(parser);
 
         expr = expression_create_binary(&parser->ast.ast_allocator, type, 
@@ -1123,7 +1261,6 @@ static Expression* parse_and_expression(Parser* parser)
     while (is_match(parser, TOKEN_AND))
     {
         Location op_loc = consume(parser);
-
         Expression* rhs = parse_equality_expression(parser);
 
         expr = expression_create_binary(&parser->ast.ast_allocator,
@@ -1144,7 +1281,6 @@ static Expression* parse_exclusive_or_expression(Parser* parser)
     while (is_match(parser, TOKEN_XOR))
     {
         Location op_loc = consume(parser);
-
         Expression* rhs = parse_and_expression(parser);
 
         expr = expression_create_binary(&parser->ast.ast_allocator,
@@ -1165,7 +1301,6 @@ static Expression* parse_inclusive_or_expression(Parser* parser)
     while (is_match(parser, TOKEN_OR))
     {
         Location op_loc = consume(parser);
-
         Expression* rhs = parse_exclusive_or_expression(parser);
 
         expr = expression_create_binary(&parser->ast.ast_allocator,
@@ -1186,7 +1321,6 @@ static Expression* parse_logical_and_expression(Parser* parser)
     while (is_match(parser, TOKEN_AND_AND))
     {
         Location op_loc = consume(parser);
-
         Expression* rhs = parse_inclusive_or_expression(parser);
 
         expr = expression_create_binary(&parser->ast.ast_allocator, 
@@ -1207,7 +1341,6 @@ static Expression* parse_logical_or_expression(Parser* parser)
     while (is_match(parser, TOKEN_OR_OR))
     {
         Location op_loc = consume(parser);
-
         Expression* rhs = parse_logical_and_expression(parser);
 
         expr = expression_create_binary(&parser->ast.ast_allocator,
@@ -1240,6 +1373,8 @@ static Expression* parse_conditional_expression(Parser* parser)
         Location colon = match(parser, TOKEN_COLON);
 
         Expression* false_expr = parse_conditional_expression(parser);
+
+        // TODO: create the conditional expression
     }
 
     return expr;
@@ -1311,7 +1446,6 @@ static Expression* parse_assignment_expression(Parser* parser)
                 break;
         }
         Location op_location = consume(parser);
-        
         Expression* rhs = parse_assignment_expression(parser);
 
         // Now make our new binary expression...
@@ -1385,11 +1519,25 @@ static Statement* parse_label_statement(Parser* parser)
             colon_loc, label_decl, body);
 }
 
+static Location parse_expected_colon(Parser* parser, const char* context)
+{
+    if (!is_match(parser, TOKEN_COLON))
+    {
+        diagnostic_error_at(parser->dm, current_token_start_location(parser),
+                "expected ':' after '%s'", context);
+        return LOCATION_INVALID;
+    }
+
+    return consume(parser);
+}
+
 static Statement* parse_case_statement(Parser* parser)
-{    
+{
+    assert(is_match(parser, TOKEN_CASE));
+
     Location case_loc = consume(parser);
     Expression* expr = parse_constant_expression(parser);
-    Location colon_loc = match(parser, TOKEN_COLON);
+    Location colon_loc = parse_expected_colon(parser, "case");
 
     // TODO: will need to eventually fold the constant expression
     IntegerValue value = (IntegerValue) {0};
@@ -1411,9 +1559,11 @@ static Statement* parse_case_statement(Parser* parser)
 
 static Statement* parse_default_statement(Parser* parser)
 {
+    assert(is_match(parser, TOKEN_DEFAULT));
+
     // Parse the statement
     Location default_loc = consume(parser);
-    Location colon_loc = match(parser, TOKEN_COLON);
+    Location colon_loc = parse_expected_colon(parser, "default");
 
     if (!ast_context_current_switch(&parser->current_context))
     {
@@ -1513,7 +1663,7 @@ static bool parse_expression_for_statement(Parser* parser, Location* lparen_loc,
     {
         diagnostic_error_at(parser->dm, current_token_start_location(parser),
                 "expected '(' after '%s'", context);
-        eat_until_and(parser, TOKEN_SEMI);
+        recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
                 
         return false;
     }
@@ -1526,7 +1676,7 @@ static bool parse_expression_for_statement(Parser* parser, Location* lparen_loc,
     {
         diagnostic_error_at(parser->dm, current_token_start_location(parser),
                 "expected ')'");
-        eat_until_and(parser, TOKEN_SEMI);
+        recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
 
         return false;
     }
@@ -1653,7 +1803,7 @@ static Statement* parse_do_while_statement(Parser* parser)
     {
         diagnostic_error_at(parser->dm, current_token_start_location(parser),
                 "expected 'while' in do/while loop");
-        eat_until_and(parser, TOKEN_SEMI);
+        recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
 
         return statement_create_error(&parser->ast.ast_allocator);
     }
@@ -1704,8 +1854,7 @@ static Statement* parse_for_statement(Parser* parser)
         // to possibly 'expected expression'
         diagnostic_error_at(parser->dm, current_token_start_location(parser), 
                 "bad initialisation in for statement");
-
-        eat_until_and(parser, TOKEN_SEMI);
+        recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
 
         init = statement_create_error(&parser->ast.ast_allocator);
     }
@@ -1762,7 +1911,8 @@ static Statement* parse_goto_statement(Parser* parser)
     {
         diagnostic_error_at(parser->dm, current_token_start_location(parser),
                 "expected identifier after 'goto'");
-        eat_until_and(parser, TOKEN_SEMI);
+        recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
+
         return statement_create_error(&parser->ast.ast_allocator);
     }
 
@@ -1831,7 +1981,9 @@ static Statement* parser_return_statement(Parser* parser)
 
 static Statement* parse_declaration_statement(Parser* parser)
 {
-    Declaration* decl = parse_declaration(parser);
+    // Choose block since we are known to be in one and can parse declarations
+    // inside of it.
+    Declaration* decl = parse_declaration(parser, DECLARATION_CONTEXT_BLOCK);
     Location semi_loc = parse_trailing_semi(parser, "declaration");
 
     return statement_create_declaration(&parser->ast.ast_allocator, semi_loc,
@@ -1841,12 +1993,13 @@ static Statement* parse_declaration_statement(Parser* parser)
 static Statement* parse_empty_statement(Parser* parser)
 {
     Location semi_loc = consume(parser);
+
     return statement_create_empty(&parser->ast.ast_allocator, semi_loc);
 }
 
 static Statement* parse_error_statement(Parser* parser)
 {
-    eat_until_and(parser, TOKEN_SEMI);
+    recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
 
     return statement_create_error(&parser->ast.ast_allocator);
 }
@@ -1918,9 +2071,7 @@ static Statement* parse_statement(Parser* parser)
                 diagnostic_error_at(parser->dm,
                         current_token_start_location(parser),
                         "expected expression");
-                eat_until_and(parser, TOKEN_SEMI);
-
-                return statement_create_error(&parser->ast.ast_allocator);
+                return parse_error_statement(parser);
             }
         }
     }
@@ -1930,7 +2081,6 @@ static Statement* parse_statement(Parser* parser)
 
 static Initializer* parse_designation(Parser* parser)
 {
-
     parse_designator_list(parser);
 
     match(parser, TOKEN_EQUAL);
@@ -2049,15 +2199,24 @@ static void parse_declarator(Parser* parser, Declarator* declarator)
 }
 
 static Declaration* parse_init_declarator(Parser* parser,
-        DeclarationSpecifiers* specifiers)
+        DeclarationSpecifiers* specifiers, DeclaratorContext context)
 {
-    // Create a declarator with the given specifiers and then parse the
-    // declarator.
-    Declarator declarator = declarator_create(specifiers);
-    parse_declarator(parser, &declarator);
+    Declarator declarator = declarator_create(specifiers, context);
     
+    parse_declarator(parser, &declarator);
+
+    // Then parse the initializer if there is one
+    Initializer* initializer = NULL;
+    Location equal_loc = LOCATION_INVALID;
+    if (is_match(parser, TOKEN_EQUAL))
+    {
+        equal_loc = consume(parser);
+        initializer = parse_initializer(parser);
+    }
+
+    // Now create the declaration
     Declaration* decl = semantic_checker_process_declarator(&parser->sc, 
-            &declarator);
+            &declarator, equal_loc, initializer);
 
     // TODO: we will need to add the declaration into the symbol table before
     // TODO: we delete the declarator, and before we parse the initializer since
@@ -2065,27 +2224,19 @@ static Declaration* parse_init_declarator(Parser* parser,
 
     declarator_delete(&declarator);
 
-    // Should probably create the declaration here to allow for
-    // self-initialisation even though it is silly to even allow for that
-
-    Initializer* initializer = NULL;
-    if (is_match(parser, TOKEN_EQUAL))
-    {
-        consume(parser);
-        
-        initializer = parse_initializer(parser);
-    }
-
     return NULL;
 }
 
 static Declaration* parse_init_declarator_list(Parser* parser,
-        DeclarationSpecifiers* specifiers)
+        DeclarationSpecifiers* specifiers, DeclaratorContext context)
 {
+    // TODO: make a declaration vector and turn it into a list of declarations
+    // TODO: if needed...
+
     Declaration* decl = NULL;
     do
     {
-        decl = parse_init_declarator(parser, specifiers);
+        decl = parse_init_declarator(parser, specifiers, context);
     }
     while (try_match(parser, TOKEN_COMMA));
  
@@ -2105,7 +2256,7 @@ static void parse_identifier_list(Parser* parser, Declarator* declarator)
             diagnostic_error_at(parser->dm,
                     current_token_start_location(parser),
                     "expected identifier");
-            eat_until(parser, TOKEN_RPAREN);
+            recover(parser, TOKEN_RPAREN, RECOVER_NONE);
             break;
         }
 
@@ -2143,15 +2294,21 @@ static void parse_identifier_list(Parser* parser, Declarator* declarator)
 
 static Declaration* parse_paramater_declaration(Parser* parser)
 {
-    // TODO: allow abstract declarators too
+    // TODO: Will eventually need to allow for abstract declarations
 
+    // Parse declaration specifiers
     DeclarationSpecifiers specifiers = parse_declaration_specifiers(parser);
-    Declarator declarator = declarator_create(&specifiers);
-    
+
+    // Parse the function paramater declarator
+    Declarator declarator = declarator_create(&specifiers,
+            DECLARATION_CONTEXT_FUNCTION_PARAM);
     parse_declarator(parser, &declarator);
 
-    Declaration* declaration = NULL;
+    // Finish processing the declaration
+    Declaration* declaration = semantic_checker_process_function_param(
+            &parser->sc, &declarator);
 
+    // Free the declarator
     declarator_delete(&declarator);
 
     return declaration;
@@ -2159,35 +2316,71 @@ static Declaration* parse_paramater_declaration(Parser* parser)
 
 static void parse_paramater_type_list(Parser* parser, Declarator* declarator)
 {
-    // TODO: will need to push a scope for this
-    Scope scope; // = scope_new_function_declarator();
+    Scope function_proto = scope_new_function_prototype();
+    semantic_checker_push_scope(&parser->sc, &function_proto);
 
+    DeclarationVector params = declaration_vector_create(1);
+
+    Location dots = LOCATION_INVALID;
     bool is_variadic = false;
-    while (true)
+    do
     {
+        // First check if we have elipsis
+        if (is_match(parser, TOKEN_ELIPSIS))
+        {
+            consume(parser);
+
+            // Check that we have a parameter. If not error, but we will try to
+            // recover and ignore the error to be a bit better
+            if (declaration_vector_size(&params) == 0)
+            {
+                diagnostic_error_at(parser->dm, dots,
+                        "parameter required before '...'");
+            }
+            
+            is_variadic = true;
+            break;
+        }
+
+        // Otherwise we will try to parse a declaration.
         Declaration* declaration = parse_paramater_declaration(parser);
 
-        if (is_match(parser, TOKEN_COMMA) && 
-                is_next_match(parser, TOKEN_ELIPSIS))
-        {
-            consume(parser);
-            Location dots = consume(parser);
+        // TODO: instead of this I think we should use a scope instead to check
+        // TODO: if we got a parameter redefinition, especially since we will
+        // TODO: have to use the scope later anyways.
 
-            is_variadic = true;
+        // check if we got a duplicate paramater name.
+        if (declaration_has_identifier(declaration))
+        {
+            Declaration* prev = scope_lookup_ordinairy(&function_proto,
+                    declaration->base.identifier, false);
 
-            break;
+            if (prev != NULL)
+            {
+                diagnostic_error_at(parser->dm, declaration->base.location,
+                        "redefinition of parameter '%s'",
+                        declaration->base.identifier->string.ptr);
+                continue;
+            }
         }
-        else if (is_match(parser, TOKEN_COMMA))
-        {
-            consume(parser);
-        }
-        else
-        {
-            break;
-        }
+
+        // TODO: how do we deal with parameters with no names? As right now
+        // TODO: the pointer set will not accept the identifier since it will
+        // TODO: be NULL
+        scope_insert_ordinairy(&function_proto, declaration);
+        declaration_vector_push(&params, declaration);
     }
+    while (try_match(parser, TOKEN_COMMA));
 
-    // TODO: delete the scope we created...
+    // Push the function type onto the end of the declarator
+    declarator_push_function(declarator, &parser->ast.ast_allocator, &params,
+            is_variadic);
+
+    // Cleaup our declarations and our function scopes
+    declaration_vector_free(&params, NULL);
+
+    semantic_checker_pop_scope(&parser->sc);
+    scope_delete(&function_proto);
 }
 
 static void parse_function_declarator(Parser* parser, Declarator* declarator)
@@ -2198,23 +2391,22 @@ static void parse_function_declarator(Parser* parser, Declarator* declarator)
 
     if (!is_match(parser, TOKEN_RPAREN))
     {
-        if (is_typename_start(parser, current_token(parser)))
+        if (is_match(parser, TOKEN_IDENTIFIER) &&
+                !is_typename_start(parser, current_token(parser)))
         {
-            parse_paramater_type_list(parser, declarator);
+            parse_identifier_list(parser, declarator);
         }
         else
         {
-            parse_identifier_list(parser, declarator);
+            parse_paramater_type_list(parser, declarator);
         }
     }
 
     if (!is_match(parser, TOKEN_RPAREN))
     {
-        // TODO: error recovery could be better here. What if we never get a
-        // TODO: right paren, then this will never actually recover will :(
         diagnostic_error_at(parser->dm, current_token_start_location(parser),
                 "expected ')'");
-        eat_until(parser, TOKEN_RPAREN);
+        recover(parser, TOKEN_RPAREN, RECOVER_NONE);
     }
 
     Location rparen_loc = LOCATION_INVALID;
@@ -2265,24 +2457,13 @@ static void parse_array_declarator(Parser* parser, Declarator* declarator)
     if (!is_match(parser, TOKEN_RBRACKET))
     {
         expression = parse_assignment_expression(parser);
-        if (expression && expression->base.kind == EXPRESSION_ERROR)
-        {
-            // TODO: what should be done here
-        }
-        else if (expression && 
-                expression->base.kind != EXPRESSION_INTEGER_CONSTANT)
-        {
-            diagnostic_error_at(parser->dm, lbracket_loc,
-                    "expression cannot be folded at this time");
-        }
     }
 
     if (!is_match(parser, TOKEN_RBRACKET))
     {
         diagnostic_error_at(parser->dm, current_token_start_location(parser),
                 "expected ']'");
-        eat_until(parser, TOKEN_SEMI);
-
+        recover(parser, TOKEN_RBRACKET, RECOVER_STOP_AT_SEMI);
         return;
     }
 
@@ -2312,8 +2493,7 @@ static void parse_direct_declarator(Parser* parser, Declarator* declarator)
             diagnostic_error_at(parser->dm,
                     current_token_start_location(parser),
                     "expected ')'");
-            eat_until(parser, TOKEN_SEMI);
-
+            recover(parser, TOKEN_RPAREN, RECOVER_STOP_AT_SEMI);
             return;
         }
 
@@ -2323,11 +2503,13 @@ static void parse_direct_declarator(Parser* parser, Declarator* declarator)
     {
         diagnostic_error_at(parser->dm, current_token_start_location(parser),
                 "expected identifier or '('");
+        
+        // Make sure we never attempt to use it
+        declarator_set_invalid(declarator);
 
-        // GCC and clang both seem to recover this way based on diagnostics,
-        // however, maybe better handling could be achieved by recovering on a
-        // comma as well?
-        eat_until(parser, TOKEN_SEMI);
+        // GCC and clang both seem to recover on the semi based on diagnostics
+        // alone but this is what I am going to try...
+        recover(parser, TOKEN_COMMA, RECOVER_STOP_AT_SEMI);
         return;
     }
 
@@ -2432,9 +2614,9 @@ static TypeQualifiers parse_type_qualifier_list(Parser* parser)
             case TOKEN_CONST: qualifier = TYPE_QUALIFIER_CONST; break;
             case TOKEN_RESTRICT: qualifier = TYPE_QUALIFIER_RESTRICT; break;
             case TOKEN_VOLATILE: qualifier = TYPE_QUALIFIER_VOLATILE; break;
-            default: panic("unreachable");
         }
         
+        // Note: the below will consume the token itself
         declaration_specifiers_add_qualifier(parser, &qualifiers, qualifier);
     }
     while (has_match(parser, type_qualifier, type_qualifier_count)); 
@@ -2454,7 +2636,7 @@ static TypeQualifiers parse_type_qualifier_list_opt(Parser* parser)
 
 static Declaration* parse_struct_declarator(Parser* parser)
 {   
-    // Do we have a bitfield?
+    // Do we have a bitfield by itself?
     if (is_match(parser, TOKEN_COLON))
     {
         consume(parser);
@@ -2467,18 +2649,23 @@ static Declaration* parse_struct_declarator(Parser* parser)
     DeclarationSpecifiers specifiers = {0};
     
     // Otherwise, we want to create and parse our declarator. 
-    Declarator declarator = declarator_create(&specifiers);
+    Declarator declarator = declarator_create(&specifiers,
+            DECLARATION_CONTEXT_STRUCT);
 
     parse_declarator(parser, &declarator);
 
-    declarator_delete(&declarator);
-
     // Then let's check if we have a bitfield after wards.
+    Location colon_loc = LOCATION_INVALID;
+    Expression* expr = NULL;
     if (is_match(parser, TOKEN_COLON))
     {
-        consume(parser);
-        parse_constant_expression(parser);
+        colon_loc = consume(parser);
+        expr = parse_constant_expression(parser);
     }
+
+    // TODO: add in our struct declarator somehow below we create it all
+
+    declarator_delete(&declarator);
 
     return NULL;
 }
@@ -2509,8 +2696,9 @@ static void parse_struct_declarator_list(Parser* parser,
         // forgeten semi.
         diagnostic_error_at(parser->dm, current_token_start_location(parser),
                 "expected ',' or ';' after struct declarator");
-        eat_until_v(parser,
-                (TokenType[]) {TOKEN_COMMA, TOKEN_SEMI, TOKEN_RCURLY}, 3);
+        
+        // NOTE: don't need rcurly since it will be handled for us :)
+        recover_two(parser, TOKEN_COMMA, TOKEN_SEMI, RECOVER_NONE);
         
         // If we don't end up recovering on a comma, then we will assume that we
         // are done and can stop this parsing.
@@ -2557,6 +2745,9 @@ static Declaration* parse_struct_declaration(Parser* parser)
 
 static Declaration* parse_struct_declaration_list(Parser* parser)
 {
+    Scope members = scope_new_member();
+    semantic_checker_push_scope(&parser->sc, &members);
+
     while (!is_match(parser, TOKEN_RCURLY) && !is_match(parser, TOKEN_EOF))
     {
         // Eat all extra semi-colon tokens and diagnose the technically
@@ -2578,17 +2769,16 @@ static Declaration* parse_struct_declaration_list(Parser* parser)
             Location loc = current_token_start_location(parser);
             diagnostic_error_at(parser->dm, loc,
                     "expected type specifier or qualifier");
-            eat_until_v(parser, (TokenType[]) {TOKEN_SEMI, TOKEN_RCURLY}, 2);
-            if (is_match(parser, TOKEN_SEMI))
-            {
-                consume(parser);
-            }
+            recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
             continue;
         }
 
         // Otherwise we can parse a struct declaration.
         parse_struct_declaration(parser);
     }
+
+    semantic_checker_pop_scope(&parser->sc);
+    scope_delete(&members);
 
     return NULL;
 }
@@ -2598,14 +2788,13 @@ static Declaration* parse_struct_or_union_specifier(Parser* parser)
     assert(has_match(parser, (TokenType[]) {TOKEN_STRUCT, TOKEN_UNION}, 2));
 
     bool is_struct = is_match(parser, TOKEN_STRUCT);
-
     Location struct_or_union_loc = consume(parser);
 
     if (!is_match(parser, TOKEN_IDENTIFIER) && !is_match(parser, TOKEN_LCURLY))
     {
         diagnostic_error_at(parser->dm, struct_or_union_loc,
                 "declaration of anonymous struct must be a definition");
-        eat_until(parser, TOKEN_SEMI);
+        recover(parser, TOKEN_SEMI, RECOVER_NONE);
         return NULL;
     }
 
@@ -2618,12 +2807,18 @@ static Declaration* parse_struct_or_union_specifier(Parser* parser)
     }
 
     if (identifier)
-    {
-        // TODO: look up and ensure that the idnentifier is not in the tag
-        // TODO: namespace and can therefore create a new struct.
+    {   
+        Declaration* previous = semantic_checker_lookup_tag(&parser->sc,
+                identifier, false);
+        if (previous != NULL)
+        {
+            diagnostic_error_at(parser->dm, identifier_loc,
+                    "redefinition of '%s'", identifier->string.ptr);
+        }
     }
 
-    // TODO: here we should create the struct / union definition
+    // TODO: we will need to create the struct declaration here. Providing a
+    // TODO: compiler generated name if the identifier we give it is null
 
     if (!is_match(parser, TOKEN_LCURLY))
     {
@@ -2639,10 +2834,17 @@ static Declaration* parse_struct_or_union_specifier(Parser* parser)
     return NULL;
 }
 
+// TODO: will also need to put in the enumerator type if present
 static Declaration* parse_enumerator_list(Parser* parser)
 {
-    while (true)
+    do
     {
+        // Check if we are done.
+        if (is_match(parser, TOKEN_RCURLY))
+        {
+            break;
+        }
+
         // Here parse the enumerator declaration placing it in the symbol table
         if (!is_match(parser, TOKEN_IDENTIFIER))
         {
@@ -2652,8 +2854,9 @@ static Declaration* parse_enumerator_list(Parser* parser)
             
             // Go until the next element in enumerator list, or until we get to
             // the end of the enumerators.
-            eat_until_v(parser,
-                    (TokenType[]) {TOKEN_RCURLY, TOKEN_IDENTIFIER}, 2);
+            recover(parser, TOKEN_IDENTIFIER, RECOVER_NONE);
+            
+            // If we match a right curly then we should exit this loop!
             if (is_match(parser, TOKEN_RCURLY))
             {
                 break;
@@ -2681,26 +2884,23 @@ static Declaration* parse_enumerator_list(Parser* parser)
         // Now see if we are at the end and finish the definition        
         if (!is_match(parser, TOKEN_RCURLY) && !is_match(parser, TOKEN_COMMA))
         {
-            diagnostic_error_at(parser->dm,
-                    current_token_start_location(parser),
-                    "expected ',' after enumerator");
-
-            eat_until_v(parser, (TokenType[]) {TOKEN_COMMA, TOKEN_RCURLY}, 2);
-            break;
-        }
-
-        // Here we can consume the comma.
-        if (is_match(parser, TOKEN_COMMA))
-        {
-            consume(parser);
-        }
-
-        // Finally check for a trailing '}'
-        if (is_match(parser, TOKEN_RCURLY))
-        {
-            break;
+            if (is_match(parser, TOKEN_IDENTIFIER))
+            {
+                diagnostic_error_at(parser->dm,
+                        current_token_start_location(parser),
+                        "missing ',' between enumerators");
+                continue;
+            }
+            else
+            {
+                diagnostic_error_at(parser->dm,
+                        current_token_start_location(parser),
+                        "expected ',' or '}' after enumerator");
+                recover(parser, TOKEN_COMMA, RECOVER_STOP_AT_SEMI);
+            }
         }
     }
+    while (try_match(parser, TOKEN_COMMA));
 
     return NULL;
 }
@@ -2716,7 +2916,7 @@ static Declaration* parse_enum_specificier(Parser* parser)
     {
         diagnostic_error_at(parser->dm, current_token_start_location(parser), 
                 "expected identifier or '{' after 'enum'");
-        eat_until(parser, TOKEN_SEMI);
+        recover(parser, TOKEN_SEMI, RECOVER_NONE);
         return declaration_create_error(&parser->ast.ast_allocator,
                 enum_location);
     }
@@ -2741,7 +2941,7 @@ static Declaration* parse_enum_specificier(Parser* parser)
     {
         diagnostic_error_at(parser->dm, identifier_loc, "redefinition of '%s'",
                 identifier->string.ptr);
-        eat_until(parser, TOKEN_SEMI);
+        recover(parser, TOKEN_SEMI, RECOVER_NONE);
         return declaration_create_error(&parser->ast.ast_allocator,
                 enum_location);
     }
@@ -2763,7 +2963,6 @@ static Declaration* parse_enum_specificier(Parser* parser)
     {
         diagnostic_error_at(parser->dm, current_token_start_location(parser), 
                 "cannot have an empty enum");
-
         consume(parser);
 
         return declaration_create_error(&parser->ast.ast_allocator,
@@ -2946,21 +3145,10 @@ static void declaration_specifiers_add_type(Parser* parser,
 
 static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser)
 {
-    // Create our base declaration specifiers to use.
-    DeclarationSpecifiers specifiers = (DeclarationSpecifiers)
-    {
-        .type = NULL,
-        .storage_spec = TYPE_STORAGE_SPECIFIER_NONE,
-        .qualifiers = TYPE_QUALIFIER_NONE,
-        .function_spec = TYPE_FUNCTION_SPECIFIER_NONE,
-        .type_spec_type = TYPE_SPECIFIER_TYPE_NONE,
-        .type_spec_width = TYPE_SPECIFIER_WIDTH_NONE,
-        .type_spec_sign = TYPE_SPECIFIER_SIGN_NONE,
-        .type_spec_complex = TYPE_SPECIFIER_COMPLEX_NONE,
-        .location = current_token_start_location(parser)
-    };
+    DeclarationSpecifiers specifiers = declaration_specifiers_create(
+            current_token_start_location(parser));
 
-    while (true)
+    do
     {
         switch (current_token_type(parser))
         {
@@ -3125,7 +3313,7 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser)
                     || specifiers.type_spec_type != TYPE_SPECIFIER_TYPE_NONE ||
                         /*!is_typename(current_token(parser))*/0)
                 {
-                    goto done_specifiers;
+                    goto finish;
                 }
 
                 // If we are a typename then we will need to lookup the type
@@ -3136,38 +3324,39 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser)
                 /* FALLTHROUGH */
             }
 
+            finish:
             default:
-                goto done_specifiers;
+                // Make sure our declaration specifiers are definitely valid. 
+                // This elimates things like 'signed float' and other weird 
+                // mistakes like that.
+                declaration_specifiers_finish(&parser->sc, &specifiers);
+                
+                return specifiers;
         }
     }
-
-done_specifiers:
-    // Make sure our declaration specifiers are definitely valid. This elimates
-    // things like 'signed float' and other weird mistakes like that.
-    declaration_specifiers_finish(&parser->sc, &specifiers);
-
-    return specifiers;
+    while (true);
 }
 
-static Declaration* parse_declaration(Parser* parser)
+static Declaration* parse_declaration(Parser* parser, DeclaratorContext context)
 {
     // First we need to get our declaration specifiers here
     DeclarationSpecifiers specifiers = parse_declaration_specifiers(parser);
 
-    if (!is_match(parser, TOKEN_SEMI))
+    // Check for a valid declaration returning early if we don't get anything
+    if (is_match(parser, TOKEN_SEMI))
     {
-        parse_init_declarator_list(parser, &specifiers);
+        // TODO: this is incorrect. Think about the case below:
+        // 
+        // struct s;
+        //
+        // this does declare something, but it a bit harder to see that it
+        // actually does.
+        diagnostic_warning_at(parser->dm, specifiers.location,
+                "declaration does not declare anything");
+        return NULL;
     }
-    else
-    {
-        // diagnostic_warning_at(parser->dm, current_token_start_location(parser),
-        //         "declaration does not declarate anything");
 
-        // parse_error(parser, "declaration does not declare anything");
-        // TODO: maybe a warning about how we didn't really declare anything
-    }
-
-    return NULL;
+    return parse_init_declarator_list(parser, &specifiers, context);
 }
 
 static QualifiedType parse_type_name(Parser* parser)
@@ -3177,7 +3366,8 @@ static QualifiedType parse_type_name(Parser* parser)
 
     // TODO: this should be parse specifier qualifier list... but idk...
     DeclarationSpecifiers specifiers = parse_declaration_specifiers(parser);
-    Declarator declarator = declarator_create(&specifiers);
+    Declarator declarator = declarator_create(&specifiers,
+            DECLARATION_CONTEXT_TYPE_NAME);
 
     if (has_match(parser, operators, num_operators))
     {
@@ -3194,42 +3384,39 @@ static QualifiedType parse_type_name(Parser* parser)
 
 // The definitions of the functions we will use for pasing
 
-static Declaration* parse_top_level_declaration_or_definition(Parser* parser)
+static Declaration* parse_top_level(Parser* parser)
 {
-    // if (!is_typename_start(parser, current_token(parser)))
-    // {
-    //     diagnostic_error_at(parser->dm, current_token_start_location(parser),
-    //             "expected top level declaration or definition");
+    Declaration* decl = parse_declaration(parser, DECLARATION_CONTEXT_FILE);
 
-    //     while (!is_typename_start(parser, current_token(parser)))
-    //     {
-    //         consume(parser);
-    //     }
+    // TODO: we will need to check for redeclarations
 
-    //     return NULL;
-    // }
-
-    Declaration* decl = parse_declaration(parser);
-
-    if (is_match(parser, TOKEN_SEMI))
+    if (/*declaration_is(decl, DECLARATION_FUNCTION) && */
+            is_match(parser, TOKEN_LCURLY))
     {
-        consume(parser);
+        // If it already have a body error but still parse the function body
+        bool set_body = true;
+        if (/*declaration_function_has_body(decl)*/0)
+        {
+            set_body = false;
 
-        return decl;
-    }
+            diagnostic_error_at(parser->dm, decl->base.location,
+                    "redefinition of '%s'", decl->base.identifier->string.ptr);
+        }
 
-    if (is_match(parser, TOKEN_LCURLY) && 
-            declaration_is(decl, DECLARATION_FUNCTION))
-    {
+        // Parse the body and set if approperiate
         Statement* body = parse_function_body(parser);
+
+        if (/*set_body*/0)
+        {
+            declaration_function_set_body(decl, body);
+        }
     }
     else
     {
-        diagnostic_error_at(parser->dm, current_token_start_location(parser),
-                "expected ';' at end of declaration");
-
-        eat_until_and(parser, TOKEN_SEMI);
+        parse_trailing_semi(parser, "declaration");
     }
+
+    // TODO: need to check redeclaration of symbol
 
     return decl;
 }
@@ -3244,7 +3431,14 @@ static void parse_translation_unit_internal(Parser* parser)
 
     while (current_token_type(parser) != TOKEN_EOF)
     {
-        Declaration* decl = parse_top_level_declaration_or_definition(parser);
+        Declaration* decl = parse_top_level(parser);
+
+        // Can be null if we just got a type name followed by a ;
+        if (decl == NULL)
+        {
+            continue;
+        }
+
         declaration_vector_push(&parser->ast.top_level_decls, decl);
     }
 
@@ -3266,6 +3460,9 @@ void parse_translation_unit(DiagnosticManager* dm, Preprocessor* pp)
     parser.ast = ast_create();
     parser.current_context = (AstContext) {0};
     parser.sc = sematic_checker_create(dm, &parser.ast);
+    parser.paren_count = 0;
+    parser.bracket_count = 0;
+    parser.brace_count = 0;
 
     parse_translation_unit_internal(&parser);
 

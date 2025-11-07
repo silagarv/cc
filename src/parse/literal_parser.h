@@ -6,7 +6,10 @@
 #include <stdbool.h>
 
 #include "driver/diagnostic.h"
+
+#include "files/location.h"
 #include "lex/token.h"
+#include "parse/ast_allocator.h"
 
 // A collected of all of the integer value types
 typedef enum IntegerValueType {
@@ -72,9 +75,12 @@ typedef struct LiteralValue {
     } value;
 } LiteralValue;
 
-// A structure to represent a character literal value in memory
+// A structure to represent a character literal value in memory. If it was a
+// wide char the value should be taken from wide, otherwise it should be taken
+// from normal.
 typedef struct CharValue {   
-    uint64_t value; // The value of the character itself
+    uint64_t value;
+    bool is_wide; // Did we parse a wide char
     bool error; // Did we get an error
 } CharValue;
 
@@ -91,8 +97,10 @@ typedef struct StringLiteral {
 
 bool parse_preprocessing_number(LiteralValue* value, DiagnosticManager* dm,
         const Token* token);
-
-bool parse_char_literal(CharValue* value, const Token* token);
-bool parse_string_literal(StringLiteral* value, const Token* tokens, size_t num_tokens);
+bool parse_char_literal(CharValue* value, DiagnosticManager* dm,
+        const Token* token, bool wide);
+bool parse_string_literal(AstAllocator* allocator, StringLiteral* value,
+        DiagnosticManager* dm, TokenVector tokens, LocationVector locs,
+        bool wide);
 
 #endif /* LITERAL_PARSER_H */

@@ -9,11 +9,14 @@
 #include <assert.h>
 
 #include "util/panic.h"
+#include "util/vec.h"
 #include "util/xmalloc.h"
 #include "util/str.h"
 #include "util/hash.h"
 
 #include "lex/identifier_table.h"
+
+vector_of_impl(Token, Token, token)
 
 void token_set_flag(Token* token, TokenFlags flag)
 {

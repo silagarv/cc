@@ -91,7 +91,8 @@ static const char* kind_to_colour(DiagnosticManager* dm, DiagnosticKind kind)
 void diagnostic_internal(DiagnosticManager* dm, DiagnosticKind kind,
         const char* fmt, va_list ap)
 {
-    fprintf(stderr, "%s%s:%s%s ",
+    fprintf(stderr, "%s%s%s:%s%s ",
+            dm->colours.highlight,
             kind_to_colour(dm, kind),
             kind_to_name(kind),
             dm->colours.white,

@@ -36,8 +36,10 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
         const DeclarationSpecifiers* specifiers);
 
 // TODO: this will need some context e.g. if static is allowed etc.
-Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
+Declaration* semantic_checker_process_function_param(SemanticChecker* sc,
         Declarator* declarator);
+Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
+        Declarator* declarator, Location equals, Initializer* initializer);
 
 // These are our functions for handling all of our scopes
 void semantic_checker_push_scope(SemanticChecker* sc, Scope* scope);

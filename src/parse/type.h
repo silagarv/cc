@@ -246,6 +246,8 @@ QualifiedType type_create_function(AstAllocator* allocator,
         QualifiedType* return_type, QualifiedType** paramaters,
         size_t num_paramaters, bool unspecified_paramters, bool variadic);
 
+bool qualified_type_is(const QualifiedType* type, TypeKind kind);
+
 // Functions to compare types and test if they are equal...
 bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2);
 bool qualifier_type_is_equal_canonical(const QualifiedType* t1, 

@@ -14,8 +14,6 @@ static Expression* expression_create_base(AstAllocator* allocator, size_t size,
     Expression* expr = ast_allocator_alloc(allocator, size);
     expr->base.kind = expression_type;
 
-
-
     return expr;
 }
 
@@ -60,6 +58,16 @@ Expression* expression_create_number(AstAllocator* allocator, Location location,
         return expression_create_float(allocator, location,
                 value.value.floating);
     }
+}
+
+Expression* expression_create_character(AstAllocator* allocator,
+        Location location, CharValue value)
+{
+    Expression* expr = expression_create_base(allocator,
+            sizeof(ExpressionCharacter), EXPRESSION_CHARACTER_CONSTANT);
+    expr->character.value = value;
+
+    return expr;
 }
 
 Expression* expression_create_array(AstAllocator* allocator,

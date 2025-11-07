@@ -229,6 +229,8 @@ Expression* expression_create_error(AstAllocator* allocator);
 
 Expression* expression_create_number(AstAllocator* allocator, Location location,
         LiteralValue value);
+Expression* expression_create_character(AstAllocator* allocator,
+        Location location, CharValue value);
 
 Expression* expression_create_array(AstAllocator* allocator, 
         Location lbracket_loc, Location rbracket_loc, Expression* lhs,

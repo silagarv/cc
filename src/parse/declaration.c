@@ -21,14 +21,35 @@
 vector_of_impl(Declaration*, Declaration, declaration)
 vector_of_impl(DeclaratorPiece, DeclaratorPiece, declarator_piece)
 
-Declarator declarator_create(DeclarationSpecifiers* specifiers)
+DeclarationSpecifiers declaration_specifiers_create(Location location)
+{
+    DeclarationSpecifiers specifiers = (DeclarationSpecifiers)
+    {
+        .type = NULL,
+        .storage_spec = TYPE_STORAGE_SPECIFIER_NONE,
+        .qualifiers = TYPE_QUALIFIER_NONE,
+        .function_spec = TYPE_FUNCTION_SPECIFIER_NONE,
+        .type_spec_type = TYPE_SPECIFIER_TYPE_NONE,
+        .type_spec_width = TYPE_SPECIFIER_WIDTH_NONE,
+        .type_spec_sign = TYPE_SPECIFIER_SIGN_NONE,
+        .type_spec_complex = TYPE_SPECIFIER_COMPLEX_NONE,
+        .location = location
+    };
+
+    return specifiers;
+}
+
+Declarator declarator_create(DeclarationSpecifiers* specifiers,
+        DeclaratorContext context)
 {
     Declarator declarator = (Declarator)
     {
+        .context = context,
         .specifiers = specifiers,
         .identifier = NULL,
         .identifier_location = LOCATION_INVALID,
-        .pieces = declarator_piece_vector_create(1)
+        .pieces = declarator_piece_vector_create(1),
+        .invalid = false
     };
 
     return declarator;
@@ -37,6 +58,16 @@ Declarator declarator_create(DeclarationSpecifiers* specifiers)
 void declarator_delete(Declarator* declarator)
 {
     declarator_piece_vector_free(&declarator->pieces, NULL);
+}
+
+void declarator_set_invalid(Declarator* declarator)
+{
+    declarator->invalid = true;
+}
+
+bool declarator_is_invalid(const Declarator* declarator)
+{
+    return declarator->invalid;
 }
 
 void declarator_push_pointer(Declarator* declarator, TypeQualifiers qualifiers)
@@ -68,6 +99,28 @@ void declarator_push_array(Declarator* declarator, Location lbracket,
     declarator_piece_vector_push(&declarator->pieces, piece);
 }
 
+void declarator_push_function(Declarator* declarator, AstAllocator* allocator,
+        DeclarationVector* params, bool is_variadic)
+{   
+    size_t num_params = declaration_vector_size(params);
+    Declaration** alloced = ast_allocator_alloc(allocator,
+            num_params * sizeof(Declaration*));
+    for (size_t i = 0; i < num_params; i++)
+    {
+        alloced[i] = declaration_vector_get(params, i);
+    }
+
+    DeclaratorPiece piece = (DeclaratorPiece)
+    {
+        .function.base.type = DECLARATOR_PIECE_FUNCTION,
+        .function.paramaters = alloced,
+        .function.num_paramaters = num_params,
+        .function.is_variadic = is_variadic
+    };
+
+    declarator_piece_vector_push(&declarator->pieces, piece);
+}
+
 void declarator_set_identifier(Declarator* declarator, Identifier* identifier,
         Location identifier_location)
 {
@@ -80,9 +133,22 @@ void declarator_set_identifier(Declarator* declarator, Identifier* identifier,
 
 bool declaration_is(const Declaration* decl, DeclarationType type)
 {
-    return true;
+    if (!decl)
+    {
+        return false;
+    }
 
     return decl->base.declaration_type == type;
+}
+
+bool declaration_has_identifier(const Declaration* decl)
+{
+    if (!decl)
+    {
+        return false;
+    }
+
+    return decl->base.identifier != NULL;
 }
 
 // This is a function to create a barebones base declaration.
@@ -138,4 +204,19 @@ Declaration* declaration_create_label(AstAllocator* allocator,
     decl->label.used = implicit; // if implicit then used...
 
     return decl;
+}
+
+bool declaration_function_has_body(Declaration* declaraiton)
+{
+    assert(declaration_is(declaraiton, DECLARATION_FUNCTION));
+
+    return declaraiton->function.function_body != NULL;
+}
+
+void declaration_function_set_body(Declaration* declaraiton,
+        union Statement* body)
+{
+    assert(!declaration_function_has_body(declaraiton));
+
+    declaraiton->function.function_body = body;
 }

@@ -29,6 +29,7 @@ typedef struct LocationRange {
     Location end;
 } LocationRange;
 
+vector_of_decl(Location, Location, location);
 vector_of_decl(LocationRange, LocationRange, location_range);
 
 // Function to check whether a location is valid or invalid
