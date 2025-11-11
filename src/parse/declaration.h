@@ -110,6 +110,9 @@ typedef struct DeclarationFunction {
 typedef struct DeclarationTypedef {
     // The base declaration for this typedef.
     DeclarationBase base;
+
+    // The typecreate by this typedef
+    Type* new_type;
 } DeclarationTypedef;
 
 // A declaration for a field of a struct or union
@@ -120,14 +123,28 @@ typedef struct DeclarationField {
 
 // TODO: all our other declarations...
 
-
 typedef struct DeclarationEnumConstant {
     // The base declaration
     DeclarationBase base;
 
+    // Location of the equals sign
+    Location equals_loc;
+
     // optional expression used as the enumeration value.
     Expression* expression;
+    /*ExpressionValue*/void* value;
 } DeclarationEnumConstant;
+
+typedef struct DeclarationEnum {
+    // Identifier is already in the base.
+    DeclarationBase base;
+
+    Declaration** entries;
+    size_t num_entries;
+
+    // Did we get any entries?
+    bool complete;
+} DeclarationEnum;
 
 typedef struct DeclarationLabel {
     // The base declaration of this object
@@ -169,6 +186,12 @@ union Declaration {
 
     // A field of a struct / union
     DeclarationField field;
+
+    // An enumeration
+    DeclarationEnum enumeration;
+
+    // An enumeration constant
+    DeclarationEnumConstant enumeration_constant;
 
     // The declaration of a label, note that it might not actually be a real
     // label and could be implicitly constructed. However, this will be checked
@@ -294,6 +317,22 @@ Declaration* declaration_create_error(AstAllocator* allocator,
 Declaration* declaration_create_variable(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type, 
         TypeStorageSpecifier storage, Initializer* initializer);
+
+// TODO: function
+
+Declaration* declaration_create_typedef(AstAllocator* allocator,
+        Location location, Identifier* identifier, QualifiedType type);
+void declaration_typedef_set_type(Declaration* tdef, Type* new_type);
+
+Declaration* declaration_create_enum(AstAllocator* allocator,
+        Location location, Identifier* identifier, QualifiedType type);
+bool declaration_enum_has_entries(const Declaration* declaration);
+void declaration_enum_set_entries(Declaration* declaration,
+        Declaration** entries, size_t num_entries);
+
+Declaration* declaration_create_enum_constant(AstAllocator* allocator,
+        Location location, Identifier* identifier, QualifiedType type,
+        Location equals, Expression* expression);
 
 // Create a declaration of label identifier at the given location, and indicate
 // if this label was implictly constructed.

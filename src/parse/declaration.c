@@ -6,8 +6,8 @@
 #include <string.h>
 #include <assert.h>
 
+#include "lex/preprocessor.h"
 #include "util/vec.h"
-#include "util/xmalloc.h"
 
 #include "files/location.h"
 
@@ -189,6 +189,80 @@ Declaration* declaration_create_variable(AstAllocator* allocator,
             sizeof(DeclarationVariable), DECLARATION_VARIABLE, location, 
             identifier, type, storage, TYPE_FUNCTION_SPECIFIER_NONE, false);
     decl->variable.initializer = initializer;
+
+    return decl;
+}
+
+Declaration* declaration_create_typedef(AstAllocator* allocator,
+        Location location, Identifier* identifier, QualifiedType type)
+{
+    Declaration* decl = declaration_create_base(allocator,
+            sizeof(DeclarationTypedef), DECLARATION_TYPEDEF, location,
+            identifier, type, TYPE_STORAGE_SPECIFIER_TYPEDEF,
+            TYPE_FUNCTION_SPECIFIER_NONE, false);
+    
+    return decl;
+}
+
+void declaration_typedef_set_type(Declaration* tdef, Type* new_type)
+{
+    tdef->tdef.new_type = new_type;
+}
+
+Declaration* declaration_create_enum(AstAllocator* allocator,
+        Location location, Identifier* identifier, QualifiedType type)
+{
+    Declaration* declaration = declaration_create_base(allocator,
+            sizeof(DeclarationEnum), DECLARATION_ENUM, location, identifier,
+            type, TYPE_STORAGE_SPECIFIER_NONE, TYPE_FUNCTION_SPECIFIER_NONE,
+            false);
+
+    declaration->enumeration.entries = NULL;
+    declaration->enumeration.num_entries = 0;
+    declaration->enumeration.complete = false;
+
+    return declaration;
+}
+
+bool declaration_enum_has_entries(const Declaration* declaration)
+{
+    if (!declaration_is(declaration, DECLARATION_ENUM))
+    {
+        return false;
+    }
+
+    if (declaration == NULL)
+    {
+        return false;
+    }
+
+    return declaration->enumeration.complete;
+}
+
+void declaration_enum_set_entries(Declaration* declaration,
+        Declaration** entries, size_t num_entries)
+{
+    assert(declaration_is(declaration, DECLARATION_ENUM));
+    assert(!declaration_enum_has_entries(declaration));
+    assert(declaration->enumeration.entries == NULL);
+    assert(declaration->enumeration.num_entries == 0);
+
+    declaration->enumeration.entries = entries;
+    declaration->enumeration.num_entries = num_entries;
+    declaration->enumeration.complete = true;
+}
+
+Declaration* declaration_create_enum_constant(AstAllocator* allocator,
+        Location location, Identifier* identifier, QualifiedType type,
+        Location equals, Expression* expression)
+{
+    Declaration* decl = declaration_create_base(allocator,
+            sizeof(DeclarationEnumConstant), DECLARATION_ENUM_CONSTANT,
+            location, identifier, type, TYPE_STORAGE_SPECIFIER_NONE,
+            TYPE_FUNCTION_SPECIFIER_NONE, false);
+    decl->enumeration_constant.equals_loc = equals;
+    decl->enumeration_constant.expression = expression;
+    decl->enumeration_constant.value = NULL;
 
     return decl;
 }

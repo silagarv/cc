@@ -34,7 +34,7 @@ vector_of_decl(Identifier*, Identifier, identifier);
 
 // Structure to represent the identifier table
 typedef struct IdentifierTable {
-    Arena ident_allocator;
+    Arena ident_allocator; // TODO: use this to speed up id table deletion...
     HashMap ident_table;
 } IdentifierTable;
 
@@ -66,5 +66,6 @@ void identifier_table_delete(IdentifierTable* table);
 // Lookup an identifier in the table inserting it into the table if it is not
 // already a part of the table.
 Identifier* identifier_table_lookup(IdentifierTable* table, String* string);
+Identifier* identifier_table_get(IdentifierTable* table, const char* str);
 
 #endif /* IDENTIFIER_TABLE_H */

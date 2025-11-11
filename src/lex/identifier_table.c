@@ -1,6 +1,7 @@
 #include "identifier_table.h"
 
 #include <stdlib.h>
+#include <string.h>
 #include <assert.h>
 
 #include "util/xmalloc.h"
@@ -205,4 +206,9 @@ Identifier* identifier_table_lookup(IdentifierTable* table, String* string)
     hash_map_insert(&table->ident_table, &ident->string, ident);
 
     return ident;
+}
+
+Identifier* identifier_table_get(IdentifierTable* table, const char* str)
+{
+    return identifier_table_lookup(table, &(String){(char*) str, strlen(str)});
 }

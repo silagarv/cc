@@ -1,12 +1,14 @@
 #include "type.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
-#include <sys/cdefs.h>
+#include <assert.h>
 
 #include "parse/ast_allocator.h"
+#include "parse/declaration.h"
 #include "util/buffer.h"
 #include "util/panic.h"
 #include "util/str.h"
@@ -214,6 +216,41 @@ QualifiedType type_create_function(AstAllocator* allocator,
     return (QualifiedType) {0};
 }
 
+QualifiedType type_create_enum(AstAllocator* allocator, Type* base)
+{
+    size_t base_size = base->type_base.type_size;
+    size_t align_size = base->type_base.type_alignment;
+    bool complete = base->type_base.is_complete;
+    Type* type = type_create_base(allocator, sizeof(TypeEnum), TYPE_ENUM,
+            base_size, align_size, complete);
+    type->type_enum.enum_decl = NULL;
+
+    return (QualifiedType) {TYPE_QUALIFIER_NONE, type};
+}
+
+void type_enum_set_declaration(QualifiedType* enum_type,
+        union Declaration* decl)
+{
+    assert(enum_type->type->type_enum.enum_decl == NULL);
+
+    enum_type->type->type_enum.enum_decl = decl;
+}
+
+Type* type_create_typedef(AstAllocator* allocator, QualifiedType type,
+        union Declaration* decl)
+{
+    size_t type_size = type.type->type_base.type_size;
+    size_t type_align = type.type->type_base.type_alignment;
+    bool complete = type.type->type_base.is_complete;
+
+    Type* new_type = type_create_base(allocator, sizeof(TypeTypedef),
+            TYPE_TYPEDEF, type_size, type_align, complete);
+    new_type->type_typedef.underlying_type = type;
+    new_type->type_typedef.tdef = decl;
+
+    return new_type;
+}
+
 bool qualified_type_is(const QualifiedType* type, TypeKind kind)
 {
     if (type->type == NULL)
@@ -254,6 +291,10 @@ void type_print(const QualifiedType* t1)
 
     switch (t1->type->type_base.type)
     {
+        case TYPE_VOID:
+            printf("void ");
+            break;
+
         case TYPE_S_INT:
             printf("int ");
             break;
@@ -274,6 +315,11 @@ void type_print(const QualifiedType* t1)
             printf("char");
             break;
 
+        case TYPE_ENUM:
+            printf("enum %s",
+                    t1->type->type_enum.enum_decl->base.identifier->string.ptr);
+            break;
+
         case TYPE_POINTER:
             printf("pointer to ");
             type_print(&t1->type->type_pointer.underlying_type);
@@ -282,6 +328,11 @@ void type_print(const QualifiedType* t1)
         case TYPE_ARRAY:
             printf("array of ");
             type_print(&t1->type->type_array.element_type);
+            break;
+
+        case TYPE_TYPEDEF:
+            printf("typename '%s'",
+                    t1->type->type_typedef.tdef->base.identifier->string.ptr);
             break;
     }
 }

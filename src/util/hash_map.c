@@ -65,6 +65,10 @@ bool hash_map_contains(HashMap* map, void* key)
 void* hash_map_get(HashMap* map, void* key)
 {
     // Get our hash and starting position
+    assert(map);
+    assert(map->hash_func);
+    assert(key);
+
     const uint32_t key_hash = map->hash_func(key);
     size_t position = key_hash % map->cap_entries;
 

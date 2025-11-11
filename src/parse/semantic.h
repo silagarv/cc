@@ -35,6 +35,13 @@ void declaration_specifiers_finish(SemanticChecker* sc,
 QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
         const DeclarationSpecifiers* specifiers);
 
+// Create the enumeration declaration 
+Declaration* semantic_checker_create_enum(SemanticChecker* sc,
+        Location enum_location, Identifier* name, bool anonymous);
+Declaration* semantic_checker_create_enum_constant(SemanticChecker* sc,
+        Location location, Identifier* identifier, Location equals,
+        Expression* expression);
+
 // TODO: this will need some context e.g. if static is allowed etc.
 Declaration* semantic_checker_process_function_param(SemanticChecker* sc,
         Declarator* declarator);

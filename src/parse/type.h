@@ -152,11 +152,11 @@ typedef struct TypeCompound {
     bool is_anonamous; // e.g. struct { int x; };
 } TypeCompound;
 
-// TODO: should we leave enums stuck with `int` or do we do something about this
+// Note: in this all enum types have real_type = int
 typedef struct TypeEnum {
     TypeBase base;
     Type* real_type; // the `actual` type we consider this (int...)
-    union Declaration* decl; // the enum declaration itself
+    union Declaration* enum_decl; // the enumeration declaration
 } TypeEnum;
 
 typedef struct TypeFunction {
@@ -178,7 +178,7 @@ typedef struct TypePointer {
 // And a typedef
 typedef struct TypeTypedef {
     TypeBase base;
-    Type* underlying_type;
+    QualifiedType underlying_type;
     union Declaration* tdef; // the typedef that introduced this
 } TypeTypedef;
 
@@ -245,6 +245,13 @@ QualifiedType type_create_array(AstAllocator* allocator,
 QualifiedType type_create_function(AstAllocator* allocator,
         QualifiedType* return_type, QualifiedType** paramaters,
         size_t num_paramaters, bool unspecified_paramters, bool variadic);
+
+QualifiedType type_create_enum(AstAllocator* allocator, Type* base);
+void type_enum_set_declaration(QualifiedType* enum_type,
+        union Declaration* decl);
+
+Type* type_create_typedef(AstAllocator* allocator, QualifiedType type,
+        union Declaration* decl);
 
 bool qualified_type_is(const QualifiedType* type, TypeKind kind);
 

@@ -243,7 +243,12 @@ static Location consume(Parser* parser)
 
 static bool is_match(Parser* parser, TokenType type)
 {
-    return current_token_type(parser) == type;
+    return has_match(parser, (TokenType[]) {type}, 1);
+}
+
+static bool is_match_two(Parser* parser, TokenType type1, TokenType type2)
+{
+    return has_match(parser, (TokenType[]) {type1, type2}, 2);
 }
 
 static bool try_match(Parser* parser, TokenType type)
@@ -446,8 +451,7 @@ static Declaration* parse_init_declarator(Parser* parser,
 static Declaration* parse_init_declarator_list(Parser* parser,
         DeclarationSpecifiers* specifiers, DeclaratorContext context);
 
-static Declaration* parse_typedef_name(Parser* parser);
-static Declaration* parse_enumerator_list(Parser* parser);
+static void parse_enumerator_list(Parser* parser, Declaration* enum_decl);
 static Declaration* parse_enum_specificer(Parser* parser);
 // TODO: condense below into 2 funcs
 static void parse_direct_declarator(Parser* parser, Declarator* declarator);
@@ -515,6 +519,7 @@ static bool is_typename_start(Parser* parser, const Token* tok)
     const TokenType type = tok->type;
     switch (type)
     {
+        // Type speicifiers
         case TOKEN_VOID:
         case TOKEN_CHAR:
         case TOKEN_SHORT:
@@ -530,37 +535,50 @@ static bool is_typename_start(Parser* parser, const Token* tok)
         case TOKEN_STRUCT:
         case TOKEN_UNION:
         case TOKEN_ENUM:
-        case TOKEN_EXTERN:
-        case TOKEN_STATIC:
-        case TOKEN_TYPEDEF:
-        case TOKEN_INLINE:
+
+        // Type qualifiers
         case TOKEN_CONST:
         case TOKEN_VOLATILE:
+        case TOKEN_RESTRICT:
+
+        // Function specifiers
+        case TOKEN_INLINE:
+
+        // Storage classes
+        case TOKEN_TYPEDEF:
+        case TOKEN_EXTERN:
+        case TOKEN_STATIC:
         case TOKEN_REGISTER:
         case TOKEN_AUTO:
             return true;
 
+        // Possibly?
         case TOKEN_IDENTIFIER:
         {
             Identifier* identifier = tok->data.identifier;
-            // if (!symbol_table_contains(NULL /*table=current*/, identifier))
-            // {
-            //     return false;
-            // }
+            Declaration* decl = scope_lookup_ordinairy(parser->sc.scope,
+                     identifier, true);
 
-            // Declaration* declaration = symbol_table_lookup(NULL
-            //         /*table=current*/, identifier);
-            // if (declaration->base.declaration_type == DECLARATION_TYPEDEF)
-            // {
-            //     return true;
-            // }
-        
-            return false;
+            return declaration_is(decl, DECLARATION_TYPEDEF);
         }
 
         default:
             return false;
     }
+}
+
+static Type* get_typename(Parser* parser, const Token* tok)
+{
+    assert(token_is_type(tok, TOKEN_IDENTIFIER));
+
+    Identifier* id = tok->data.identifier;
+
+    Declaration* decl = semantic_checker_lookup_ordinairy(&parser->sc, id,
+            true);
+    
+    assert(declaration_is(decl, DECLARATION_TYPEDEF));
+
+    return decl->tdef.new_type;
 }
 
 static bool is_expression_start(Parser* parser, const Token* tok)
@@ -849,7 +867,7 @@ static Expression* parse_postfix_expression(Parser* parser)
                 {
                     diagnostic_error_at(parser->dm,
                             current_token_start_location(parser),
-                            "expected identifier");
+                            "expected identifier after '.'");
                     recover(parser, TOKEN_SEMI, RECOVER_NONE);
                     return expression_create_error(&parser->ast.ast_allocator);
                 }
@@ -869,8 +887,8 @@ static Expression* parse_postfix_expression(Parser* parser)
                 {
                     diagnostic_error_at(parser->dm,
                             current_token_start_location(parser),
-                            "expected identifier");
-                    recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
+                            "expected identifier after '->'");
+                    recover(parser, TOKEN_SEMI, RECOVER_NONE);
                     return expression_create_error(&parser->ast.ast_allocator);
                 }
 
@@ -1056,7 +1074,17 @@ static Expression* parse_cast_expression(Parser* parser)
             
             Initializer* initializer = parse_initializer_list(parser);
 
-            Location r_curly = match(parser, TOKEN_RCURLY);
+            Location r_curly = LOCATION_INVALID;
+            if (!is_match(parser, TOKEN_RCURLY))
+            {
+                diagnostic_error_at(parser->dm,
+                        current_token_start_location(parser),
+                        "expected '}'");
+            }
+            else
+            {
+                r_curly = consume(parser);
+            }
 
             return NULL;
         }
@@ -1830,8 +1858,21 @@ static Statement* parse_do_while_statement(Parser* parser)
 
 static Statement* parse_for_statement(Parser* parser)
 {
+    assert(is_match(parser, TOKEN_FOR));
+
     Location for_loc = consume(parser);
-    Location lparen_loc = match(parser, TOKEN_LPAREN);
+
+    // Make sure we got a lparen after!
+    if (!is_match(parser, TOKEN_LPAREN))
+    {
+        diagnostic_error_at(parser->dm, current_token_start_location(parser),
+                "expected '(' after 'for'");
+        recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
+
+        return statement_create_error(&parser->ast.ast_allocator);
+    }
+
+    Location lparen_loc = consume(parser);
 
     // Below is where it gets a little tricky :)
     Statement* init = NULL;
@@ -1903,6 +1944,8 @@ static Statement* parse_for_statement(Parser* parser)
 
 static Statement* parse_goto_statement(Parser* parser)
 {
+    assert(is_match(parser, TOKEN_GOTO));
+
     Location goto_loc = consume(parser);
 
     // Need to have an identifier next. GCC and clang have computed gotos as an
@@ -1922,7 +1965,8 @@ static Statement* parse_goto_statement(Parser* parser)
     Location semi_loc = parse_trailing_semi(parser, "goto statement");
     
     // Get the label from the semantic checker. This should never be null as
-    // we will implicitly create a label
+    // we will implicitly create a label if it does not already exist.
+    // TODO: we can also use this call to help diagnose unused labels too!
     Declaration* label = semantic_checker_act_on_goto(&parser->sc, label_name,
             label_location);
 
@@ -1932,6 +1976,8 @@ static Statement* parse_goto_statement(Parser* parser)
 
 static Statement* parse_continue_statement(Parser* parser)
 {
+    assert(is_match(parser, TOKEN_SEMI));
+
     Location continue_loc = consume(parser);
     Location semi_loc = parse_trailing_semi(parser, "continue statement");
 
@@ -1948,6 +1994,8 @@ static Statement* parse_continue_statement(Parser* parser)
 
 static Statement* parse_break_statement(Parser* parser)
 {
+    assert(is_match(parser, TOKEN_BREAK));
+
     Location break_loc = consume(parser);
     Location semi_loc = parse_trailing_semi(parser, "break statement");
 
@@ -2513,7 +2561,8 @@ static void parse_direct_declarator(Parser* parser, Declarator* declarator)
         return;
     }
 
-    while (is_match(parser, TOKEN_LPAREN) || is_match(parser, TOKEN_LBRACKET))
+    // Try to match our declarators
+    while (is_match_two(parser, TOKEN_LPAREN, TOKEN_LBRACKET))
     {
         if (is_match(parser, TOKEN_LPAREN))
         {
@@ -2522,6 +2571,10 @@ static void parse_direct_declarator(Parser* parser, Declarator* declarator)
         else if (is_match(parser, TOKEN_LBRACKET))
         {
             parse_array_declarator(parser, declarator);
+        }
+        else
+        {
+            panic("unreachable");
         }
     }
 }
@@ -2672,48 +2725,12 @@ static Declaration* parse_struct_declarator(Parser* parser)
 
 static void parse_struct_declarator_list(Parser* parser,
         DeclarationSpecifiers* specififers)
-{  
-
-    while (true)
+{
+    do
     {
         Declaration* decl = parse_struct_declarator(parser);
-
-        // If we have a semi, nothing more to do.
-        if (is_match(parser, TOKEN_SEMI))
-        {
-            break;
-        }
-        
-        // If we have a comma, eat it and go again.
-        if (is_match(parser, TOKEN_COMMA))
-        {
-            consume(parser);
-            continue;
-        }
-        
-        // Otherwise an error has occured. Look for a semi, comma, or closing
-        // curly and then recover from there. The curly is there in case of a
-        // forgeten semi.
-        diagnostic_error_at(parser->dm, current_token_start_location(parser),
-                "expected ',' or ';' after struct declarator");
-        
-        // NOTE: don't need rcurly since it will be handled for us :)
-        recover_two(parser, TOKEN_COMMA, TOKEN_SEMI, RECOVER_NONE);
-        
-        // If we don't end up recovering on a comma, then we will assume that we
-        // are done and can stop this parsing.
-        if (is_match(parser, TOKEN_COMMA))
-        {
-            consume(parser);
-            continue;
-        }
-        else
-        {
-            break;
-        }
     }
-
-    // TODO: should I match the finishing semi here?
+    while (try_match(parser, TOKEN_COMMA));
 }
 
 static Declaration* parse_struct_declaration(Parser* parser)
@@ -2738,7 +2755,22 @@ static Declaration* parse_struct_declaration(Parser* parser)
     
     parse_struct_declarator_list(parser, &specifiers);
 
-    match(parser, TOKEN_SEMI);
+    if (!is_match(parser, TOKEN_SEMI))
+    {
+        diagnostic_error_at(parser->dm, current_token_start_location(parser),
+                "expected ';' after struct declaration");
+        
+        // We could be at end of struct definition!
+        if (!is_match(parser, TOKEN_RCURLY))
+        {
+            recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
+        }
+
+        return NULL;
+    }
+
+    // Consume the ';'
+    consume(parser);
 
     return NULL;
 }
@@ -2748,19 +2780,20 @@ static Declaration* parse_struct_declaration_list(Parser* parser)
     Scope members = scope_new_member();
     semantic_checker_push_scope(&parser->sc, &members);
 
-    while (!is_match(parser, TOKEN_RCURLY) && !is_match(parser, TOKEN_EOF))
+    while (!is_match_two(parser, TOKEN_RCURLY, TOKEN_EOF))
     {
         // Eat all extra semi-colon tokens and diagnose the technically
         // incorrect grammar once only.
         if (is_match(parser, TOKEN_SEMI))
         {
-            Location semi_loc = current_token_start_location(parser);
+            diagnostic_warning_at(parser->dm,
+                    current_token_start_location(parser),
+                    "extra ';' inside struct");
+
             while (is_match(parser, TOKEN_SEMI))
             {
                 consume(parser);
             }
-            diagnostic_warning_at(parser->dm, semi_loc,
-                    "extra ';' inside struct");
             continue;
         }
 
@@ -2785,12 +2818,12 @@ static Declaration* parse_struct_declaration_list(Parser* parser)
 
 static Declaration* parse_struct_or_union_specifier(Parser* parser)
 {
-    assert(has_match(parser, (TokenType[]) {TOKEN_STRUCT, TOKEN_UNION}, 2));
+    assert(is_match_two(parser, TOKEN_STRUCT, TOKEN_UNION));
 
     bool is_struct = is_match(parser, TOKEN_STRUCT);
     Location struct_or_union_loc = consume(parser);
 
-    if (!is_match(parser, TOKEN_IDENTIFIER) && !is_match(parser, TOKEN_LCURLY))
+    if (!is_match_two(parser, TOKEN_IDENTIFIER, TOKEN_LCURLY))
     {
         diagnostic_error_at(parser->dm, struct_or_union_loc,
                 "declaration of anonymous struct must be a definition");
@@ -2816,6 +2849,11 @@ static Declaration* parse_struct_or_union_specifier(Parser* parser)
                     "redefinition of '%s'", identifier->string.ptr);
         }
     }
+    else
+    {
+        identifier = identifier_table_get(&parser->pp->identifiers,
+                "<anonymous>");
+    }
 
     // TODO: we will need to create the struct declaration here. Providing a
     // TODO: compiler generated name if the identifier we give it is null
@@ -2835,37 +2873,41 @@ static Declaration* parse_struct_or_union_specifier(Parser* parser)
 }
 
 // TODO: will also need to put in the enumerator type if present
-static Declaration* parse_enumerator_list(Parser* parser)
+static void parse_enumerator_list(Parser* parser, Declaration* enum_decl)
 {
-    do
-    {
-        // Check if we are done.
-        if (is_match(parser, TOKEN_RCURLY))
-        {
-            break;
-        }
+    assert(enum_decl && declaration_is(enum_decl, DECLARATION_ENUM));
 
+    // Make sure we don't infinitely loop
+    while (!is_match(parser, TOKEN_EOF))
+    {
         // Here parse the enumerator declaration placing it in the symbol table
         if (!is_match(parser, TOKEN_IDENTIFIER))
         {
             diagnostic_error_at(parser->dm,
                     current_token_start_location(parser),
                     "expected identifier");
-            
-            // Go until the next element in enumerator list, or until we get to
-            // the end of the enumerators.
-            recover(parser, TOKEN_IDENTIFIER, RECOVER_NONE);
-            
-            // If we match a right curly then we should exit this loop!
+            recover_three(parser, TOKEN_COMMA, TOKEN_IDENTIFIER, TOKEN_RCURLY,
+                    RECOVER_STOP_AT_SEMI);
+
+            if (is_match(parser, TOKEN_COMMA))
+            {
+                continue;
+            }
+                
             if (is_match(parser, TOKEN_RCURLY))
             {
                 break;
             }
         }
 
+        // Due to previous potential error recovery
+        assert(is_match(parser, TOKEN_IDENTIFIER));
+
         Identifier* identifier = current_token(parser)->data.identifier;
         Location identifier_loc = consume(parser);
 
+        // Get the expresison first since we cannot build the enum value with
+        // the identifier itself
         Location equal_loc = LOCATION_INVALID;
         Expression* expression = NULL;
         if (is_match(parser, TOKEN_EQUAL))
@@ -2874,45 +2916,62 @@ static Declaration* parse_enumerator_list(Parser* parser)
             expression = parse_constant_expression(parser);
         }
 
-        // Here we should make sure to actually build the enumeration and note
-        // that we will also need to keep track of the previous declaration so
-        // that we can correctly assign numbers to it. We will also need to
-        // check to ensure that the identifier is not currently in the normal
-        // namespace.
+        // Create the declaration. Note, this handles any redefinitions that
+        // we might get which is nice and convenient.
+        Declaration* constant_decl = semantic_checker_create_enum_constant(
+                &parser->sc, identifier_loc, identifier, equal_loc, expression);
 
-
-        // Now see if we are at the end and finish the definition        
-        if (!is_match(parser, TOKEN_RCURLY) && !is_match(parser, TOKEN_COMMA))
+        // Now see if we are at the end and finish the definition  
+        if (!is_match_two(parser, TOKEN_RCURLY, TOKEN_COMMA))      
         {
             if (is_match(parser, TOKEN_IDENTIFIER))
             {
+                // Common error, no recovery needed, just restart loop
                 diagnostic_error_at(parser->dm,
                         current_token_start_location(parser),
                         "missing ',' between enumerators");
                 continue;
             }
-            else
+            
+            if (is_match(parser, TOKEN_SEMI))
             {
                 diagnostic_error_at(parser->dm,
                         current_token_start_location(parser),
-                        "expected ',' or '}' after enumerator");
-                recover(parser, TOKEN_COMMA, RECOVER_STOP_AT_SEMI);
+                        "expected '= constant-expression' or end of "
+                        "enumeration");
+                break;
             }
+            
+            // Otherwise, recover by finding the next enumerator or the end
+            diagnostic_error_at(parser->dm,
+                    current_token_start_location(parser),
+                    "expected ',' or '}' after enumerator");
+            recover_two(parser, TOKEN_COMMA, TOKEN_RCURLY,
+                    RECOVER_STOP_AT_SEMI);
+        }
+
+        if (is_match(parser, TOKEN_COMMA))
+        {
+            consume(parser);
+        }
+
+        if (is_match(parser, TOKEN_RCURLY))
+        {
+            break;
         }
     }
-    while (try_match(parser, TOKEN_COMMA));
 
-    return NULL;
+    declaration_enum_set_entries(enum_decl, NULL, 0);
 }
 
-// TODO: i think we should change the return type of this here. It probably
-// shouldn't be a full declaration. Maybe just a
 static Declaration* parse_enum_specificier(Parser* parser)
 {
+    assert(is_match(parser, TOKEN_ENUM));
+
     Location enum_location = consume(parser);
 
     // We need to have a match for one of these here otherwise we have a problem
-    if (!is_match(parser, TOKEN_IDENTIFIER) && !is_match(parser, TOKEN_LCURLY))
+    if (!is_match_two(parser, TOKEN_IDENTIFIER, TOKEN_LCURLY))
     {
         diagnostic_error_at(parser->dm, current_token_start_location(parser), 
                 "expected identifier or '{' after 'enum'");
@@ -2929,51 +2988,125 @@ static Declaration* parse_enum_specificier(Parser* parser)
         identifier_loc = consume(parser);
     }
 
-    // TODO: this is wrong for sure. What if we are using the enum as a function
-    // return type after declaring it. We should only look it up and error if 
-    // the user tries to rewrite the definition of the enum...
-
-    // If we had an identifier we will need to check it is not currently in the
-    // tag namespace. Also should add the identifier into the tag namespace if 
-    // we get it.
-    if (identifier &&
-            semantic_checker_lookup_tag(&parser->sc, identifier, false))
+    // Check if we already have a declaration here.
+    Declaration* previous = semantic_checker_lookup_tag(&parser->sc,
+            identifier, false);
+    bool enum_has_entries = declaration_enum_has_entries(previous);
+        
+    // Make sure that we actually got an enum. If invalid we will just create
+    // an anonymous enum. 
+    if (previous != NULL && !declaration_is(previous, DECLARATION_ENUM))
     {
-        diagnostic_error_at(parser->dm, identifier_loc, "redefinition of '%s'",
+        diagnostic_error_at(parser->dm, identifier_loc, "use of '%s' with a tag"
+                " type that does not match previously declared",
                 identifier->string.ptr);
-        recover(parser, TOKEN_SEMI, RECOVER_NONE);
-        return declaration_create_error(&parser->ast.ast_allocator,
-                enum_location);
+
+        identifier = NULL;
+        identifier_loc = LOCATION_INVALID;
+        previous = NULL;
     }
-
-    // TODO: create an enumeration declaration, so that we can add the 
-    // enumerators to the enum as we parse then (if needed)
-
-    // QUICK HACK FOR EXITING THIS IF WE GET E.G. enum A a;
+    
+    // No body to parse
     if (!is_match(parser, TOKEN_LCURLY))
     {
-        return NULL;
+        // Return the previous if we have it
+        if (previous != NULL)
+        {
+            return previous;
+        }
+
+        // Otherwise create a new definition, noting that identifier may be null
+        // since the tag name may have already existed but as a different one.
+        // So will be set to null in this case
+        bool anonymous = identifier == NULL;
+        Identifier* enum_name = !anonymous
+                ? identifier
+                : identifier_table_get(&parser->pp->identifiers, "<anonymous>");
+        Location decl_location = !anonymous ? identifier_loc : enum_location;
+        Declaration* declaration = semantic_checker_create_enum(&parser->sc,
+                decl_location, enum_name, anonymous);
+        // TODO: should we move the identifiers to the semantic checker to make
+        // TODO: this better?
+
+        // Shouldn't warn about an already error'd thing
+        if (!anonymous)
+        {
+            diagnostic_warning_at(parser->dm, identifier_loc,
+                    "forward reference to 'enum' type");
+        }
+        
+        return declaration;
     }
+    // We are about to parse the body!
+    assert(is_match(parser, TOKEN_LCURLY));    
+    
+    // Here we create a new declaration if we don't need it. Erroring about
+    // a possible redefinition, and also 
+    Declaration* declaration;
+    if (previous != NULL && !enum_has_entries)
+    {
+        declaration = previous;
+    }
+    else
+    {
+        // We have a redeclaration error that we need to fix.
+        if (previous != NULL && enum_has_entries)
+        {
+            diagnostic_error_at(parser->dm, identifier_loc,
+                    "redefinition of enum '%s'", identifier->string.ptr);
 
-    // Here we should match a left curly
-    Location opening_curly = match(parser, TOKEN_LCURLY);
+            identifier = NULL;
+            identifier_loc = LOCATION_INVALID;
+            previous = NULL;
+        }
 
-    // Check for this common mistake.
+        // Get the anonymous identifier if needed and location we want to use,
+        // then create the enum so that we can add entries to it!
+        bool anonymous = identifier == NULL;
+        Identifier* enum_name = !anonymous
+                ? identifier
+                : identifier_table_get(&parser->pp->identifiers, "<anonymous>");
+        Location decl_location = !anonymous ? identifier_loc : enum_location;
+        declaration = semantic_checker_create_enum(&parser->sc, decl_location,
+                enum_name, anonymous);
+        // TODO: should we move the identifiers to the semantic checker to make
+        // TODO: this better
+    }
+    assert(declaration != NULL);
+
+    // TODO: the below does not set the enum to be complete when there is no
+    // TODO: enumeration list present. This should be changed
+    
+    // Here we can actually parse the enum
+    Location opening_curly = consume(parser);
+
+    // Check for an empty enum, setting it to be a complete declaration if so
     if (is_match(parser, TOKEN_RCURLY))
     {
         diagnostic_error_at(parser->dm, current_token_start_location(parser), 
                 "cannot have an empty enum");
         consume(parser);
 
-        return declaration_create_error(&parser->ast.ast_allocator,
-                enum_location);
+        declaration_enum_set_entries(declaration, NULL, 0);
+
+        return declaration;
     }
 
-    Declaration* body = parse_enumerator_list(parser);
+    parse_enumerator_list(parser, declaration);
 
-    Location closing_curly = match(parser, TOKEN_RCURLY);
+    Location closing_curly = LOCATION_INVALID;
+    if (!is_match(parser, TOKEN_RCURLY))
+    {
+        diagnostic_error_at(parser->dm, current_token_start_location(parser),
+                "expected '}'");
+        recover(parser, TOKEN_SEMI, RECOVER_NONE);
+    }
+    else
+    {
+        closing_curly = consume(parser);
+    }
 
-    return NULL;
+    return declaration;
 }
 
 static void declaration_specifiers_add_storage(Parser* parser,
@@ -3297,34 +3430,33 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser)
                 declaration_specifiers_add_type(parser, &specifiers,
                         TYPE_SPECIFIER_TYPE_ENUM);
                 Declaration* enum_decl = parse_enum_specificier(parser);
-                // TODO: need to do something with the enum declaration...
+                specifiers.declaration = enum_decl;
                 break;
             }
             
             // Special case of identifier since we could have a typedef.
             case TOKEN_IDENTIFIER:
             {
-                // If any of the below are true this identifier is considiered
-                // to be part of the direct declarator, even if it is a typedef
-                // Also if this token is not a typename anyways we are also done
-                if (specifiers.type_spec_sign != TYPE_SPECIFIER_SIGN_NONE ||
-                    specifiers.type_spec_width != TYPE_SPECIFIER_WIDTH_NONE ||
-                    specifiers.type_spec_complex != TYPE_SPECIFIER_COMPLEX_NONE
-                    || specifiers.type_spec_type != TYPE_SPECIFIER_TYPE_NONE ||
-                        /*!is_typename(current_token(parser))*/0)
+                // If we have not had any information about the type yet then we
+                // should check if we have a typedef.
+                if (specifiers.type_spec_sign == TYPE_SPECIFIER_SIGN_NONE &&
+                    specifiers.type_spec_width == TYPE_SPECIFIER_WIDTH_NONE &&
+                    specifiers.type_spec_complex == TYPE_SPECIFIER_COMPLEX_NONE
+                    && specifiers.type_spec_type == TYPE_SPECIFIER_TYPE_NONE &&
+                        is_typename_start(parser, current_token(parser)))
                 {
-                    goto finish;
+                    assert(specifiers.type == NULL);
+                    specifiers.type = get_typename(parser,
+                            current_token(parser));
+                    
+                    declaration_specifiers_add_type(parser, &specifiers,
+                            TYPE_SPECIFIER_TYPE_TYPENAME);
+                    break;
                 }
-
-                // If we are a typename then we will need to lookup the type
-                // that we are and put it into the declaration specifiers.
-
-                // break;
-
-                /* FALLTHROUGH */
             }
 
-            finish:
+            /* FALLTHROUGH */
+
             default:
                 // Make sure our declaration specifiers are definitely valid. 
                 // This elimates things like 'signed float' and other weird 
@@ -3386,6 +3518,18 @@ static QualifiedType parse_type_name(Parser* parser)
 
 static Declaration* parse_top_level(Parser* parser)
 {
+    // Check that we are okay to start a typename bailing out if this is invalid
+    if (!is_typename_start(parser, current_token(parser)))
+    {
+        diagnostic_error_at(parser->dm, current_token_start_location(parser),
+                "expected top level declaration or definition");
+        recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
+
+        return declaration_create_error(&parser->ast.ast_allocator,
+                current_token_start_location(parser));
+    }
+
+    // Here we actually do the work!
     Declaration* decl = parse_declaration(parser, DECLARATION_CONTEXT_FILE);
 
     // TODO: we will need to check for redeclarations
@@ -3413,7 +3557,7 @@ static Declaration* parse_top_level(Parser* parser)
     }
     else
     {
-        parse_trailing_semi(parser, "declaration");
+        parse_trailing_semi(parser, "top level declaration");
     }
 
     // TODO: need to check redeclaration of symbol

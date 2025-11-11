@@ -278,8 +278,14 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
             break;
 
         case TYPE_SPECIFIER_TYPE_ENUM:
-            panic("unimplemented -> enum type should be in declaration");
+        {
+            Declaration* enum_decl = specifiers->declaration;
+            assert(declaration_is(enum_decl, DECLARATION_ENUM));
+
+            // NOTE: qualifiers should be none here anyways
+            type = enum_decl->enumeration.base.qualified_type.type;
             break;
+        }
 
         case TYPE_SPECIFIER_TYPE_STRUCT:
             panic("unimplemented -> struct type should be in declaration");
@@ -290,7 +296,7 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
             break;
 
         case TYPE_SPECIFIER_TYPE_TYPENAME:
-            panic("unimplemented -> typename should be in specifiers");
+            type = specifiers->type;
             break;           
     }
 
@@ -564,6 +570,43 @@ Declaration* semantic_checker_process_variable(SemanticChecker* sc,
     return declaration;
 }
 
+Declaration* semantic_checker_process_typedef(SemanticChecker* sc,
+        Declarator* declarator, QualifiedType type)
+{
+    const DeclarationSpecifiers* specifiers = declarator->specifiers;
+    Identifier* identifier = declarator->identifier;
+    Location identifer_loc = declarator->identifier_location;
+
+    if (specifiers->function_spec != TYPE_FUNCTION_SPECIFIER_NONE)
+    {
+        diagnostic_error_at(sc->dm, identifer_loc,
+                "'%s' can only appear on functions",
+                function_specifier_to_name(specifiers->function_spec));
+    }
+
+    // Create the typedef and the new type setting up the declaration fully.
+    Declaration* tdef = declaration_create_typedef(&sc->ast->ast_allocator,
+            identifer_loc, identifier, type);
+    Type* new_type = type_create_typedef(&sc->ast->ast_allocator, type, tdef);
+
+    declaration_typedef_set_type(tdef, new_type);
+    
+    // TODO: check for other identifiers already present!
+    Declaration* previous = semantic_checker_lookup_ordinairy(sc, identifier,
+            false);
+    if (previous != NULL)
+    {
+        diagnostic_error_at(sc->dm, declarator->identifier_location,
+                "redefinition of '%s' as a different kind of symbol",
+                identifier->string.ptr);
+        return tdef;
+    }
+
+    scope_insert_ordinairy(sc->scope, tdef);
+
+    return tdef;
+}
+
 Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
         Declarator* declarator, Location equals, Initializer* initializer)
 {
@@ -587,9 +630,13 @@ Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
     // The main different types of declarations we will have to handle are below
     if (declarator->specifiers->storage_spec == TYPE_STORAGE_SPECIFIER_TYPEDEF)
     {
-        // TODO: handle typedef
-        panic("cannot handle typedef at this time");
-        return NULL;
+        if (equals != LOCATION_INVALID)
+        {
+            diagnostic_error_at(sc->dm, equals,
+                    "illegal initializer (only variables can be initialized)");
+        }
+
+        return semantic_checker_process_typedef(sc, declarator, type);
     }
     else if (qualified_type_is(&type, TYPE_FUNCTION))
     {
@@ -628,6 +675,56 @@ Scope* semantic_checker_current_scope(SemanticChecker* sc)
     return sc->scope;
 }
 
+Declaration* semantic_checker_create_enum(SemanticChecker* sc,
+        Location enum_location, Identifier* name, bool anonymous)
+{
+    // NOTE: if the enum is anonymous it is not inserted into the tag symbols
+
+    // Create the enum type and a declaration for the enum itself
+    QualifiedType type = type_create_enum(&sc->ast->ast_allocator,
+            sc->ast->base_types.type_signed_int);
+    Declaration* decl = declaration_create_enum(&sc->ast->ast_allocator, 
+            enum_location, name, type);
+    type_enum_set_declaration(&type, decl);
+
+    // Only, insert it into the scope if it's not anonymous
+    if (!anonymous)
+    {
+        scope_insert_tag(sc->scope, decl);
+    }
+
+    return decl;
+}
+
+Declaration* semantic_checker_create_enum_constant(SemanticChecker* sc,
+        Location location, Identifier* identifier, Location equals,
+        Expression* expression)
+{
+    Declaration* previous = scope_lookup_ordinairy(sc->scope, identifier,
+            false);
+    if (previous != NULL)
+    {
+        diagnostic_error_at(sc->dm, location, "redefinition of '%s'",
+                identifier->string.ptr);
+        return declaration_create_error(&sc->ast->ast_allocator, location);
+    }
+
+    // TODO: also need to constant fold the expression!
+    
+    // Create and add the declaration into the ordinairy namespace
+    QualifiedType type = (QualifiedType)
+    {
+        TYPE_QUALIFIER_NONE, 
+        sc->ast->base_types.type_signed_int
+    };
+    Declaration* new_decl = declaration_create_enum_constant(
+            &sc->ast->ast_allocator, location, identifier, type, equals,
+            expression);
+    scope_insert_ordinairy(sc->scope, new_decl);
+
+    return new_decl;
+}
+
 Declaration* semantic_checker_lookup_ordinairy(SemanticChecker* sc,
         Identifier* identifier, bool recursive)
 {
@@ -639,7 +736,10 @@ Declaration* semantic_checker_lookup_ordinairy(SemanticChecker* sc,
 Declaration* semantic_checker_lookup_tag(SemanticChecker* sc,
         Identifier* identifier, bool recursive)
 {
-    // TODO: should add assert to lookup if we are a tag ns or not
+    if (identifier == NULL)
+    {
+        return NULL;
+    }
 
     return scope_lookup_tag(sc->scope, identifier, recursive);
 }

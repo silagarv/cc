@@ -121,9 +121,9 @@ Scope* scope_get_parent(Scope* scope)
 Declaration* scope_lookup_ordinairy(Scope* scope, Identifier* name,
         bool recursive)
 {
-    for (Scope* current = scope; current; scope = current->parent)
+    for (Scope* current = scope; current; current = current->parent)
     {
-        Declaration* symbol = symbol_table_lookup(&scope->ordinairy, name);
+        Declaration* symbol = symbol_table_lookup(&current->ordinairy, name);
         if (symbol)
         {
             return symbol;
@@ -141,9 +141,10 @@ Declaration* scope_lookup_ordinairy(Scope* scope, Identifier* name,
 Declaration* scope_lookup_tag(Scope* scope, Identifier* name,
         bool recursive)
 {
-    for (Scope* current = scope; current; scope = current->parent)
+    for (Scope* current = scope; current; current = current->parent)
     {
-        Declaration* symbol = symbol_table_lookup(&scope->tag, name);
+        Declaration* symbol = symbol_table_lookup(&current->tag, name);
+        
         if (symbol)
         {
             return symbol;
