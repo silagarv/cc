@@ -121,6 +121,13 @@ typedef struct DeclarationField {
     DeclarationBase base;
 } DeclarationField;
 
+typedef struct DeclarationCompound {
+    // Base declaration
+    DeclarationBase base;
+
+    
+} DeclarationCompound;
+
 // TODO: all our other declarations...
 
 typedef struct DeclarationEnumConstant {
@@ -186,6 +193,9 @@ union Declaration {
 
     // A field of a struct / union
     DeclarationField field;
+
+    // A struct / union declaration
+    DeclarationCompound compound;
 
     // An enumeration
     DeclarationEnum enumeration;
@@ -333,6 +343,10 @@ void declaration_enum_set_entries(Declaration* declaration,
 Declaration* declaration_create_enum_constant(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type,
         Location equals, Expression* expression);
+
+Declaration* declaration_create_struct(AstAllocator* allocator,
+        Location location, Identifier* identifier);
+bool declaration_struct_is_complete(const Declaration* declaration);
 
 // Create a declaration of label identifier at the given location, and indicate
 // if this label was implictly constructed.

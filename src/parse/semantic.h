@@ -16,6 +16,10 @@ typedef struct SemanticChecker {
     // The diagnostic manager for this semantic checker
     DiagnosticManager* dm;
 
+    // The identifier table store in the preprocessor so that we can create
+    // anonymous types if needed
+    IdentifierTable* identifiers;
+
     // The ast so that we can get the builtin types and all of the current types
     Ast* ast;
 
@@ -27,7 +31,8 @@ typedef struct SemanticChecker {
     FunctionScope* function;
 } SemanticChecker;
 
-SemanticChecker sematic_checker_create(DiagnosticManager* dm, Ast* ast);
+SemanticChecker sematic_checker_create(DiagnosticManager* dm,
+        IdentifierTable* identifiers, Ast* ast);
 
 void declaration_specifiers_finish(SemanticChecker* sc,
         DeclarationSpecifiers* specifiers);
@@ -41,6 +46,15 @@ Declaration* semantic_checker_create_enum(SemanticChecker* sc,
 Declaration* semantic_checker_create_enum_constant(SemanticChecker* sc,
         Location location, Identifier* identifier, Location equals,
         Expression* expression);
+
+Declaration* semantic_checker_create_struct(SemanticChecker* sc,
+        Location enum_location, Identifier* name, bool anonymous);
+Declaration* semantic_checker_create_union(SemanticChecker* sc,
+        Location enum_location, Identifier* name, bool anonymous);
+
+Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
+        DeclarationType type, Location tag_type_loc, Identifier* identifier,
+        Location identifier_location, bool is_definition);
 
 // TODO: this will need some context e.g. if static is allowed etc.
 Declaration* semantic_checker_process_function_param(SemanticChecker* sc,

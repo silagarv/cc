@@ -1,6 +1,7 @@
 #include "semantic.h"
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
 
@@ -21,11 +22,13 @@
 #include "parse/declaration.h"
 #include "util/panic.h"
 
-SemanticChecker sematic_checker_create(DiagnosticManager* dm, Ast* ast)
+SemanticChecker sematic_checker_create(DiagnosticManager* dm, 
+        IdentifierTable* identifiers, Ast* ast)
 {
     SemanticChecker sc = (SemanticChecker)
     {
         .dm = dm,
+        .identifiers = identifiers,
         .ast = ast,
         .scope = NULL,
         .function = NULL
@@ -723,6 +726,164 @@ Declaration* semantic_checker_create_enum_constant(SemanticChecker* sc,
     scope_insert_ordinairy(sc->scope, new_decl);
 
     return new_decl;
+}
+
+Declaration* semantic_checker_create_struct(SemanticChecker* sc,
+        Location enum_location, Identifier* name, bool anonymous)
+{
+
+    // TODO: create a new struct type
+    // TODO: create the declaration
+    // TODO: if not anonymous insert into the tag symbol table
+
+    Declaration* decl = NULL;
+
+    return decl;
+}
+
+Declaration* semantic_checker_create_union(SemanticChecker* sc,
+        Location enum_location, Identifier* name, bool anonymous);
+
+static char* tag_kind_to_name(DeclarationType type)
+{
+    switch (type)
+    {
+        case DECLARATION_ENUM:
+            return "enum";
+
+        case DECLARATION_STRUCT:
+            return "struct";
+
+        case DECLARATION_UNION:
+            return "union";
+
+        default:
+            panic("bad tag type in tag_kind_to_name");
+            return NULL;
+    }
+}
+
+static Declaration* sematantic_checker_create_tag(SemanticChecker* sc,
+        DeclarationType type, Location tag_type_loc, Identifier* identifier,
+        Location identifier_loc)
+{
+    bool anonymous = identifier == NULL;
+    Identifier* tag_name = !anonymous
+                ? identifier
+                : identifier_table_get(sc->identifiers, "<anonymous>");
+    Location decl_location = !anonymous ? identifier_loc : tag_type_loc;
+
+    switch (type)
+    {
+        // NOTE: for an enum declaration this will automatically insert it into
+        // NOTE: the tag namespace
+        case DECLARATION_ENUM:
+            return semantic_checker_create_enum(sc, decl_location,
+                    identifier, anonymous);
+
+        case DECLARATION_STRUCT:
+            return semantic_checker_create_struct(sc, decl_location,
+                    identifier, anonymous);
+
+        case DECLARATION_UNION:
+            panic("union -> unhandled case in semantic checker create tag");
+            return NULL;
+
+        default:
+            panic("bad tag type in semantic_checker_create_tag");
+            return NULL;
+    }
+}
+
+Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
+        DeclarationType type, Location tag_type_loc, Identifier* identifier,
+        Location identifier_location, bool is_definition)
+{
+    // If we know it's a definition, don't look it up recursively, otherwise
+    // do so since we will want to get a previous declaration.
+    Declaration* previous = semantic_checker_lookup_tag(sc, identifier,
+            !is_definition);
+
+    // Make sure that the tag types match. If the tag types don't match then
+    // we want to instead create an anonymous declaration instead.
+    // NOTE: if identifier was null previous == NULL
+    if (previous != NULL && !declaration_is(previous, type))
+    {
+        // TODO: improve error message to include previous tag type?
+        diagnostic_error_at(sc->dm, identifier_location, "use of '%s' with a "
+                "tag type that does not match previously declared",
+                identifier->string.ptr);
+
+        identifier = NULL;
+        identifier_location = LOCATION_INVALID;
+        previous = NULL;
+    }
+    
+    if (!is_definition)
+    {
+        // Here the logic is simple if we aren't a definition. If we have the
+        // declaration return it. Otherwise, we might need to create an implicit
+        // declaration for the tag.
+
+        if (previous != NULL)
+        {
+            return previous;
+        }
+
+        // Create the implicit tag and make a warning about the implicit decl if
+        // it is an enum declaration.
+        Declaration* declaration =  sematantic_checker_create_tag(sc, type,
+                tag_type_loc, identifier, identifier_location);
+        if (type == DECLARATION_ENUM && identifier != NULL)
+        {
+            diagnostic_warning_at(sc->dm, declaration->base.location,
+                    "forward reference to '%s' type", tag_kind_to_name(type));
+        }
+
+        return declaration;
+    }
+    else
+    {
+        // Here if we are a definition the logic flipped. If we have a 
+        // declaration previously though we need to make sure that it is not
+        // complete though.
+
+        if (previous != NULL)
+        {
+            bool complete;
+            switch (type)
+            {
+                case DECLARATION_ENUM:
+                    complete = declaration_enum_has_entries(previous);
+                    break;
+
+                case DECLARATION_STRUCT:
+                case DECLARATION_UNION:
+                    complete = declaration_struct_is_complete(previous);
+                    break;
+            }
+
+            // If we're not complete that's fine since we are about to give
+            // the tag declaration a definition
+            if (!complete)
+            {
+                return previous;
+            }
+
+            // Otherwise create an error and fall through to the below case
+            diagnostic_error_at(sc->dm, identifier_location,
+                    "redefinition of %s '%s'", tag_kind_to_name(type),
+                    identifier->string.ptr);
+
+            identifier = NULL;
+            identifier_location = LOCATION_INVALID;
+            previous = NULL;
+        }
+        
+        // No previous definition, or we want to create a new tag to work with
+        return sematantic_checker_create_tag(sc, type, tag_type_loc, identifier,
+                identifier_location);
+    }
 }
 
 Declaration* semantic_checker_lookup_ordinairy(SemanticChecker* sc,

@@ -226,12 +226,12 @@ Declaration* declaration_create_enum(AstAllocator* allocator,
 
 bool declaration_enum_has_entries(const Declaration* declaration)
 {
-    if (!declaration_is(declaration, DECLARATION_ENUM))
+    if (declaration == NULL)
     {
         return false;
     }
 
-    if (declaration == NULL)
+    if (!declaration_is(declaration, DECLARATION_ENUM))
     {
         return false;
     }
@@ -265,6 +265,25 @@ Declaration* declaration_create_enum_constant(AstAllocator* allocator,
     decl->enumeration_constant.value = NULL;
 
     return decl;
+}
+
+Declaration* declaration_create_struct(AstAllocator* allocator,
+        Location location, Identifier* identifier);
+bool declaration_struct_is_complete(const Declaration* declaration)
+{
+    if (declaration == NULL)
+    {
+        return false;
+    }
+
+    DeclarationType type = declaration->base.declaration_type;
+    if (type != DECLARATION_STRUCT && type != DECLARATION_STRUCT)
+    {
+        return false;
+    }
+
+    // TODO: fix this!
+    return false;
 }
 
 Declaration* declaration_create_label(AstAllocator* allocator, 

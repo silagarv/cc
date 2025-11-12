@@ -144,12 +144,11 @@ typedef struct TypeCompoundMember {
 
 typedef struct TypeCompound {
     TypeBase base;
-    union Declaration* decl; // the name given or compiler generated name
 
-    TypeCompoundMember* members; // the members of the compound type
+    TypeCompoundMember** members; // the members of the compound type
     size_t num_members;
 
-    bool is_anonamous; // e.g. struct { int x; };
+    union Declaration* decl; // the name given or compiler generated name
 } TypeCompound;
 
 // Note: in this all enum types have real_type = int
@@ -256,6 +255,8 @@ Type* type_create_typedef(AstAllocator* allocator, QualifiedType type,
 bool qualified_type_is(const QualifiedType* type, TypeKind kind);
 
 // Functions to compare types and test if they are equal...
+bool type_is_builtin(const Type* t1);
+bool type_is_equal(const Type* t1, const Type* t2);
 bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2);
 bool qualifier_type_is_equal_canonical(const QualifiedType* t1, 
         const QualifiedType* t2);

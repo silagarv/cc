@@ -499,7 +499,7 @@ static Declaration* parse_struct_declarator(Parser* parser);
 static void parse_struct_declarator_list(Parser* parser,
         DeclarationSpecifiers* specififers);
 static Declaration* parse_struct_declaration(Parser* parser);
-static Declaration* parse_struct_declaration_list(Parser* parser);
+static void parse_struct_declaration_list(Parser* parser, Declaration* decl);
 static Declaration* parse_struct_or_union_specifier(Parser* parser);
 
 static Declaration* parse_declaration(Parser* parser, DeclaratorContext ctx);
@@ -2775,7 +2775,7 @@ static Declaration* parse_struct_declaration(Parser* parser)
     return NULL;
 }
 
-static Declaration* parse_struct_declaration_list(Parser* parser)
+static void parse_struct_declaration_list(Parser* parser, Declaration* decl)
 {
     Scope members = scope_new_member();
     semantic_checker_push_scope(&parser->sc, &members);
@@ -2812,8 +2812,6 @@ static Declaration* parse_struct_declaration_list(Parser* parser)
 
     semantic_checker_pop_scope(&parser->sc);
     scope_delete(&members);
-
-    return NULL;
 }
 
 static Declaration* parse_struct_or_union_specifier(Parser* parser)
@@ -2821,14 +2819,17 @@ static Declaration* parse_struct_or_union_specifier(Parser* parser)
     assert(is_match_two(parser, TOKEN_STRUCT, TOKEN_UNION));
 
     bool is_struct = is_match(parser, TOKEN_STRUCT);
-    Location struct_or_union_loc = consume(parser);
+    DeclarationType type = is_struct ? DECLARATION_STRUCT : DECLARATION_UNION;
+
+    Location tag_loc = consume(parser);
 
     if (!is_match_two(parser, TOKEN_IDENTIFIER, TOKEN_LCURLY))
     {
-        diagnostic_error_at(parser->dm, struct_or_union_loc,
-                "declaration of anonymous struct must be a definition");
+        diagnostic_error_at(parser->dm, tag_loc,
+                "declaration of anonymous %s must be a definition",
+                is_struct ? "struct" : "union");
         recover(parser, TOKEN_SEMI, RECOVER_NONE);
-        return NULL;
+        return declaration_create_error(&parser->ast.ast_allocator, tag_loc);
     }
 
     Identifier* identifier = NULL;
@@ -2839,35 +2840,44 @@ static Declaration* parse_struct_or_union_specifier(Parser* parser)
         identifier_loc = consume(parser);
     }
 
-    if (identifier)
-    {   
-        Declaration* previous = semantic_checker_lookup_tag(&parser->sc,
-                identifier, false);
-        if (previous != NULL)
-        {
-            diagnostic_error_at(parser->dm, identifier_loc,
-                    "redefinition of '%s'", identifier->string.ptr);
-        }
-    }
-    else
-    {
-        identifier = identifier_table_get(&parser->pp->identifiers,
-                "<anonymous>");
-    }
+    // The action we are going to do in the semantic checker depends on if we
+    // are wanting to parse a definition. Some of the following cases apply
+    //
+    // Below we want to use the existing declaration:
+    // 1.     struct foo { int a; }; void func(void) { struct foo a; }
+    // 2.     struct foo { int a; }; void func(void) { struct foo; }
+    //
+    // Whereas here we actually create a new declaration of enum foo
+    // 3.   struct foo { int a; }; void func(void) { struct foo { int a; }; }
+    //
+    bool is_definition = is_match(parser, TOKEN_LCURLY);
+    Declaration* declaration = semantic_checker_handle_tag(&parser->sc,
+            type, type, identifier, identifier_loc, is_definition);
+    assert(declaration != NULL);
 
-    // TODO: we will need to create the struct declaration here. Providing a
-    // TODO: compiler generated name if the identifier we give it is null
-
+    // Return the definition if we don't have a body to parse
     if (!is_match(parser, TOKEN_LCURLY))
     {
-        return NULL; // SHOULD ACTUALLT BE THE DECL!
+        return declaration;
     }
+
+    assert(is_match(parser, TOKEN_LCURLY));
     
     Location l_curly = consume(parser);
 
-    parse_struct_declaration_list(parser);
+    parse_struct_declaration_list(parser, declaration);
 
-    Location r_curly = match(parser, TOKEN_RCURLY);
+    Location closing_curly = LOCATION_INVALID;
+    if (!is_match(parser, TOKEN_RCURLY))
+    {
+        diagnostic_error_at(parser->dm, current_token_start_location(parser),
+                "expected '}'");
+        recover(parser, TOKEN_SEMI, RECOVER_NONE);
+    }
+    else
+    {
+        closing_curly = consume(parser);
+    }
     
     return NULL;
 }
@@ -2988,94 +2998,28 @@ static Declaration* parse_enum_specificier(Parser* parser)
         identifier_loc = consume(parser);
     }
 
-    // Check if we already have a declaration here.
-    Declaration* previous = semantic_checker_lookup_tag(&parser->sc,
-            identifier, false);
-    bool enum_has_entries = declaration_enum_has_entries(previous);
-        
-    // Make sure that we actually got an enum. If invalid we will just create
-    // an anonymous enum. 
-    if (previous != NULL && !declaration_is(previous, DECLARATION_ENUM))
-    {
-        diagnostic_error_at(parser->dm, identifier_loc, "use of '%s' with a tag"
-                " type that does not match previously declared",
-                identifier->string.ptr);
-
-        identifier = NULL;
-        identifier_loc = LOCATION_INVALID;
-        previous = NULL;
-    }
-    
-    // No body to parse
-    if (!is_match(parser, TOKEN_LCURLY))
-    {
-        // Return the previous if we have it
-        if (previous != NULL)
-        {
-            return previous;
-        }
-
-        // Otherwise create a new definition, noting that identifier may be null
-        // since the tag name may have already existed but as a different one.
-        // So will be set to null in this case
-        bool anonymous = identifier == NULL;
-        Identifier* enum_name = !anonymous
-                ? identifier
-                : identifier_table_get(&parser->pp->identifiers, "<anonymous>");
-        Location decl_location = !anonymous ? identifier_loc : enum_location;
-        Declaration* declaration = semantic_checker_create_enum(&parser->sc,
-                decl_location, enum_name, anonymous);
-        // TODO: should we move the identifiers to the semantic checker to make
-        // TODO: this better?
-
-        // Shouldn't warn about an already error'd thing
-        if (!anonymous)
-        {
-            diagnostic_warning_at(parser->dm, identifier_loc,
-                    "forward reference to 'enum' type");
-        }
-        
-        return declaration;
-    }
-    // We are about to parse the body!
-    assert(is_match(parser, TOKEN_LCURLY));    
-    
-    // Here we create a new declaration if we don't need it. Erroring about
-    // a possible redefinition, and also 
-    Declaration* declaration;
-    if (previous != NULL && !enum_has_entries)
-    {
-        declaration = previous;
-    }
-    else
-    {
-        // We have a redeclaration error that we need to fix.
-        if (previous != NULL && enum_has_entries)
-        {
-            diagnostic_error_at(parser->dm, identifier_loc,
-                    "redefinition of enum '%s'", identifier->string.ptr);
-
-            identifier = NULL;
-            identifier_loc = LOCATION_INVALID;
-            previous = NULL;
-        }
-
-        // Get the anonymous identifier if needed and location we want to use,
-        // then create the enum so that we can add entries to it!
-        bool anonymous = identifier == NULL;
-        Identifier* enum_name = !anonymous
-                ? identifier
-                : identifier_table_get(&parser->pp->identifiers, "<anonymous>");
-        Location decl_location = !anonymous ? identifier_loc : enum_location;
-        declaration = semantic_checker_create_enum(&parser->sc, decl_location,
-                enum_name, anonymous);
-        // TODO: should we move the identifiers to the semantic checker to make
-        // TODO: this better
-    }
+    // The action we are going to do in the semantic checker depends on if we
+    // are wanting to parse a definition. Some of the following cases apply
+    //
+    // Below we want to use the existing declaration:
+    // 1.     enum foo {X, Y, Z}; void func(void) { enum foo a; }
+    // 2.     enum foo {X, Y, Z}; void func(void) { enum foo; }
+    //
+    // Whereas here we actually create a new declaration of enum foo
+    // 3.     enum foo {X, Y, Z}; void func(void) { enum foo {A, B, C}; }
+    bool is_definition = is_match(parser, TOKEN_LCURLY);
+    Declaration* declaration = semantic_checker_handle_tag(&parser->sc,
+            DECLARATION_ENUM, enum_location, identifier, identifier_loc,
+            is_definition);
     assert(declaration != NULL);
 
-    // TODO: the below does not set the enum to be complete when there is no
-    // TODO: enumeration list present. This should be changed
+    // Return the definition if we don't have a body to parse
+    if (!is_match(parser, TOKEN_LCURLY))
+    {
+        return declaration;
+    }
+
+    assert(is_match(parser, TOKEN_LCURLY));
     
     // Here we can actually parse the enum
     Location opening_curly = consume(parser);
@@ -3474,19 +3418,24 @@ static Declaration* parse_declaration(Parser* parser, DeclaratorContext context)
     // First we need to get our declaration specifiers here
     DeclarationSpecifiers specifiers = parse_declaration_specifiers(parser);
 
-    // Check for a valid declaration returning early if we don't get anything
     if (is_match(parser, TOKEN_SEMI))
     {
-        // TODO: this is incorrect. Think about the case below:
-        // 
-        // struct s;
-        //
-        // this does declare something, but it a bit harder to see that it
-        // actually does.
-        diagnostic_warning_at(parser->dm, specifiers.location,
-                "declaration does not declare anything");
         return NULL;
     }
+
+    // Check for a valid declaration returning early if we don't get anything
+    // if (is_match(parser, TOKEN_SEMI))
+    // {
+    //     // TODO: this is incorrect. Think about the case below:
+    //     // 
+    //     // struct s;
+    //     //
+    //     // this does declare something, but it a bit harder to see that it
+    //     // actually does.
+    //     diagnostic_warning_at(parser->dm, specifiers.location,
+    //             "declaration does not declare anything");
+    //     return NULL;
+    // }
 
     return parse_init_declarator_list(parser, &specifiers, context);
 }
@@ -3603,7 +3552,7 @@ void parse_translation_unit(DiagnosticManager* dm, Preprocessor* pp)
     memset(parser.recover_set, 0, sizeof(parser.recover_set));
     parser.ast = ast_create();
     parser.current_context = (AstContext) {0};
-    parser.sc = sematic_checker_create(dm, &parser.ast);
+    parser.sc = sematic_checker_create(dm, &pp->identifiers, &parser.ast);
     parser.paren_count = 0;
     parser.bracket_count = 0;
     parser.brace_count = 0;

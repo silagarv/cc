@@ -261,6 +261,36 @@ bool qualified_type_is(const QualifiedType* type, TypeKind kind)
     return type->type->type_base.type == kind;
 }
 
+bool type_is_builtin(const Type* t1)
+{
+    return false;
+}
+
+bool type_is_equal(const Type* t1, const Type* t2)
+{
+    // If different types then obviously not equal
+    if (t1->type_base.type != t2->type_base.type)
+    {
+        return false;
+    }
+
+    // If they are both the same builtin type then they are equal
+    if (type_is_builtin(t1))
+    {
+        return true;
+    }
+
+    // Otherwise for the non-builtin types, we need to check they refer to the
+    // same thing.
+    switch (t1->type_base.type)
+    {
+        default:
+            break;
+    }
+
+    return false;
+}
+
 bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2)
 {
     return t1->type == t2->type && t1->qualifiers == t2->qualifiers;
