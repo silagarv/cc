@@ -249,6 +249,16 @@ QualifiedType type_create_enum(AstAllocator* allocator, Type* base);
 void type_enum_set_declaration(QualifiedType* enum_type,
         union Declaration* decl);
 
+Type* type_create_struct(AstAllocator* allocator);
+void type_struct_set_declaration(Type* type, union Declaration* declaration);
+bool type_struct_is_complete(Type* type);
+// TODO: make sure we set the members
+
+Type* type_create_union(AstAllocator* allocator);
+void type_union_set_declaration(Type* type, union Declaration* declaration);
+bool type_union_is_complete(Type* type);
+// TODO: make sure we set the members
+
 Type* type_create_typedef(AstAllocator* allocator, QualifiedType type,
         union Declaration* decl);
 

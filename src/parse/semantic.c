@@ -8,6 +8,7 @@
 #include "files/location.h"
 #include "parse/expression.h"
 #include "parse/initializer.h"
+#include "parse/literal_parser.h"
 #include "parse/parser.h"
 #include "util/buffer.h"
 
@@ -701,7 +702,7 @@ Declaration* semantic_checker_create_enum(SemanticChecker* sc,
 
 Declaration* semantic_checker_create_enum_constant(SemanticChecker* sc,
         Location location, Identifier* identifier, Location equals,
-        Expression* expression)
+        Expression* expression, Declaration* last_decl)
 {
     Declaration* previous = scope_lookup_ordinairy(sc->scope, identifier,
             false);
@@ -712,7 +713,57 @@ Declaration* semantic_checker_create_enum_constant(SemanticChecker* sc,
         return declaration_create_error(&sc->ast->ast_allocator, location);
     }
 
-    // TODO: also need to constant fold the expression!
+    // TODO: also need to determine the value of the enum
+    int value;
+    if (expression != NULL)
+    {
+        // Here we got given an expression that we want to fold
+        if (!expression_is(expression, EXPRESSION_INTEGER_CONSTANT))
+        {
+            diagnostic_error_at(sc->dm, expression_get_location(expression),
+                    "expression cannot be folded at this time");
+            value = 0;
+        }
+        else
+        {
+            IntegerValue int_value = expression->integer.value;
+
+            if (int_value.value > INT_MAX)
+            {
+                diagnostic_error_at(sc->dm, location,
+                        "enumerator value '%s' not in range of int",
+                        identifier->string.ptr);
+                value = INT_MAX;
+            }
+            else
+            {
+                value = (int) int_value.value;
+            }
+        }
+    }
+    else
+    {
+        if (last_decl == NULL)
+        {
+            value = 0;
+        }
+        else
+        {
+            value = declaration_enum_constant_get_value(last_decl);
+    
+            if (value == INT_MAX)
+            {
+                diagnostic_error_at(sc->dm, location,
+                        "overflow in enumeration value '%s'",
+                        identifier->string.ptr);
+                value = 0;
+            }
+            else
+            {
+                value++;
+            }
+        }
+    }
     
     // Create and add the declaration into the ordinairy namespace
     QualifiedType type = (QualifiedType)
@@ -722,7 +773,7 @@ Declaration* semantic_checker_create_enum_constant(SemanticChecker* sc,
     };
     Declaration* new_decl = declaration_create_enum_constant(
             &sc->ast->ast_allocator, location, identifier, type, equals,
-            expression);
+            expression, value);
     scope_insert_ordinairy(sc->scope, new_decl);
 
     return new_decl;
@@ -731,13 +782,20 @@ Declaration* semantic_checker_create_enum_constant(SemanticChecker* sc,
 Declaration* semantic_checker_create_struct(SemanticChecker* sc,
         Location enum_location, Identifier* name, bool anonymous)
 {
+    QualifiedType type = (QualifiedType)
+    {
+        TYPE_QUALIFIER_NONE,
+        type_create_struct(&sc->ast->ast_allocator)
+    };
+    Declaration* decl = declaration_create_struct(&sc->ast->ast_allocator,
+            enum_location, name, type);
+    type_struct_set_declaration(type.type, decl);
 
-    // TODO: create a new struct type
-    // TODO: create the declaration
-    // TODO: if not anonymous insert into the tag symbol table
-
-    Declaration* decl = NULL;
-
+    if (!anonymous)
+    {
+        scope_insert_tag(sc->scope, decl);
+    }
+    
     return decl;
 }
 
@@ -779,11 +837,11 @@ static Declaration* sematantic_checker_create_tag(SemanticChecker* sc,
         // NOTE: the tag namespace
         case DECLARATION_ENUM:
             return semantic_checker_create_enum(sc, decl_location,
-                    identifier, anonymous);
+                    tag_name, anonymous);
 
         case DECLARATION_STRUCT:
             return semantic_checker_create_struct(sc, decl_location,
-                    identifier, anonymous);
+                    tag_name, anonymous);
 
         case DECLARATION_UNION:
             panic("union -> unhandled case in semantic checker create tag");

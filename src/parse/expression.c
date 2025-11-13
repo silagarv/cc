@@ -8,19 +8,56 @@
 #include "parse/literal_parser.h"
 #include "parse/type.h"
 
+bool expression_is(const Expression* expr, ExpressionType type)
+{
+    if (expr == NULL)
+    {
+        return false;
+    }
+
+    return expr->base.kind == type;
+}
+
+Location expression_get_location(const Expression* expr)
+{
+    return (Location) 1;
+}
+
 static Expression* expression_create_base(AstAllocator* allocator, size_t size,
         ExpressionType expression_type)
 {
     Expression* expr = ast_allocator_alloc(allocator, size);
     expr->base.kind = expression_type;
 
+    // Do not poison the expression.
+    expr->base.poisoned = false;
+
+    return expr;
+}
+
+Expression* expression_create_reference(AstAllocator* allocator,
+        Identifier* identifier, Location location,
+        union Declaration* declaration)
+{
+    Expression* expr = expression_create_base(allocator,
+            sizeof(ExpressionReference), EXPRESSION_REFERENCE);
+    expr->reference.identifier = identifier;
+    expr->reference.identifier_loc = location;
+    expr->reference.declaration = declaration;
+
     return expr;
 }
 
 Expression* expression_create_error(AstAllocator* allocator)
 {
-    return expression_create_base(allocator, sizeof(ExpressionError),
-            EXPRESSION_ERROR);
+    Expression* expr = expression_create_base(allocator,
+            sizeof(ExpressionError), EXPRESSION_ERROR);
+    
+    // Poison the expression on creation so that we don't try to do semantic
+    // analysis on it!
+    expr->base.poisoned = true;
+
+    return expr;
 }
 
 static Expression* expression_create_integer(AstAllocator* allocator,

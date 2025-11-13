@@ -125,7 +125,9 @@ typedef struct DeclarationCompound {
     // Base declaration
     DeclarationBase base;
 
-    
+    // The members of the structure.
+    Declaration** members;
+    size_t num_members;
 } DeclarationCompound;
 
 // TODO: all our other declarations...
@@ -139,7 +141,9 @@ typedef struct DeclarationEnumConstant {
 
     // optional expression used as the enumeration value.
     Expression* expression;
-    /*ExpressionValue*/void* value;
+
+    // Since enum types are all integer anyways
+    int value;
 } DeclarationEnumConstant;
 
 typedef struct DeclarationEnum {
@@ -290,15 +294,20 @@ typedef struct Declarator {
 
 DeclarationSpecifiers declaration_specifiers_create(Location location);
 
+
+
 Declarator declarator_create(DeclarationSpecifiers* specifiers,
         DeclaratorContext context);
 void declarator_delete(Declarator* declarator);
 
-void declarator_set_invalid(Declarator* declarator);
-bool declarator_is_invalid(const Declarator* declarator);
-
+bool declarator_identifier_allowed(const Declarator* declarator);
+bool declarator_identifier_required(const Declarator* declarator);
+bool declarator_has_identifier(const Declarator* declarator);
 void declarator_set_identifier(Declarator* declarator, Identifier* identifier,
         Location identifier_location);
+
+void declarator_set_invalid(Declarator* declarator);
+bool declarator_is_invalid(const Declarator* declarator);
 
 void declarator_push_pointer(Declarator* declarator, TypeQualifiers qualifiers);
 void declarator_push_array(Declarator* declarator, Location lbracket,
@@ -342,10 +351,13 @@ void declaration_enum_set_entries(Declaration* declaration,
 
 Declaration* declaration_create_enum_constant(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type,
-        Location equals, Expression* expression);
+        Location equals, Expression* expression, int value);
+int declaration_enum_constant_get_value(const Declaration* enum_constant);
 
 Declaration* declaration_create_struct(AstAllocator* allocator,
-        Location location, Identifier* identifier);
+        Location location, Identifier* identifier, QualifiedType type);
+void declaration_struct_add_members(Declaration* declaration,
+        Declaration** members, size_t num_members);
 bool declaration_struct_is_complete(const Declaration* declaration);
 
 // Create a declaration of label identifier at the given location, and indicate

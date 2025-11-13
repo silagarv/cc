@@ -83,13 +83,24 @@ typedef union Expression Expression;
 
 typedef struct ExpressionBase {
     ExpressionType kind;
+    // TODO: i think that the type of the expression should also be inside of
+    // TODO: the expression as this would greatly simplify the semantic checking
+    // TODO: for expressions when I get to that
+
+    // Is this an expression that should not be further semantically checked?
+    bool poisoned;
 } ExpressionBase;
 
 // Our primary expressions
 typedef struct ExpressionReference {
     ExpressionBase base;
+
+    // The identifier this refers to and the location we saw it at
+    Identifier* identifier;
     Location identifier_loc;
-    Identifier* Identifier;
+    
+    // The declaration that this expression refers too
+    union Declaration* declaration;
 } ExpressionReference;
 
 typedef struct ExpressionInteger {
@@ -209,6 +220,8 @@ typedef struct ExpressionError {
 union Expression {
     ExpressionBase base;
 
+    ExpressionReference reference;
+
     ExpressionInteger integer;
     ExpressionFloating floating;
     ExpressionCharacter character;
@@ -225,8 +238,14 @@ union Expression {
     ExpressionError error;
 };
 
+bool expression_is(const Expression* expr, ExpressionType type);
+Location expression_get_location(const Expression* expr);
+
 Expression* expression_create_error(AstAllocator* allocator);
 
+Expression* expression_create_reference(AstAllocator* allocator,
+        Identifier* identifier, Location location,
+        union Declaration* declaration);
 Expression* expression_create_number(AstAllocator* allocator, Location location,
         LiteralValue value);
 Expression* expression_create_character(AstAllocator* allocator,

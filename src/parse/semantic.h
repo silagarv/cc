@@ -45,7 +45,7 @@ Declaration* semantic_checker_create_enum(SemanticChecker* sc,
         Location enum_location, Identifier* name, bool anonymous);
 Declaration* semantic_checker_create_enum_constant(SemanticChecker* sc,
         Location location, Identifier* identifier, Location equals,
-        Expression* expression);
+        Expression* expression, Declaration* last_decl);
 
 Declaration* semantic_checker_create_struct(SemanticChecker* sc,
         Location enum_location, Identifier* name, bool anonymous);

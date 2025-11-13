@@ -58,7 +58,7 @@ Scope scope_new_function_prototype(void)
 {
     Scope scope = (Scope)
     {
-        .flags = SCOPE_FILE,
+        .flags = SCOPE_FUNCTION,
         .parent = NULL,
         .ordinairy = symbol_table_create(),
         .tag = symbol_table_create(),
@@ -75,7 +75,7 @@ Scope scope_new_member(void)
 {
     Scope scope = (Scope)
     {
-        .flags = SCOPE_FILE,
+        .flags = SCOPE_MEMBER,
         .parent = NULL,
         .ordinairy = {0},
         .tag = {0},

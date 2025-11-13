@@ -60,6 +60,55 @@ void declarator_delete(Declarator* declarator)
     declarator_piece_vector_free(&declarator->pieces, NULL);
 }
 
+bool declarator_identifier_allowed(const Declarator* declarator)
+{
+    switch (declarator->context)
+    {
+        case DECLARATION_CONTEXT_TYPE_NAME:
+            return false;
+
+        case DECLARATION_CONTEXT_FUNCTION_PARAM:
+        case DECLARATION_CONTEXT_BLOCK:
+        case DECLARATION_CONTEXT_FILE:
+        case DECLARATION_CONTEXT_STRUCT:
+            return true;
+    }
+
+    panic("bad declarator context");
+}
+
+bool declarators_identifier_required(const Declarator* declarator)
+{
+    switch (declarator->context)
+    {
+        case DECLARATION_CONTEXT_TYPE_NAME:
+        case DECLARATION_CONTEXT_FUNCTION_PARAM:
+            return false;
+
+        case DECLARATION_CONTEXT_BLOCK:
+        case DECLARATION_CONTEXT_FILE:
+        case DECLARATION_CONTEXT_STRUCT:
+            return true;
+    }
+
+    panic("bad declarator context");
+}
+
+bool declarator_has_identifier(const Declarator* declarator)
+{
+    return declarator->identifier != NULL;
+}
+
+void declarator_set_identifier(Declarator* declarator, Identifier* identifier,
+        Location identifier_location)
+{
+    assert(declarator->identifier == NULL && 
+            declarator->identifier_location == LOCATION_INVALID);
+
+    declarator->identifier = identifier;
+    declarator->identifier_location = identifier_location;
+}
+
 void declarator_set_invalid(Declarator* declarator)
 {
     declarator->invalid = true;
@@ -119,16 +168,6 @@ void declarator_push_function(Declarator* declarator, AstAllocator* allocator,
     };
 
     declarator_piece_vector_push(&declarator->pieces, piece);
-}
-
-void declarator_set_identifier(Declarator* declarator, Identifier* identifier,
-        Location identifier_location)
-{
-    assert(declarator->identifier == NULL && 
-            declarator->identifier_location == LOCATION_INVALID);
-
-    declarator->identifier = identifier;
-    declarator->identifier_location = identifier_location;
 }
 
 bool declaration_is(const Declaration* decl, DeclarationType type)
@@ -212,6 +251,8 @@ void declaration_typedef_set_type(Declaration* tdef, Type* new_type)
 Declaration* declaration_create_enum(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type)
 {
+    assert(identifier != NULL);
+
     Declaration* declaration = declaration_create_base(allocator,
             sizeof(DeclarationEnum), DECLARATION_ENUM, location, identifier,
             type, TYPE_STORAGE_SPECIFIER_NONE, TYPE_FUNCTION_SPECIFIER_NONE,
@@ -254,7 +295,7 @@ void declaration_enum_set_entries(Declaration* declaration,
 
 Declaration* declaration_create_enum_constant(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type,
-        Location equals, Expression* expression)
+        Location equals, Expression* expression, int value)
 {
     Declaration* decl = declaration_create_base(allocator,
             sizeof(DeclarationEnumConstant), DECLARATION_ENUM_CONSTANT,
@@ -262,13 +303,38 @@ Declaration* declaration_create_enum_constant(AstAllocator* allocator,
             TYPE_FUNCTION_SPECIFIER_NONE, false);
     decl->enumeration_constant.equals_loc = equals;
     decl->enumeration_constant.expression = expression;
-    decl->enumeration_constant.value = NULL;
+    decl->enumeration_constant.value = value;
 
     return decl;
 }
 
+int declaration_enum_constant_get_value(const Declaration* enum_constant)
+{
+    assert(declaration_is(enum_constant, DECLARATION_ENUM_CONSTANT));
+
+    return enum_constant->enumeration_constant.value;
+}
+
 Declaration* declaration_create_struct(AstAllocator* allocator,
-        Location location, Identifier* identifier);
+        Location location, Identifier* identifier, QualifiedType type)
+{
+    Declaration* decl = declaration_create_base(allocator,
+            sizeof(DeclarationCompound), DECLARATION_STRUCT, location,
+            identifier, type, TYPE_STORAGE_SPECIFIER_NONE,
+            TYPE_FUNCTION_SPECIFIER_NONE, false);
+
+    return decl;
+}
+
+void declaration_struct_add_members(Declaration* declaration,
+        Declaration** members, size_t num_members)
+{
+    assert(declaration_is(declaration, DECLARATION_STRUCT));
+
+    declaration->compound.members = members;
+    declaration->compound.num_members = num_members;
+}
+
 bool declaration_struct_is_complete(const Declaration* declaration)
 {
     if (declaration == NULL)
@@ -276,14 +342,14 @@ bool declaration_struct_is_complete(const Declaration* declaration)
         return false;
     }
 
-    DeclarationType type = declaration->base.declaration_type;
-    if (type != DECLARATION_STRUCT && type != DECLARATION_STRUCT)
+    DeclarationType decl_type = declaration->base.declaration_type;
+    if (decl_type != DECLARATION_STRUCT)
     {
         return false;
     }
 
-    // TODO: fix this!
-    return false;
+    QualifiedType type = declaration->compound.base.qualified_type;
+    return type_struct_is_complete(type.type);
 }
 
 Declaration* declaration_create_label(AstAllocator* allocator, 

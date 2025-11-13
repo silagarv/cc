@@ -236,6 +236,34 @@ void type_enum_set_declaration(QualifiedType* enum_type,
     enum_type->type->type_enum.enum_decl = decl;
 }
 
+Type* type_create_struct(AstAllocator* allocator)
+{
+    Type* type = type_create_base(allocator, sizeof(TypeCompound),
+            TYPE_STRUCT, 0, 0, false);
+    type->type_struct.decl = NULL;
+    type->type_struct.members = NULL;
+    type->type_struct.num_members = 0;
+
+    return type;
+}
+
+void type_struct_set_declaration(Type* type, union Declaration* declaration)
+{
+    type->type_struct.decl = declaration;
+}
+
+bool type_struct_is_complete(Type* type)
+{
+    return type->type_struct.base.is_complete;
+}
+
+// TODO: make sure we set the members
+
+Type* type_create_union(AstAllocator* allocator);
+void type_union_set_declaration(Type* type, union Declaration* declaration);
+bool type_union_is_complete(Type* type);
+// TODO: make sure we set the members
+
 Type* type_create_typedef(AstAllocator* allocator, QualifiedType type,
         union Declaration* decl)
 {
