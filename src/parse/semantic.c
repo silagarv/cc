@@ -287,13 +287,18 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
             assert(declaration_is(enum_decl, DECLARATION_ENUM));
 
             // NOTE: qualifiers should be none here anyways
-            type = enum_decl->enumeration.base.qualified_type.type;
+            type = enum_decl->base.qualified_type.type;
             break;
         }
 
         case TYPE_SPECIFIER_TYPE_STRUCT:
-            panic("unimplemented -> struct type should be in declaration");
+        {
+            Declaration* struct_decl = specifiers->declaration;
+            assert(declaration_is(struct_decl, DECLARATION_STRUCT));
+
+            type = struct_decl->base.qualified_type.type;
             break;
+        }
 
         case TYPE_SPECIFIER_TYPE_UNION:
             panic("unimplemented -> union type should be in declaration");
@@ -469,10 +474,69 @@ QualifiedType semantic_checker_process_type(SemanticChecker* sc,
     return type;
 }
 
+Declaration* semantic_checker_lookup_ordinairy(SemanticChecker* sc,
+        Identifier* identifier, bool recursive)
+{
+    if (identifier == NULL)
+    {
+        return NULL;
+    }
+
+    return scope_lookup_ordinairy(sc->scope, identifier, recursive);
+}
+
+Declaration* semantic_checker_lookup_tag(SemanticChecker* sc,
+        Identifier* identifier, bool recursive)
+{
+    if (identifier == NULL)
+    {
+        return NULL;
+    }
+
+    return scope_lookup_tag(sc->scope, identifier, recursive);
+}
+
+Declaration* semantic_checker_lookup_member(SemanticChecker* sc,
+        Identifier* identifier)
+{
+    assert(scope_is(sc->scope, SCOPE_MEMBER) && "must be a member scope");
+
+    return scope_lookup_member(sc->scope, identifier);
+}
+
+void semantic_checker_insert_ordinairy(SemanticChecker* sc,
+        Declaration* declaration)
+{
+    scope_insert_ordinairy(sc->scope, declaration);
+}
+
+void semantic_checker_insert_tag(SemanticChecker* sc, Declaration* decl)
+{
+    // Any new tag declarations will not be visible outside of function scope
+    // so producte a warning about this.
+    if (scope_is(sc->scope, SCOPE_FUNCTION))
+    {
+        diagnostic_warning_at(sc->dm, decl->base.location,
+                "declaration of '%s %s' will not be visible outside of this "
+                "function", tag_kind_to_name(decl->base.declaration_type),
+                decl->base.identifier->string.ptr);
+    }
+
+    scope_insert_tag(sc->scope, decl);
+}
+
+void semantic_checker_insert_member(SemanticChecker* sc, Declaration* decl)
+{
+    assert(scope_is(sc->scope, SCOPE_MEMBER) && "must be a member scope");
+
+    panic("useless function");
+    // scope_insert_member();
+}
+
 Declaration* semantic_checker_process_function_param(SemanticChecker* sc,
         Declarator* declarator)
 {
-    // Make sure we are actually processing a function param
+    assert(scope_is(sc->scope, SCOPE_FUNCTION));
     assert(declarator->context == DECLARATION_CONTEXT_FUNCTION_PARAM);
 
     QualifiedType type = semantic_checker_process_type(sc, declarator);
@@ -488,15 +552,42 @@ Declaration* semantic_checker_process_function_param(SemanticChecker* sc,
     }
 
     // TODO: Also need to check that we don't have an incomplete type
+    // TODO: For above it seems we only need to check the above if we are in a
+    // TODO: function definition instead of a function declaration.
 
-    return declaration_create_variable(&sc->ast->ast_allocator,
-            declarator->identifier_location, declarator->identifier, type, 
-            storage, NULL);
+    bool insert = true;
+    Identifier* identifier = declarator->identifier;
+
+    // Check if we have a previous declaration and if we then give a
+    // redefinition error.
+    Declaration* previous = semantic_checker_lookup_ordinairy(sc, identifier,
+            false);
+
+    if (previous != NULL)
+    {
+        diagnostic_error_at(sc->dm, declarator->identifier_location,
+                "redefinition of parameter '%s'", identifier->string.ptr);
+
+        identifier = identifier_table_get(sc->identifiers, "<invalid>");
+        insert = false;
+    }
+
+    // Create the declaration for the function parameter. And add it into the
+    // scope if we got an identifier and it wasn't a duplicate parameter.
+    Declaration* declaration =  declaration_create_variable(
+            &sc->ast->ast_allocator, declarator->identifier_location,
+            identifier, type, storage);
+    
+    if (identifier != NULL && insert)
+    {
+        semantic_checker_insert_ordinairy(sc, declaration);
+    }
+    
+    return declaration;
 }
 
 Declaration* semantic_checker_process_variable(SemanticChecker* sc,
-        Declarator* declarator, QualifiedType type, Location equal_loc,
-        Initializer* initializer)
+        Declarator* declarator, QualifiedType type)
 {
     // Extract important things from the declarator
     const DeclarationSpecifiers* specifiers = declarator->specifiers;
@@ -540,8 +631,7 @@ Declaration* semantic_checker_process_variable(SemanticChecker* sc,
     }
 
     Declaration* declaration = declaration_create_variable(
-            &sc->ast->ast_allocator, identifer_loc, identifier, type, storage,
-            initializer);
+            &sc->ast->ast_allocator, identifer_loc, identifier, type, storage);
     
     // TODO: now that we have the declaration we can process the initializer
 
@@ -553,7 +643,7 @@ Declaration* semantic_checker_process_variable(SemanticChecker* sc,
     {
         // It wasn't in the scope at all so we can simply insert it and we're
         // done.
-        scope_insert_ordinairy(sc->scope, declaration);
+        semantic_checker_insert_ordinairy(sc, declaration);
     }
     else
     {
@@ -598,7 +688,15 @@ Declaration* semantic_checker_process_typedef(SemanticChecker* sc,
     // TODO: check for other identifiers already present!
     Declaration* previous = semantic_checker_lookup_ordinairy(sc, identifier,
             false);
-    if (previous != NULL)
+    if (previous != NULL && declaration_is(previous, DECLARATION_TYPEDEF))
+    {
+        // TODO: must check that they typedef to the same thing!
+        diagnostic_error_at(sc->dm, declarator->identifier_location,
+                "redefinition of typedef '%s'",
+                identifier->string.ptr);
+        return tdef;
+    }
+    else if (previous != NULL)
     {
         diagnostic_error_at(sc->dm, declarator->identifier_location,
                 "redefinition of '%s' as a different kind of symbol",
@@ -606,23 +704,17 @@ Declaration* semantic_checker_process_typedef(SemanticChecker* sc,
         return tdef;
     }
 
-    scope_insert_ordinairy(sc->scope, tdef);
+    semantic_checker_insert_ordinairy(sc, tdef);
 
     return tdef;
 }
 
 Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
-        Declarator* declarator, Location equals, Initializer* initializer)
+        Declarator* declarator)
 {
     // Don't even try if we have an invalid declarator. This is mainly here
     // to simplify the logic of the parsing functions.
     if (declarator->invalid)
-    {
-        return NULL;
-    }
-
-    // If we got an invalid declarator bail early
-    if (declarator->identifier == NULL)
     {
         return NULL;
     }
@@ -634,30 +726,34 @@ Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
     // The main different types of declarations we will have to handle are below
     if (declarator->specifiers->storage_spec == TYPE_STORAGE_SPECIFIER_TYPEDEF)
     {
-        if (equals != LOCATION_INVALID)
-        {
-            diagnostic_error_at(sc->dm, equals,
-                    "illegal initializer (only variables can be initialized)");
-        }
-
-        return semantic_checker_process_typedef(sc, declarator, type);
+        return semantic_checker_process_typedef(sc, declarator, type);        
     }
     else if (qualified_type_is(&type, TYPE_FUNCTION))
     {
-        if (initializer != NULL)
-        {
-            // TODO: error about initializer;
-        }
-
         // TODO: handle function
         panic("should not handle functions at this time");
         return NULL;
     }
     else
     {
-        return semantic_checker_process_variable(sc, declarator, type, equals,
-                initializer);
+        return semantic_checker_process_variable(sc, declarator, type);
     }
+}
+
+void semantic_checker_declaration_add_initializer(SemanticChecker* sc,
+        Declaration* declaration, Location equals, Initializer* initializer)
+{
+    // First we must check that the declaration is allowed to have an 
+    // initializer. If not error about it.
+    if (!declaration_is(declaration, DECLARATION_VARIABLE))
+    {
+        diagnostic_error_at(sc->dm, equals,
+                "illegal initializer (only variable can be initialized)");
+        return;
+    }
+
+    // Otherwise add the initializer to the declaration
+    declaration_variable_add_initializer(declaration, initializer);
 }
 
 void semantic_checker_push_scope(SemanticChecker* sc, Scope* scope)
@@ -694,7 +790,7 @@ Declaration* semantic_checker_create_enum(SemanticChecker* sc,
     // Only, insert it into the scope if it's not anonymous
     if (!anonymous)
     {
-        scope_insert_tag(sc->scope, decl);
+        semantic_checker_insert_tag(sc, decl);
     }
 
     return decl;
@@ -774,7 +870,7 @@ Declaration* semantic_checker_create_enum_constant(SemanticChecker* sc,
     Declaration* new_decl = declaration_create_enum_constant(
             &sc->ast->ast_allocator, location, identifier, type, equals,
             expression, value);
-    scope_insert_ordinairy(sc->scope, new_decl);
+    semantic_checker_insert_ordinairy(sc, new_decl);
 
     return new_decl;
 }
@@ -793,7 +889,7 @@ Declaration* semantic_checker_create_struct(SemanticChecker* sc,
 
     if (!anonymous)
     {
-        scope_insert_tag(sc->scope, decl);
+        semantic_checker_insert_tag(sc, decl);
     }
     
     return decl;
@@ -801,25 +897,6 @@ Declaration* semantic_checker_create_struct(SemanticChecker* sc,
 
 Declaration* semantic_checker_create_union(SemanticChecker* sc,
         Location enum_location, Identifier* name, bool anonymous);
-
-static char* tag_kind_to_name(DeclarationType type)
-{
-    switch (type)
-    {
-        case DECLARATION_ENUM:
-            return "enum";
-
-        case DECLARATION_STRUCT:
-            return "struct";
-
-        case DECLARATION_UNION:
-            return "union";
-
-        default:
-            panic("bad tag type in tag_kind_to_name");
-            return NULL;
-    }
-}
 
 static Declaration* sematantic_checker_create_tag(SemanticChecker* sc,
         DeclarationType type, Location tag_type_loc, Identifier* identifier,
@@ -877,58 +954,54 @@ Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
         previous = NULL;
     }
     
-    if (!is_definition)
+    Declaration* declaration = NULL;
+    if (!is_definition && previous == NULL)
     {
-        // Here the logic is simple if we aren't a definition. If we have the
-        // declaration return it. Otherwise, we might need to create an implicit
-        // declaration for the tag.
-
-        if (previous != NULL)
-        {
-            return previous;
-        }
-
         // Create the implicit tag and make a warning about the implicit decl if
         // it is an enum declaration.
-        Declaration* declaration =  sematantic_checker_create_tag(sc, type,
-                tag_type_loc, identifier, identifier_location);
+        declaration =  sematantic_checker_create_tag(sc, type, tag_type_loc,
+                identifier, identifier_location);
         if (type == DECLARATION_ENUM && identifier != NULL)
         {
             diagnostic_warning_at(sc->dm, declaration->base.location,
                     "forward reference to '%s' type", tag_kind_to_name(type));
         }
-
-        return declaration;
     }
-    else
+    else if (!is_definition && previous != NULL)
     {
-        // Here if we are a definition the logic flipped. If we have a 
-        // declaration previously though we need to make sure that it is not
-        // complete though.
-
-        if (previous != NULL)
+        
+        declaration = previous;
+    }
+    else if (is_definition && previous == NULL)
+    {
+        // Can simply create the tag with no worries.
+        declaration = sematantic_checker_create_tag(sc, type, tag_type_loc,
+                identifier, identifier_location);
+    }
+    else if (is_definition && previous != NULL)
+    {
+        bool complete;
+        switch (type)
         {
-            bool complete;
-            switch (type)
-            {
-                case DECLARATION_ENUM:
-                    complete = declaration_enum_has_entries(previous);
-                    break;
+            case DECLARATION_ENUM:
+                complete = declaration_enum_has_entries(previous);
+                break;
 
-                case DECLARATION_STRUCT:
-                case DECLARATION_UNION:
-                    complete = declaration_struct_is_complete(previous);
-                    break;
-            }
+            case DECLARATION_STRUCT:
+            case DECLARATION_UNION:
+                complete = declaration_struct_is_complete(previous);
+                break;
+        }
 
-            // If we're not complete that's fine since we are about to give
-            // the tag declaration a definition
-            if (!complete)
-            {
-                return previous;
-            }
-
-            // Otherwise create an error and fall through to the below case
+        // If we're not complete that's fine since we are about to give
+        // the tag declaration a definition
+        if (!complete)
+        {
+            declaration = previous;
+        }
+        else
+        {
+            // Otherwise create an error and create a completely new tag
             diagnostic_error_at(sc->dm, identifier_location,
                     "redefinition of %s '%s'", tag_kind_to_name(type),
                     identifier->string.ptr);
@@ -936,39 +1009,19 @@ Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
             identifier = NULL;
             identifier_location = LOCATION_INVALID;
             previous = NULL;
+
+            // Can simply create the tag with no worries.
+            declaration = sematantic_checker_create_tag(sc, type, tag_type_loc,
+                    identifier, identifier_location);
         }
-        
-        // No previous definition, or we want to create a new tag to work with
-        return sematantic_checker_create_tag(sc, type, tag_type_loc, identifier,
-                identifier_location);
     }
-}
-
-Declaration* semantic_checker_lookup_ordinairy(SemanticChecker* sc,
-        Identifier* identifier, bool recursive)
-{
-    // TODO: should add assert to lookup if we are in ordinariy ns or not
-
-    return scope_lookup_ordinairy(sc->scope, identifier, recursive);
-}
-
-Declaration* semantic_checker_lookup_tag(SemanticChecker* sc,
-        Identifier* identifier, bool recursive)
-{
-    if (identifier == NULL)
+    else
     {
-        return NULL;
+        panic("unreachable");
     }
+    assert(declaration != NULL);
 
-    return scope_lookup_tag(sc->scope, identifier, recursive);
-}
-
-Declaration* semantic_checker_lookup_member(SemanticChecker* sc,
-        Identifier* identifier)
-{
-    assert(scope_is(sc->scope, SCOPE_MEMBER) && "must be a member scope");
-
-    return scope_lookup_member(sc->scope, identifier);
+    return declaration;
 }
 
 // All of our functions for handling function scopes
@@ -1068,6 +1121,3 @@ void sematic_checker_act_on_end_of_function(SemanticChecker* sc)
     }
 }
 
-Expression* typecheck_expression(Ast* ast, Expression* expression);
-Declaration* typecheck_declaration(Ast* ast, Declaration* expression);
-Statement* typecheck_statement(Ast* ast, Statement* expression);

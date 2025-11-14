@@ -294,11 +294,14 @@ typedef struct Declarator {
 
 DeclarationSpecifiers declaration_specifiers_create(Location location);
 
-
+char* tag_kind_to_name(DeclarationType type);
+char* declarator_context_to_name(DeclaratorContext context);
 
 Declarator declarator_create(DeclarationSpecifiers* specifiers,
         DeclaratorContext context);
 void declarator_delete(Declarator* declarator);
+
+DeclaratorContext declarator_get_context(const Declarator* declarator);
 
 bool declarator_identifier_allowed(const Declarator* declarator);
 bool declarator_identifier_required(const Declarator* declarator);
@@ -335,7 +338,9 @@ Declaration* declaration_create_error(AstAllocator* allocator,
 // variable that we can use within other places.
 Declaration* declaration_create_variable(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type, 
-        TypeStorageSpecifier storage, Initializer* initializer);
+        TypeStorageSpecifier storage);
+void declaration_variable_add_initializer(Declaration* declaration,
+        Initializer* initializer);
 
 // TODO: function
 

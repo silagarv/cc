@@ -21,6 +21,46 @@
 vector_of_impl(Declaration*, Declaration, declaration)
 vector_of_impl(DeclaratorPiece, DeclaratorPiece, declarator_piece)
 
+char* tag_kind_to_name(DeclarationType type)
+{
+    switch (type)
+    {
+        case DECLARATION_ENUM:
+            return "enum";
+
+        case DECLARATION_STRUCT:
+            return "struct";
+
+        case DECLARATION_UNION:
+            return "union";
+
+        default:
+            panic("bad tag type in tag_kind_to_name");
+            return NULL;
+    }
+}
+
+char* declarator_context_to_name(DeclaratorContext context)
+{
+    switch (context)
+    {
+        case DECLARATION_CONTEXT_TYPE_NAME:
+            return "type id";
+
+        case DECLARATION_CONTEXT_FUNCTION_PARAM:
+            return "function parameter";
+
+        case DECLARATION_CONTEXT_BLOCK:
+            return "block";
+
+        case DECLARATION_CONTEXT_FILE:
+            return "file";
+
+        case DECLARATION_CONTEXT_STRUCT:
+            return "struct";
+    }
+}
+
 DeclarationSpecifiers declaration_specifiers_create(Location location)
 {
     DeclarationSpecifiers specifiers = (DeclarationSpecifiers)
@@ -60,6 +100,11 @@ void declarator_delete(Declarator* declarator)
     declarator_piece_vector_free(&declarator->pieces, NULL);
 }
 
+DeclaratorContext declarator_get_context(const Declarator* declarator)
+{
+    return declarator->context;
+}
+
 bool declarator_identifier_allowed(const Declarator* declarator)
 {
     switch (declarator->context)
@@ -77,7 +122,7 @@ bool declarator_identifier_allowed(const Declarator* declarator)
     panic("bad declarator context");
 }
 
-bool declarators_identifier_required(const Declarator* declarator)
+bool declarator_identifier_required(const Declarator* declarator)
 {
     switch (declarator->context)
     {
@@ -222,14 +267,21 @@ Declaration* declaration_create_error(AstAllocator* allocator,
 
 Declaration* declaration_create_variable(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type, 
-        TypeStorageSpecifier storage, Initializer* initializer)
+        TypeStorageSpecifier storage)
 {
     Declaration* decl = declaration_create_base(allocator,
             sizeof(DeclarationVariable), DECLARATION_VARIABLE, location, 
             identifier, type, storage, TYPE_FUNCTION_SPECIFIER_NONE, false);
-    decl->variable.initializer = initializer;
+    decl->variable.initializer = NULL;
 
     return decl;
+}
+
+void declaration_variable_add_initializer(Declaration* declaration,
+        Initializer* initializer)
+{
+    assert(declaration_is(declaration, DECLARATION_VARIABLE));
+    declaration->variable.initializer = initializer;
 }
 
 Declaration* declaration_create_typedef(AstAllocator* allocator,

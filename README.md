@@ -24,16 +24,16 @@ To building, run 'make' in the cc directory and it wll output an executable name
 - Declaration parsing
     - complete the building of the function types
     - build declarations from the declarator
-    - enums -> constant fold the expression
     - want to redo some parts of struct/union parsing for making sure we build them
 
 - Scoping
     - complete different scope types
-    - finish implementing symbol lookup
+    - make some fixes for symbol lookup
+    - make some fixes for external declarations
 
 - Semantic
     - expressions
-    - statements
+    - statements -> should be pretty okay once the other things are implemented
     - declarations
     - initializers
 

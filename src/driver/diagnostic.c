@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stddef.h>
 #include <unistd.h>
+#include <assert.h>
 
 #include "util/panic.h"
 
@@ -137,6 +138,8 @@ void diagnostic_help(DiagnosticManager* dm, const char* fmt, ...)
 void diagnostic_internal_at(DiagnosticManager* dm, DiagnosticKind kind,
         Location loc, const char* fmt, va_list ap)
 {
+    assert(loc != LOCATION_INVALID);
+
     SourceFile* sf = source_manager_from_location(dm->sm, loc);
     ResolvedLocation resolved = line_map_resolve_location(&sf->line_map, loc);
 

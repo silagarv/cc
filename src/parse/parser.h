@@ -35,9 +35,6 @@ typedef struct Parser {
     size_t bracket_count;
     size_t brace_count;
 
-    /* our anchor set for recovering from parsing */
-    size_t recover_set[TOKEN_LAST];
-
     // Stores the ast. This includes all of the statements, expressions,
     // declaration, and anything else that we might need. This is held in one
     // large arena so that we can effeciently free and allocate it.
