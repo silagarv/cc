@@ -111,7 +111,7 @@ uint32_t identifier_get_hash(const void* identifier)
     return ((Identifier*) identifier)->hash;
 }
 
-static uint32_t identifier_table_get_hash(const void* key)
+uint32_t identifier_table_get_hash(const void* key)
 {
     return string_get_hash(key);
 }
@@ -196,14 +196,20 @@ void identifier_table_delete(IdentifierTable* table)
 
 Identifier* identifier_table_lookup(IdentifierTable* table, String* string)
 {
+    assert(table != NULL);
+
+    // printf("1: %p\n", (void*)table->ident_table.hash_func);
     Identifier* ident = hash_map_get(&table->ident_table, string);
+    // printf("2: %p\n", (void*)table->ident_table.hash_func);
     if (ident)
     {
         return ident;
     }
 
     ident = identifier_create(*string);
+    // printf("3: %p\n", (void*)table->ident_table.hash_func);
     hash_map_insert(&table->ident_table, &ident->string, ident);
+    // printf("4: %p\n", (void*)table->ident_table.hash_func);
 
     return ident;
 }

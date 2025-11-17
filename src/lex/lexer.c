@@ -540,6 +540,8 @@ static bool lex_identifier(Lexer* lexer, Token* token, char* start)
     buffer_make_cstr(&identifier);
     String string = string_from_buffer(&identifier);
 
+    // printf("string is: %s\n", string.ptr);
+
     token->data.identifier = identifier_table_lookup(lexer->identifiers,
             &string);
 

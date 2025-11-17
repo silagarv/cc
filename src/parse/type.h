@@ -242,7 +242,7 @@ QualifiedType type_create_array(AstAllocator* allocator,
         QualifiedType* element_type, size_t length, bool is_static,
         bool is_star, bool is_vla);
 QualifiedType type_create_function(AstAllocator* allocator,
-        QualifiedType* return_type, QualifiedType** paramaters,
+        QualifiedType return_type, QualifiedType* paramaters,
         size_t num_paramaters, bool unspecified_paramters, bool variadic);
 
 QualifiedType type_create_enum(AstAllocator* allocator, Type* base);

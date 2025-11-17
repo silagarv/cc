@@ -20,6 +20,10 @@ typedef enum ScopeFlags {
     SCOPE_BLOCK = 1 << 1, // Block scope
     SCOPE_FUNCTION = 1 << 2, // Function declaration
     SCOPE_MEMBER = 1 << 3, // structs / unions
+    SCOPE_FOR = 1 << 4, // for loop statements (AND declarations)
+    SCOPE_WHILE = 1 << 5, // while loop statments
+    SCOPE_DO_WHILE = 1 << 6, // do/while loop statements
+    SCOPE_SWITCH = 1 << 7, // switch scope
 } ScopeFlags;
 
 // Add some sort of a symbol table in here
@@ -56,26 +60,37 @@ Scope scope_new_file(void);
 Scope scope_new_block(void);
 Scope scope_new_function_prototype(void);
 Scope scope_new_member(void);
+Scope scope_new_for(void);
+Scope scope_new_while(void);
+Scope scope_new_do_while(void);
+Scope scope_new_switch(void);
 
 void scope_delete(Scope* scope);
 
 void scope_set_parent(Scope* scope, Scope* parent);
 Scope* scope_get_parent(Scope* scope);
 
+bool scope_declaration_allowed(Scope* scope);
+bool scope_break_allowed(Scope* scope);
+bool scope_continue_allowed(Scope* scope);
+
+Scope* scope_get_scope_type(Scope* scope, ScopeFlags flags);
+
+Scope* scope_get_switch(Scope* scope);
+Scope* scope_get_break(Scope* scope);
+Scope* scope_get_continue(Scope* scope);
+
 Declaration* scope_lookup_ordinairy(Scope* scope, Identifier* name,
         bool recursive);
 Declaration* scope_lookup_tag(Scope* scope, Identifier* name,
         bool recursive);
+Declaration* scope_lookup_member(Scope* scope, Identifier* name);
 
 void scope_insert_ordinairy(Scope* scope, Declaration* declaration);
 void scope_insert_tag(Scope* scope, Declaration* declaration);
 
-// TODO: i think I will get rid of 'members'
-Declaration* scope_lookup_member(Scope* scope, Identifier* name);
-
 // Should be changed to type + recursive
 bool scope_contains(const Scope* scope, Identifier* name);
-
 bool scope_add_symbol(const Scope* scope, Declaration* declaration);
 
 // Function scopes are specially for function labels

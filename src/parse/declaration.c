@@ -194,7 +194,8 @@ void declarator_push_array(Declarator* declarator, Location lbracket,
 }
 
 void declarator_push_function(Declarator* declarator, AstAllocator* allocator,
-        DeclarationVector* params, bool is_variadic)
+        Location lparen_loc, Location rparen_loc, DeclarationVector* params,
+        bool is_variadic)
 {   
     size_t num_params = declaration_vector_size(params);
     Declaration** alloced = ast_allocator_alloc(allocator,
@@ -207,6 +208,8 @@ void declarator_push_function(Declarator* declarator, AstAllocator* allocator,
     DeclaratorPiece piece = (DeclaratorPiece)
     {
         .function.base.type = DECLARATOR_PIECE_FUNCTION,
+        .function.lparen_loc = lparen_loc,
+        .function.rparen_loc = rparen_loc,
         .function.paramaters = alloced,
         .function.num_paramaters = num_params,
         .function.is_variadic = is_variadic
@@ -362,6 +365,11 @@ Declaration* declaration_create_enum_constant(AstAllocator* allocator,
 
 int declaration_enum_constant_get_value(const Declaration* enum_constant)
 {
+    if (declaration_is(enum_constant, DECLARATION_ERROR))
+    {
+        return 0;
+    }
+
     assert(declaration_is(enum_constant, DECLARATION_ENUM_CONSTANT));
 
     return enum_constant->enumeration_constant.value;
@@ -402,6 +410,12 @@ bool declaration_struct_is_complete(const Declaration* declaration)
 
     QualifiedType type = declaration->compound.base.qualified_type;
     return type_struct_is_complete(type.type);
+}
+
+Declaration* declaration_create_function(AstAllocator* allocator,
+        Location location, Identifier* identifier, QualifiedType type)
+{
+    return NULL;
 }
 
 Declaration* declaration_create_label(AstAllocator* allocator, 

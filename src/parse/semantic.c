@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "files/location.h"
+#include "parse/ast_allocator.h"
 #include "parse/expression.h"
 #include "parse/initializer.h"
 #include "parse/literal_parser.h"
@@ -56,6 +57,10 @@ void declaration_specifiers_finish(SemanticChecker* sc,
             if (specifiers->type_spec_type == TYPE_SPECIFIER_TYPE_NONE)
             {
                 specifiers->type_spec_type = TYPE_SPECIFIER_TYPE_INT;
+            }
+            else if (specifiers->type_spec_type == TYPE_SPECIFIER_TYPE_CHAR)
+            {
+                ; // char is also allowed to be signed or unsigned
             }
             else if (specifiers->type_spec_type != TYPE_SPECIFIER_TYPE_INT)
             {
@@ -370,7 +375,7 @@ static void semantic_checker_process_array(SemanticChecker* sc,
         else if (is_static)
         {
             diagnostic_error_at(sc->dm, array->lbracket,
-                    "'static' may not not be used with an unspecifier "
+                    "'static' may not not be used with an unspecified "
                     "variable length array size");
         }
         else
@@ -413,6 +418,19 @@ static void semantic_checker_process_pointer(SemanticChecker* sc,
     *type = new_type;
 }
 
+static QualifiedType* semantic_checker_types_from_declaraions(
+        SemanticChecker* sc, Declaration** declarations, size_t num_decls)
+{
+    QualifiedType* types = ast_allocator_alloc(&sc->ast->ast_allocator,
+            sizeof(QualifiedType) * num_decls);
+    for (size_t i = 0; i < num_decls; i++)
+    {
+        types[i] = declarations[i]->base.qualified_type;
+    }
+
+    return types;
+}
+
 static void semantic_checker_process_function(SemanticChecker* sc,
         QualifiedType* type, DeclaratorPiece* piece, DeclaratorContext context)
 {
@@ -420,10 +438,26 @@ static void semantic_checker_process_function(SemanticChecker* sc,
 
     DeclaratorPieceFunction* function = (DeclaratorPieceFunction*) piece;
 
-    printf("processing function piece\n");
+    if (qualified_type_is(type, TYPE_FUNCTION))
+    {
+        diagnostic_error_at(sc->dm, function->lparen_loc,
+                "function cannot return function type");
+        // TODO: what do we do here?
+    }
 
-    // TODO: figure out what needs checking...
+    // Extract the declarations and their types so that they can be used in
+    // the function type.
+    Declaration** decls = function->paramaters;
+    size_t num_paramaters = function->num_paramaters;
+    QualifiedType* types = semantic_checker_types_from_declaraions(sc, 
+            decls, num_paramaters);
 
+    // TODO: we need to do some checking on the types that are present in the
+    // TODO: function declarator. Mainly handling void types correctly!
+
+    QualifiedType new_type = type_create_function(&sc->ast->ast_allocator,
+            *type, types, num_paramaters, false, function->is_variadic);
+    *type = new_type;
 }
 
 QualifiedType semantic_checker_process_type(SemanticChecker* sc,
@@ -451,14 +485,17 @@ QualifiedType semantic_checker_process_type(SemanticChecker* sc,
         switch (piece.base.type)
         {
             case DECLARATOR_PIECE_ARRAY:
+                // printf("processing array piece\n");
                 semantic_checker_process_array(sc, &type, &piece, context);
                 break;
 
             case DECLARATOR_PIECE_POINTER:
+                // printf("processing pointer piece\n");
                 semantic_checker_process_pointer(sc, &type, &piece, context);
                 break;
 
             case DECLARATOR_PIECE_FUNCTION:
+                // printf("processing function piece\n");
                 semantic_checker_process_function(sc, &type, &piece, context);
                 break;
 
@@ -468,8 +505,8 @@ QualifiedType semantic_checker_process_type(SemanticChecker* sc,
         }
     }
 
-    type_print(&type);  
-    printf("\n");
+    // type_print(&type);  
+    // printf("\n");
 
     return type;
 }
@@ -533,6 +570,14 @@ void semantic_checker_insert_member(SemanticChecker* sc, Declaration* decl)
     // scope_insert_member();
 }
 
+QualifiedType semantic_checker_process_typename(SemanticChecker* sc,
+        Declarator* declarator)
+{
+    assert(declarator->identifier == NULL);
+
+    return semantic_checker_process_type(sc, declarator);
+}
+
 Declaration* semantic_checker_process_function_param(SemanticChecker* sc,
         Declarator* declarator)
 {
@@ -583,6 +628,30 @@ Declaration* semantic_checker_process_function_param(SemanticChecker* sc,
         semantic_checker_insert_ordinairy(sc, declaration);
     }
     
+    return declaration;
+}
+
+Declaration* semantic_checker_process_function_declaration(SemanticChecker* sc,
+        Declarator* declarator, QualifiedType type)
+{
+    assert(qualified_type_is(&type, TYPE_FUNCTION));
+
+    Identifier* identifier = declarator->identifier;
+    Declaration* previous = semantic_checker_lookup_ordinairy(sc,
+            identifier, false);
+
+    // TODO: first check that the types match before giving this error.
+
+    if (previous != NULL)
+    {
+        diagnostic_error_at(sc->dm, declarator->identifier_location,
+                "redefinition of '%s'", identifier->string.ptr);
+    }
+
+    Declaration* declaration = declaration_create_function(
+            &sc->ast->ast_allocator, declarator->identifier_location,
+            identifier, type);
+
     return declaration;
 }
 
@@ -730,9 +799,8 @@ Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
     }
     else if (qualified_type_is(&type, TYPE_FUNCTION))
     {
-        // TODO: handle function
-        panic("should not handle functions at this time");
-        return NULL;
+        return semantic_checker_process_function_declaration(sc, declarator,
+                type);
     }
     else
     {
@@ -944,9 +1012,8 @@ Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
     // NOTE: if identifier was null previous == NULL
     if (previous != NULL && !declaration_is(previous, type))
     {
-        // TODO: improve error message to include previous tag type?
-        diagnostic_error_at(sc->dm, identifier_location, "use of '%s' with a "
-                "tag type that does not match previously declared",
+        diagnostic_error_at(sc->dm, identifier_location, "use of '%s' with tag"
+                " type that does not match previous declaration",
                 identifier->string.ptr);
 
         identifier = NULL;
@@ -980,7 +1047,7 @@ Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
     }
     else if (is_definition && previous != NULL)
     {
-        bool complete;
+        bool complete = false;
         switch (type)
         {
             case DECLARATION_ENUM:
@@ -1119,5 +1186,228 @@ void sematic_checker_act_on_end_of_function(SemanticChecker* sc)
 
         // TODO: warn about declared but unused labels?
     }
+}
+
+bool semantic_checker_check_case_allowed(SemanticChecker* sc,
+        Location case_location)
+{
+    Scope* switch_scope = scope_get_switch(sc->scope);
+
+    bool allowed = switch_scope != NULL;
+
+    if (!allowed)
+    {
+        diagnostic_error_at(sc->dm, case_location,
+                "'case' statement not in switch statement");
+    }
+
+    return allowed;
+}
+
+Statement* semantic_checker_handle_case_statement(SemanticChecker* sc,
+        Location case_location, Expression* expression,
+        Location colon_location, Statement* stmt)
+{
+    // TODO: here fold and check the case
+
+    return statement_create_case(&sc->ast->ast_allocator, case_location,
+            colon_location, expression, (IntegerValue) {0}, stmt);
+}
+
+bool semantic_checker_check_default_allowed(SemanticChecker* sc,
+        Location default_location)
+{
+    Scope* switch_scope = scope_get_switch(sc->scope);
+
+    bool allowed = switch_scope != NULL;
+
+    if (!allowed)
+    {
+        diagnostic_error_at(sc->dm, default_location,
+                "'default' statement not in switch statement");
+    }
+
+    return allowed;
+}
+
+Statement* semantic_checker_handle_default_statement(SemanticChecker* sc,
+        Location default_location, Location colon_location, Statement* stmt)
+{
+    return statement_create_default(&sc->ast->ast_allocator, default_location,
+            colon_location, stmt);
+}
+
+Statement* semantic_checker_handle_if_statement(SemanticChecker* sc,
+        Location if_locatoin, Location lparen_location, Expression* expression,
+        Location rparen_location, Statement* if_body, Location else_location,
+        Statement* else_body)
+{
+    // Note, that all of the statements and conditions should be checked already
+    // to see if they are okay. So there isn't really any checking that should
+    // be done here...
+    return statement_create_if(&sc->ast->ast_allocator, if_locatoin,
+            lparen_location, rparen_location, else_location, expression,
+            if_body, else_body);
+}
+
+Statement* semantic_checker_handle_switch_statement(SemanticChecker* sc,
+        Location switch_location, Location lparen_location,
+        Expression* expression, Location rparen_location,
+        Statement* body)
+{
+    Statement* switch_stmt = statement_create_switch(&sc->ast->ast_allocator,
+            switch_location, lparen_location, rparen_location, expression);
+    statement_switch_set_body(switch_stmt, body);
+
+    return body;
+}
+
+Statement* semantic_checker_handle_while_statement(SemanticChecker* sc,
+        Location while_location, Location lparen_location,
+        Expression* expression, Location rparen_location, Statement* stmt)
+{
+    Statement* while_stmt = statement_create_while(&sc->ast->ast_allocator,
+            while_location, lparen_location, rparen_location, expression);
+    statement_while_set_body(while_stmt, stmt);
+
+    return while_stmt;
+}
+
+Statement* semantic_checker_handle_do_while_statement(SemanticChecker* sc,
+        Location do_location, Statement* body, Location while_location,
+        Location lparen_location, Expression* expression,
+        Location rparen_location, Location semi_location)
+{
+    Statement* do_while = statement_create_do_while(&sc->ast->ast_allocator,
+            do_location);
+    statement_do_while_set_body(do_while, while_location, lparen_location,
+            rparen_location, expression, body);
+
+    return do_while;
+}
+
+Statement* semantic_checker_handle_for_statement(SemanticChecker* sc,
+        Location for_location, Location lparen_location,
+        Declaration* init_declaration, Expression* init_expression,
+        Expression* condition, Expression* increment, Location rparen_location,
+        Statement* body)
+{
+    Statement* init_statement;
+    if (init_declaration != NULL)
+    {
+        assert(init_expression == NULL);
+        init_statement = semantic_checker_handle_declaration_statement(sc,
+                init_declaration, LOCATION_INVALID);
+    }
+    else if (init_expression != NULL)
+    {
+        assert(init_declaration == NULL);
+        init_statement = semantic_checker_handle_expression_statement(sc,
+                init_expression, LOCATION_INVALID);
+    }
+    else
+    {
+        init_statement = semantic_checker_handle_error_statement(sc);
+    }
+
+    // Create the for statement
+    Statement* for_stmt = statement_create_for(&sc->ast->ast_allocator,
+            for_location, lparen_location, rparen_location, init_statement,
+            condition, increment);
+    statement_for_set_body(for_stmt, body);
+
+    return for_stmt;
+}
+
+Statement* semantic_checker_handle_goto_statement(SemanticChecker* sc,
+        Location goto_location, Identifier* identifier,
+        Location identifier_location, Location semi_location)
+{
+    // Get the label from the semantic checker. This should never be null as
+    // we will implicitly create a label if it does not already exist.
+    // TODO: we can also use this call to help diagnose unused labels too!
+    Declaration* label = semantic_checker_act_on_goto(sc, identifier,
+            identifier_location);
+    
+    return statement_create_goto(&sc->ast->ast_allocator, goto_location,
+            semi_location, label);
+}
+
+Statement* semantic_checker_handle_continue_statement(SemanticChecker* sc,
+        Location continue_location, Location semi_location)
+{
+    Scope* continuable = scope_get_continue(sc->scope);
+
+    if (continuable == NULL)
+    {
+        diagnostic_error_at(sc->dm, continue_location, 
+                "'continue' statement not in loop statement");
+        return statement_create_error(&sc->ast->ast_allocator);
+    }
+
+    return statement_create_contine(&sc->ast->ast_allocator, continue_location, 
+            semi_location);
+}
+
+Statement* semantic_checker_handle_break_statement(SemanticChecker* sc,
+        Location break_location, Location semi_location)
+{
+    Scope* breakable = scope_get_break(sc->scope);
+
+    if (breakable == NULL)
+    {
+        diagnostic_error_at(sc->dm, break_location,
+                "'break' statement not in loop or switch statement");
+        return statement_create_error(&sc->ast->ast_allocator);
+    }
+
+    return statement_create_break(&sc->ast->ast_allocator, break_location, 
+            semi_location);
+}
+
+Statement* semantic_checker_handle_return_statement(SemanticChecker* sc,
+        Location return_location, Expression* expression,
+        Location semi_location)
+{
+    Statement* return_stmt = statement_create_return(&sc->ast->ast_allocator,
+            return_location, semi_location, expression);
+
+    // TODO: check the expressions type matches the current functions type!
+
+    return return_stmt;
+}
+
+Statement* semantic_checker_handle_empty_statement(SemanticChecker* sc,
+        Location semi_location)
+{
+    return statement_create_empty(&sc->ast->ast_allocator, semi_location);
+}
+
+Statement* semantic_checker_handle_label_statement(SemanticChecker* sc,
+        Location identifier_location, Location colon_location,
+        Declaration* label_declaration, Statement* statement)
+{
+    return statement_create_label(&sc->ast->ast_allocator, identifier_location,
+                colon_location, label_declaration, statement);
+}
+
+Statement* semantic_checker_handle_declaration_statement(SemanticChecker* sc,
+        Declaration* declaration, Location semi_location)
+{
+    // Note: the declaration should have been checked already so this is simple!
+    return statement_create_declaration(&sc->ast->ast_allocator, semi_location,
+            declaration);
+}
+
+Statement* semantic_checker_handle_expression_statement(SemanticChecker* sc,
+        Expression* expression, Location semi_location)
+{
+    return statement_create_expression(&sc->ast->ast_allocator, semi_location,
+            expression);
+}
+
+Statement* semantic_checker_handle_error_statement(SemanticChecker* sc)
+{
+    return statement_create_error(&sc->ast->ast_allocator);
 }
 

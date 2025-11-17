@@ -51,8 +51,6 @@ Declaration* semantic_checker_lookup_tag(SemanticChecker* sc,
         Identifier* identifier, bool recursive);
 Declaration* semantic_checker_lookup_member(SemanticChecker* sc,
         Identifier* identifier);
-void semantic_checker_insert_ordinairy(SemanticChecker* sc,
-        Declaration* declaration);
 
 // Create the enumeration declaration 
 Declaration* semantic_checker_create_enum(SemanticChecker* sc,
@@ -74,6 +72,8 @@ Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
 Declaration* semantic_checker_process_function_param(SemanticChecker* sc,
         Declarator* declarator);
 
+QualifiedType semantic_checker_process_typename(SemanticChecker* sc,
+        Declarator* declarator);
 Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
         Declarator* declarator);
 void semantic_checker_declaration_add_initializer(SemanticChecker* sc,
@@ -84,10 +84,81 @@ void sematic_checker_push_function_scope(SemanticChecker* sc,
         FunctionScope* function);
 void sematic_checker_pop_function_scope(SemanticChecker* sc);
 
+// Semantic checking actions for labels and that kind of thing
 Declaration* semantic_checker_act_on_label(SemanticChecker* sc,
         Identifier* identifier, Location identifier_location);
 Declaration* semantic_checker_act_on_goto(SemanticChecker* sc,
         Identifier* identifier, Location identifier_location);
 void sematic_checker_act_on_end_of_function(SemanticChecker* sc);
+
+// Semantic checking functions for the rest of our statement types
+
+// TODO
+Statement* semantic_checker_handle_compound_statement(SemanticChecker* sc);
+
+bool semantic_checker_check_case_allowed(SemanticChecker* sc,
+        Location case_location);
+Statement* semantic_checker_handle_case_statement(SemanticChecker* sc,
+        Location case_location, Expression* expression,
+        Location colon_location, Statement* stmt);
+
+bool semantic_checker_check_default_allowed(SemanticChecker* sc,
+        Location default_location);
+Statement* semantic_checker_handle_default_statement(SemanticChecker* sc,
+        Location default_location, Location colon_location, Statement* stmt);
+
+Statement* semantic_checker_handle_if_statement(SemanticChecker* sc,
+        Location if_locatoin, Location lparen_location, Expression* expression,
+        Location rparen_location, Statement* if_body, Location else_location,
+        Statement* else_body);
+
+Statement* semantic_checker_handle_switch_statement(SemanticChecker* sc,
+        Location switch_location, Location lparen_location,
+        Expression* expression, Location rparen_location,
+        Statement* body);
+
+Statement* semantic_checker_handle_while_statement(SemanticChecker* sc,
+        Location while_location, Location lparen_location,
+        Expression* expression, Location rparen_location, Statement* stmt);
+
+Statement* semantic_checker_handle_do_while_statement(SemanticChecker* sc,
+        Location do_location, Statement* body, Location while_location,
+        Location lparen_location, Expression* expression,
+        Location rparen_location, Location semi_location);
+
+Statement* semantic_checker_handle_for_statement(SemanticChecker* sc,
+        Location for_location, Location lparen_location,
+        Declaration* init_declaration, Expression* init_expression,
+        Expression* condition, Expression* increment, Location rparen_location,
+        Statement* body);
+
+Statement* semantic_checker_handle_goto_statement(SemanticChecker* sc,
+        Location goto_location, Identifier* identifier,
+        Location identifier_location, Location semi_location);
+
+Statement* semantic_checker_handle_continue_statement(SemanticChecker* sc,
+        Location continue_location, Location semi_location);
+
+Statement* semantic_checker_handle_break_statement(SemanticChecker* sc,
+        Location break_location, Location semi_location);
+
+Statement* semantic_checker_handle_return_statement(SemanticChecker* sc,
+        Location return_location, Expression* expression,
+        Location semi_location);
+
+Statement* semantic_checker_handle_empty_statement(SemanticChecker* sc,
+        Location semi_location);
+
+Statement* semantic_checker_handle_label_statement(SemanticChecker* sc,
+        Location identifier_location, Location colon_location,
+        Declaration* label_declaration, Statement* statement);
+
+Statement* semantic_checker_handle_declaration_statement(SemanticChecker* sc,
+        Declaration* declaration, Location semi_location);
+
+Statement* semantic_checker_handle_expression_statement(SemanticChecker* sc,
+        Expression* expression, Location semi_location);
+
+Statement* semantic_checker_handle_error_statement(SemanticChecker* sc);
 
 #endif /* SEMANTIC_H */

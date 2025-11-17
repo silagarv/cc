@@ -43,7 +43,7 @@ Statement* statement_create_label(AstAllocator* allocator,
 
 Statement* statement_create_case(AstAllocator* allocator, 
         Location case_location, Location colon_location, Expression* expr,
-        IntegerValue value, Statement* body, Statement* statement)
+        IntegerValue value, Statement* body)
 {
     Statement* stmt = statement_create_base(allocator, sizeof(StatementCase),
             STATEMENT_CASE);
@@ -52,21 +52,19 @@ Statement* statement_create_case(AstAllocator* allocator,
     stmt->case_stmt.constant_expression = expr;
     stmt->case_stmt.expression_value = value;
     stmt->case_stmt.statement = body;
-    stmt->case_stmt.switch_statement = statement;
 
     return stmt;
 }
 
 Statement* statement_create_default(AstAllocator* allocator,
         Location default_location, Location colon_location, 
-        Statement* body, Statement* statement)
+        Statement* body)
 {
     Statement* stmt = statement_create_base(allocator, sizeof(StatementDefault),
             STATEMENT_DEFAULT);
     stmt->default_stmt.default_location = default_location;
     stmt->default_stmt.colon_location = colon_location;
     stmt->default_stmt.statement = body;
-    stmt->default_stmt.switch_statement = statement;
 
     return stmt;
 }
@@ -232,27 +230,23 @@ Statement* statement_create_goto(AstAllocator* allocator,
 }
 
 Statement* statement_create_contine(AstAllocator* allocator, 
-        Location continue_location, Location semi_location, 
-        Statement* target_location)
+        Location continue_location, Location semi_location)
 {
     Statement* stmt = statement_create_base(allocator, 
             sizeof(StatementContinue), STATEMENT_CONTINUE);
     stmt->continue_stmt.continue_location = continue_location;
     stmt->continue_stmt.semi_location = semi_location;
-    stmt->continue_stmt.target = target_location;
 
     return stmt;
 }
 
 Statement* statement_create_break(AstAllocator* allocator, 
-        Location break_location, Location semi_location,
-        Statement* target_location)
+        Location break_location, Location semi_location)
 {
     Statement* stmt = statement_create_base(allocator, sizeof(StatementBreak),
             STATEMENT_BREAK);
     stmt->break_stmt.break_location = break_location;
     stmt->break_stmt.semi_location = semi_location;
-    stmt->break_stmt.target = target_location;
 
     return stmt;
 }

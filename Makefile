@@ -2,6 +2,7 @@ CC = clang
 CFLAGS = -Wall \
 	-Wextra \
 	-Wpedantic \
+	-Werror \
 	-std=c99 \
 	-g3 \
 	-O0
@@ -12,8 +13,10 @@ CFLAGS += -Wno-unused-parameter \
 	-Wno-switch \
 	-Wshadow \
 	-Wvla \
-	-ferror-limit=0 \
-	-lm
+	-ferror-limit=0
+
+LFLAGS = -lm
+
 
 # CFLAGS += -fanalyzer
 # CFLAGS += -flto
@@ -73,7 +76,7 @@ PARSE = src/parse/ast_allocator.c \
 SRC = $(UTIL) $(FILES) $(LEX) $(PARSE) $(DRIVER) 
 
 cc: $(SRC) src/main.c
-	$(CC) $(CFLAGS) $^ -o $@
+	$(CC) $(CFLAGS) $^ -o $@ $(LFLAGS)
 
 clean:
 	rm -f cc

@@ -208,12 +208,18 @@ QualifiedType type_create_array(AstAllocator* allocator,
 }
 
 QualifiedType type_create_function(AstAllocator* allocator,
-        QualifiedType* return_type, QualifiedType** paramaters,
+        QualifiedType return_type, QualifiedType* paramaters,
         size_t num_paramaters, bool unspecified_paramters, bool variadic)
 {
+    Type* type = type_create_base(allocator, sizeof(TypeFunction),
+            TYPE_FUNCTION, 0, 0, true);
+    type->type_function.return_type = return_type;
+    type->type_function.paramaters = paramaters;
+    type->type_function.num_paramaters = num_paramaters;
+    type->type_function.unspecified_paramters = unspecified_paramters;
+    type->type_function.is_variadic = variadic;
 
-
-    return (QualifiedType) {0};
+    return (QualifiedType) {TYPE_QUALIFIER_NONE, type};
 }
 
 QualifiedType type_create_enum(AstAllocator* allocator, Type* base)
@@ -332,6 +338,12 @@ bool qualifier_type_is_equal_canonical(const QualifiedType* t1,
 
 void type_print(const QualifiedType* t1)
 {
+    if (t1->type == NULL)
+    {
+        printf("<invalid-type>");
+        return;
+    }
+
     if (t1->qualifiers & TYPE_QUALIFIER_CONST)
     {
         printf("const ");
@@ -391,6 +403,12 @@ void type_print(const QualifiedType* t1)
         case TYPE_TYPEDEF:
             printf("typename '%s'",
                     t1->type->type_typedef.tdef->base.identifier->string.ptr);
+            break;
+
+        case TYPE_FUNCTION:
+            printf("function returning ");
+            type_print(&t1->type->type_function.return_type);
+            printf("with %zu parameters ", t1->type->type_function.num_paramaters);
             break;
     }
 }

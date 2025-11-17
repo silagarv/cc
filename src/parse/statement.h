@@ -86,7 +86,6 @@ struct StatementCase {
     Expression* constant_expression;
     IntegerValue expression_value;
     Statement* statement;
-    Statement* switch_statement;
 };
 
 struct StatementDefault {
@@ -94,7 +93,6 @@ struct StatementDefault {
     Location default_location;
     Location colon_location;
     Statement* statement;
-    Statement* switch_statement;
 };
 
 struct StatementCompound {
@@ -175,14 +173,12 @@ struct StatementContinue {
     StatementBase base;
     Location continue_location;
     Location semi_location;
-    Statement* target; // the top level statement to go to
 };
 
 struct StatementBreak {
     StatementBase base;
     Location break_location;
     Location semi_location;
-    Statement* target; // the statement we are breaking from
 };
 
 struct StatementReturn {
@@ -257,11 +253,11 @@ Statement* statement_create_label(AstAllocator* allocator,
 
 Statement* statement_create_case(AstAllocator* allocator, 
         Location case_location, Location colon_location, Expression* expr,
-        IntegerValue value, Statement* body, Statement* statement);
+        IntegerValue value, Statement* body);
 
 Statement* statement_create_default(AstAllocator* allocator,
         Location default_location, Location colon_location, 
-        Statement* body, Statement* statement);
+        Statement* body);
 
 Statement* statement_create_compound(AstAllocator* allocator,
         Location opening_curly, Location closing_curly, StatementVector* stmts);
@@ -304,12 +300,10 @@ Statement* statement_create_goto(AstAllocator* allocator,
         Location goto_location, Location semi_location, Declaration* label);
 
 Statement* statement_create_contine(AstAllocator* allocator,
-        Location continue_location, Location semi_location,
-        Statement* target_location);
+        Location continue_location, Location semi_location);
 
 Statement* statement_create_break(AstAllocator* allocator, 
-        Location break_location, Location semi_location,
-        Statement* target_location);
+        Location break_location, Location semi_location);
 
 Statement* statement_create_return(AstAllocator* allocator,
         Location return_location, Location semi_location,

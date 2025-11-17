@@ -93,10 +93,12 @@ typedef struct DeclarationFunction {
     // at all.
     DeclarationBase base;
 
-    // TODO: should this be a scope intead where we have all of our parameters
+    // The previous function declaration for this function if relavent
+    struct DeclarationFunction* prev;
+
     // in the normal namespace
     // The paramaters of the function, should all be variable declarations.
-    DeclarationVariable* parameters;
+    Declaration** parameters;
 
     // The number of parameters that we actually got.
     size_t num_parameters;
@@ -248,6 +250,8 @@ typedef struct DeclaratorPieceArray {
 
 typedef struct DeclaratorPieceFunction {
     DeclaratorPieceBase base;
+    Location lparen_loc;
+    Location rparen_loc;
     Declaration** paramaters;
     size_t num_paramaters;
     bool is_variadic;
@@ -275,7 +279,8 @@ typedef enum DeclaratorContext {
     DECLARATION_CONTEXT_STRUCT,
     DECLARATION_CONTEXT_FUNCTION_PARAM,
     DECLARATION_CONTEXT_BLOCK,
-    DECLARATION_CONTEXT_TYPE_NAME
+    DECLARATION_CONTEXT_TYPE_NAME,
+    /*DECLARATION_CONTEXT_FOR*/
 } DeclaratorContext;
 
 // Here is our declarator vector that we are going to use to help us parse
@@ -320,7 +325,8 @@ void declarator_push_array(Declarator* declarator, Location lbracket,
 void declarator_push_function_empty(Declarator* declarator, ...);
 void declarator_push_function_knr(Declarator* declarator, ...);
 void declarator_push_function(Declarator* declarator, AstAllocator* allocator,
-        DeclarationVector* params, bool is_variadic);
+        Location lparen_loc, Location rparen_loc, DeclarationVector* params,
+        bool is_variadic);
 
 // TODO: this will need some stuff added to it
 void declarator_piece_push_function(Declarator* declarator, bool is_variadic);
@@ -364,6 +370,9 @@ Declaration* declaration_create_struct(AstAllocator* allocator,
 void declaration_struct_add_members(Declaration* declaration,
         Declaration** members, size_t num_members);
 bool declaration_struct_is_complete(const Declaration* declaration);
+
+Declaration* declaration_create_function(AstAllocator* allocator,
+        Location location, Identifier* identifier, QualifiedType type);
 
 // Create a declaration of label identifier at the given location, and indicate
 // if this label was implictly constructed.

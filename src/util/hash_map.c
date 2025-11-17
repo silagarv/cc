@@ -14,6 +14,9 @@
 static HashMap hash_map_create_size(size_t size, HashFunction hash, 
         KeyCompareFunction eq, FreeFunction free)
 {
+    assert(hash != NULL);
+    assert(eq != NULL);
+
     HashMap map = (HashMap)
     {
         .entries = xcalloc(size, sizeof(HashMapEntry)),
