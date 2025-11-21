@@ -5,7 +5,9 @@ CFLAGS = -Wall \
 	-Werror \
 	-std=c99 \
 	-g3 \
-	-O0
+	-O0 \
+	-MMD \
+	-MP
 CFLAGS += -Wno-unused-parameter \
 	-Wno-unused-variable \
 	-Wno-unused-function \
@@ -16,10 +18,6 @@ CFLAGS += -Wno-unused-parameter \
 	-ferror-limit=0
 
 LFLAGS = -lm
-
-
-# CFLAGS += -fanalyzer
-# CFLAGS += -flto
 
 IFLAGS = -Isrc
 CFLAGS += $(IFLAGS)
@@ -47,8 +45,8 @@ FILES = src/files/filepath.c \
 	src/files/source_manager.c
 
 DRIVER = src/driver/diagnostic.c \
-	src/driver/target.c \
-	#src/driver/options.c \
+	#src/driver/target.c \
+	src/driver/options.c \
 	src/driver/command_line.c \
 	src/driver/translation_unit.c \
 	src/driver/driver.c
@@ -62,6 +60,7 @@ LEX = src/lex/identifier_table.c \
 	src/lex/preprocessor.c
 
 PARSE = src/parse/ast_allocator.c \
+	src/parse/ast.c \
 	src/parse/type.c \
 	src/parse/literal_parser.c \
 	src/parse/expression.c \
@@ -69,15 +68,27 @@ PARSE = src/parse/ast_allocator.c \
 	src/parse/declaration.c \
 	src/parse/symbol.c \
 	src/parse/scope.c \
-	src/parse/ast.c \
 	src/parse/parser.c \
 	src/parse/semantic.c
 
-SRC = $(UTIL) $(FILES) $(LEX) $(PARSE) $(DRIVER) 
+SRCS = $(UTIL) $(FILES) $(LEX) $(PARSE) $(DRIVER) src/main.c
 
-cc: $(SRC) src/main.c
+BUILDDIR = build
+OBJS = $(patsubst src/%.c, $(BUILDDIR)/%.o, $(SRCS))
+DEPS := $(OBJS:.o=.d)
+
+cc: $(OBJS)
 	$(CC) $(CFLAGS) $^ -o $@ $(LFLAGS)
 
+$(BUILDDIR)/%.o: src/%.c | $(BUILDDIR)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILDDIR):
+	mkdir -p $(BUILDDIR)
+
 clean:
+	rm -r $(BUILDDIR)
 	rm -f cc
 
+-include $(DEPS)

@@ -177,9 +177,14 @@ typedef struct TypePointer {
 // And a typedef
 typedef struct TypeTypedef {
     TypeBase base;
-    QualifiedType underlying_type;
+    QualifiedType underlying_type; // the type directly below
+    QualifiedType real_type; // the type all the way down in the typedef chain
     union Declaration* tdef; // the typedef that introduced this
 } TypeTypedef;
+
+typedef struct TypeError {
+    TypeBase base;
+} TypeError;
 
 union Type {
     TypeBase type_base;
@@ -192,11 +197,13 @@ union Type {
     TypeFunction type_function;
     TypePointer type_pointer;
     TypeTypedef type_typedef;
+    TypeError type_error;
 };
 
 // TODO: should I instead implement some kind of way where types can be compared
 // via pointer equality instead of having to possible walk a large type tree
 typedef struct TypeBuiltins {
+    Type* type_error;
     Type* type_void;
     Type* type_bool;
     Type* type_char;
@@ -229,18 +236,18 @@ bool type_qualifier_is_restrict(TypeQualifiers qualifiers);
 bool type_qualifier_is_volatile(TypeQualifiers qualifiers);
 bool type_qualifier_already_has(TypeQualifiers qualifiers, TypeQualifiers has);
 
-// Functions to compare types and test if they are equal...
 TypeBuiltins type_builtins_initialise(AstAllocator* allocator);
-bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2);
-bool qualifier_type_is_equal_canonical(const QualifiedType* t1, 
-        const QualifiedType* t2);
 
 // Functions for creating and maniputing types
 QualifiedType type_create_pointer(AstAllocator* allocator,
         QualifiedType* base_type, TypeQualifiers qualifiers);
+QualifiedType type_pointer_get_pointee(const QualifiedType* pointer);
+
 QualifiedType type_create_array(AstAllocator* allocator,
         QualifiedType* element_type, size_t length, bool is_static,
         bool is_star, bool is_vla);
+QualifiedType type_array_get_element_type(const QualifiedType* type);
+
 QualifiedType type_create_function(AstAllocator* allocator,
         QualifiedType return_type, QualifiedType* paramaters,
         size_t num_paramaters, bool unspecified_paramters, bool variadic);
@@ -262,7 +269,16 @@ bool type_union_is_complete(Type* type);
 Type* type_create_typedef(AstAllocator* allocator, QualifiedType type,
         union Declaration* decl);
 
+TypeKind qualified_type_get_kind(const QualifiedType* type);
+bool type_is(const Type* type, TypeKind kind);
 bool qualified_type_is(const QualifiedType* type, TypeKind kind);
+bool qualified_type_is_integer(const QualifiedType* type);
+QualifiedType type_get_canonical(const Type* type);
+QualifiedType qualified_type_get_canonical(const QualifiedType* type);
+
+bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2);
+bool qualifier_type_is_equal_canonical(const QualifiedType* t1, 
+        const QualifiedType* t2);
 
 // Functions to compare types and test if they are equal...
 bool type_is_builtin(const Type* t1);

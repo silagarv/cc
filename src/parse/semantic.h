@@ -7,6 +7,7 @@
 #include "lex/identifier_table.h"
 #include "parse/expression.h"
 #include "parse/initializer.h"
+#include "parse/literal_parser.h"
 #include "parse/statement.h"
 #include "parse/declaration.h"
 #include "parse/ast.h"
@@ -52,6 +53,9 @@ Declaration* semantic_checker_lookup_tag(SemanticChecker* sc,
 Declaration* semantic_checker_lookup_member(SemanticChecker* sc,
         Identifier* identifier);
 
+void semantic_checker_add_function_parameters(SemanticChecker* sc,
+        Declaration* declaration);
+
 // Create the enumeration declaration 
 Declaration* semantic_checker_create_enum(SemanticChecker* sc,
         Location enum_location, Identifier* name, bool anonymous);
@@ -90,6 +94,28 @@ Declaration* semantic_checker_act_on_label(SemanticChecker* sc,
 Declaration* semantic_checker_act_on_goto(SemanticChecker* sc,
         Identifier* identifier, Location identifier_location);
 void sematic_checker_act_on_end_of_function(SemanticChecker* sc);
+
+// Semantic checking functions for our expression types
+
+Expression* semantic_checker_handle_error_expression(SemanticChecker* sc,
+        Location location);
+
+Expression* semantic_checker_handle_parenthesis_expression(SemanticChecker* sc,
+        Location lparen_location, Expression* inner, Location rparen_location);
+Expression* semantic_checker_handle_reference_expression(SemanticChecker* sc,
+        Location identifier_location, Identifier* identifier,
+        bool is_function_call);
+Expression* semantic_checker_handle_number_expression(SemanticChecker* sc,
+        Location number_location, LiteralValue value, bool success);
+Expression* semantic_checker_handle_char_expression(SemanticChecker* sc,
+        Location char_location, CharValue value, bool success);
+Expression* semantic_checker_handle_array_expression(SemanticChecker* sc,
+        Expression* lhs, Location lbracket_loc, Expression* member,
+        Location rbracket_loc);
+// TODO: semantic_checker_handle_function_call_expression(...);
+// TODO: semantic_checker_handle_member_expression(...);
+
+
 
 // Semantic checking functions for the rest of our statement types
 

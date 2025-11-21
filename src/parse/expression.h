@@ -82,10 +82,11 @@ typedef enum ExpressionType {
 typedef union Expression Expression;
 
 typedef struct ExpressionBase {
+    // The expression type
     ExpressionType kind;
-    // TODO: i think that the type of the expression should also be inside of
-    // TODO: the expression as this would greatly simplify the semantic checking
-    // TODO: for expressions when I get to that
+
+    // The type of expression that we have
+    QualifiedType type;
 
     // Is this an expression that should not be further semantically checked?
     bool poisoned;
@@ -140,6 +141,7 @@ typedef struct ExpressionArrayAccess {
     Location rbracket_loc;
     Expression* lhs;
     Expression* member;
+    bool lhs_is_array; // since c has 0[a] and a[0] being allowed
 } ExpressionArrayAccess;
 
 typedef struct ExpressionFunctionCall {
@@ -230,7 +232,9 @@ union Expression {
     ExpressionArrayAccess array;
 
     ExpressionUnary unary;
+    
     ExpressionBinary binary;
+
     ExpressionConditional conditional;
 
     ExpressionParenthesised parenthesised;
@@ -241,28 +245,38 @@ union Expression {
 bool expression_is(const Expression* expr, ExpressionType type);
 Location expression_get_location(const Expression* expr);
 
-Expression* expression_create_error(AstAllocator* allocator);
+// Get the type of the expression
+ExpressionType expression_get_kind(const Expression* expr);
+bool expression_is_invalid(const Expression* expr);
+void expression_set_invalid(Expression* expr);
+QualifiedType expression_get_qualified_type(const Expression* expr);
 
-Expression* expression_create_reference(AstAllocator* allocator,
-        Identifier* identifier, Location location,
-        union Declaration* declaration);
-Expression* expression_create_number(AstAllocator* allocator, Location location,
-        LiteralValue value);
-Expression* expression_create_character(AstAllocator* allocator,
-        Location location, CharValue value);
-
-Expression* expression_create_array(AstAllocator* allocator, 
-        Location lbracket_loc, Location rbracket_loc, Expression* lhs,
-        Expression* member);
-
-Expression* expression_create_unary(AstAllocator* allocator, 
-        ExpressionType type, Location op_loc, Expression* expression);
-
-Expression* expression_create_binary(AstAllocator* allocator, 
-        ExpressionType type, Location op_loc, Expression* lhs, Expression* rhs);
+Expression* expression_create_error(AstAllocator* allocator,
+        Type* error_type);
 
 Expression* expression_create_parenthesised(AstAllocator* allocator,
         Location lparen_loc, Location rparen_loc, Expression* inside);
+
+Expression* expression_create_reference(AstAllocator* allocator,
+        Identifier* identifier, Location location,
+        union Declaration* declaration, QualifiedType expr_type);
+Expression* expression_create_integer(AstAllocator* allocator,
+        Location location, IntegerValue value, QualifiedType type);
+Expression* expression_create_float(AstAllocator* allocator, Location location,
+        FloatingValue value, QualifiedType type);
+Expression* expression_create_character(AstAllocator* allocator,
+        Location location, CharValue value, QualifiedType expr_type);
+Expression* expression_create_array(AstAllocator* allocator, 
+        Location lbracket_loc, Location rbracket_loc, Expression* lhs,
+        Expression* member, QualifiedType expr_type, bool lhs_is_array);
+
+Expression* expression_create_unary(AstAllocator* allocator, 
+        ExpressionType type, Location op_loc, Expression* expression,
+        QualifiedType expr_type);
+
+Expression* expression_create_binary(AstAllocator* allocator, 
+        ExpressionType type, Location op_loc, Expression* lhs, Expression* rhs,
+        QualifiedType expr_type);
 
 // TODO: somehow we will need to be able to fold expressions...
 // TODO: so we will need to set up some stuff here to do that. This will also

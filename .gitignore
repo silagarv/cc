@@ -52,6 +52,7 @@ Mkfile.old
 dkms.conf
 
 cc
+build
 compile_commands.json
 
 src/frontend

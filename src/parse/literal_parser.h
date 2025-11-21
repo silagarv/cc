@@ -95,6 +95,8 @@ typedef struct StringLiteral {
 // bool parse_integer_literal(IntegerValue* value, const Token* token);
 // bool parse_floating_literal(FloatingValue* value, const Token* token);
 
+ValueType literal_value_get_type(const LiteralValue* value);
+
 bool parse_preprocessing_number(LiteralValue* value, DiagnosticManager* dm,
         const Token* token);
 bool parse_char_literal(CharValue* value, DiagnosticManager* dm,

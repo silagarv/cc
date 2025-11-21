@@ -73,10 +73,17 @@ DeclarationSpecifiers declaration_specifiers_create(Location location)
         .type_spec_width = TYPE_SPECIFIER_WIDTH_NONE,
         .type_spec_sign = TYPE_SPECIFIER_SIGN_NONE,
         .type_spec_complex = TYPE_SPECIFIER_COMPLEX_NONE,
-        .location = location
+        .location = location,
+        .declaration = NULL
     };
 
     return specifiers;
+}
+
+Declaration* declaration_specifiers_get_declaration(
+        const DeclarationSpecifiers* decl_spec)
+{
+    return decl_spec->declaration;
 }
 
 Declarator declarator_create(DeclarationSpecifiers* specifiers,
@@ -176,14 +183,15 @@ void declarator_push_pointer(Declarator* declarator, TypeQualifiers qualifiers)
 }
 
 void declarator_push_array(Declarator* declarator, Location lbracket,
-        Location rbracket, TypeQualifiers qualifiers, Expression* expression,
-        bool is_static, bool is_star)
+        Location rbracket, Location static_location, TypeQualifiers qualifiers,
+        Expression* expression, bool is_static, bool is_star)
 {
     DeclaratorPiece piece = (DeclaratorPiece)
     {
         .array.base.type = DECLARATOR_PIECE_ARRAY,
         .array.lbracket = lbracket,
         .array.rbracket = rbracket,
+        .array.static_location = static_location,
         .array.qualifiers = qualifiers,
         .array.expression = expression,
         .array.is_static = is_static,
@@ -228,6 +236,13 @@ bool declaration_is(const Declaration* decl, DeclarationType type)
     return decl->base.declaration_type == type;
 }
 
+bool declaration_is_tag(const Declaration* decl)
+{
+    return declaration_is(decl, DECLARATION_ENUM)
+            || declaration_is(decl, DECLARATION_STRUCT)
+            || declaration_is(decl, DECLARATION_UNION);
+}
+
 bool declaration_has_identifier(const Declaration* decl)
 {
     if (!decl)
@@ -236,6 +251,31 @@ bool declaration_has_identifier(const Declaration* decl)
     }
 
     return decl->base.identifier != NULL;
+}
+
+bool declaration_is_valid(const Declaration* decl)
+{
+    if (!decl)
+    {
+        return false;
+    }
+
+    return !decl->base.invalid;
+}
+
+void declaration_set_invalid(Declaration* decl)
+{
+    if (!decl)
+    {
+        return;
+    }
+
+    decl->base.invalid = true;
+}
+
+QualifiedType declaration_get_type(const Declaration* decl)
+{
+    return decl->base.qualified_type;
 }
 
 // This is a function to create a barebones base declaration.
@@ -254,7 +294,8 @@ static Declaration* declaration_create_base(AstAllocator* allocator,
         .qualified_type = type,
         .storage_class = storage,
         .function_specifier = function,
-        .implicit = implicit
+        .implicit = implicit,
+        .invalid = false
     };
 
     return decl;
@@ -304,7 +345,8 @@ void declaration_typedef_set_type(Declaration* tdef, Type* new_type)
 }
 
 Declaration* declaration_create_enum(AstAllocator* allocator,
-        Location location, Identifier* identifier, QualifiedType type)
+        Location location, Identifier* identifier, QualifiedType type,
+        bool anonymous)
 {
     assert(identifier != NULL);
 
@@ -316,6 +358,7 @@ Declaration* declaration_create_enum(AstAllocator* allocator,
     declaration->enumeration.entries = NULL;
     declaration->enumeration.num_entries = 0;
     declaration->enumeration.complete = false;
+    declaration->enumeration.anonymous = true;
 
     return declaration;
 }
@@ -413,9 +456,14 @@ bool declaration_struct_is_complete(const Declaration* declaration)
 }
 
 Declaration* declaration_create_function(AstAllocator* allocator,
-        Location location, Identifier* identifier, QualifiedType type)
+        Location location, Identifier* identifier, QualifiedType type,
+        TypeStorageSpecifier storage, TypeFunctionSpecifier function_spec)
 {
-    return NULL;
+    Declaration* declaration = declaration_create_base(allocator,
+            sizeof(DeclarationFunction), DECLARATION_FUNCTION, location,
+            identifier, type, storage, function_spec, false);
+
+    return declaration;
 }
 
 Declaration* declaration_create_label(AstAllocator* allocator, 

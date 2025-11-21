@@ -203,8 +203,13 @@ static bool is_match_two(Parser* parser, TokenType type1, TokenType type2)
     return has_match(parser, (TokenType[]) {type1, type2}, 2);
 }
 
-static bool try_match(Parser* parser, TokenType type)
+static bool try_match(Parser* parser, TokenType type, Location* location)
 {
+    if (location != NULL)
+    {
+        *location = current_token_start_location(parser);
+    }
+
     if (is_match(parser, type))
     {
         consume(parser);
@@ -405,18 +410,8 @@ static Declaration* parse_init_declarator_list(Parser* parser,
 
 static void parse_enumerator_list(Parser* parser, Declaration* enum_decl);
 static Declaration* parse_enum_specificer(Parser* parser);
-// TODO: condense below into 2 funcs
+
 static void parse_direct_declarator(Parser* parser, Declarator* declarator);
-static void parse_direct_abstract_declarator(Parser* parser,
-        Declarator* declarator, DeclarationSpecifiers* specifiers);
-static void parse_abstract_declarator(Parser* parser, Declarator* declarator,
-        DeclarationSpecifiers* specifiers);
-
-static Declaration* parse_declarator_new(Parser* parser, bool maybe_abstract);
-static Declaration* parse_direct_declarator_new(Parser* parser, 
-        bool maybe_abstract);
-
-static void parse_pointer(Parser* parser, Declarator* declarator);
 
 static void parse_identifier_list(Parser* parser, Declarator* declarator);
 static Declaration* parse_paramater_declaration(Parser* parser);
@@ -455,17 +450,9 @@ static void parse_struct_declaration_list(Parser* parser, Declaration* decl);
 static Declaration* parse_struct_or_union_specifier(Parser* parser);
 
 static Declaration* parse_declaration(Parser* parser, DeclaratorContext ctx);
-
 static QualifiedType parse_type_name(Parser* parser);
 
 // The definitions of the functions we will use for pasing
-
-// Some functions for creating errors
-
-// TODO: add things for error recovery and whatnot to make parsing better
-
-// TODO: should I add the below into this function? It could be helpful but
-// some of the parse will have to be redone. E.g. mostly parsing typenames...
 static bool is_typename_start(Parser* parser, const Token* tok)
 {
     const TokenType type = tok->type;
@@ -629,24 +616,19 @@ static Expression* parse_primary_expression(Parser* parser)
             Location lparen_loc = consume(parser);
             Expression* expr = parse_expression(parser);
 
-            // Don't automatically poison this node, since really it is quite
-            // recoverable and can still be checked without affecting too much.
-            //  Also don't advace the stream since this may lead to some weird
-            // and unusual behaviour in subsequent errors.
+            // Don't create the next expression at all, rather, return the
+            // expression we just parsed so save us some trouble.
             Location rparen_loc = LOCATION_INVALID;
-            if (!is_match(parser, TOKEN_RPAREN))
+            if (!try_match(parser, TOKEN_RPAREN, &rparen_loc))
             {
                 diagnostic_error_at(parser->dm,
                         current_token_start_location(parser),
-                        "expected ')'");
-            }
-            else
-            {
-                rparen_loc = consume(parser);
+                        "expected ')' after expression");
+                return expr;
             }
 
-            return expression_create_parenthesised(&parser->ast.ast_allocator,
-                    lparen_loc, rparen_loc, expr);
+            return semantic_checker_handle_parenthesis_expression(&parser->sc,
+                    lparen_loc, expr, rparen_loc);
         }
         
         case TOKEN_IDENTIFIER:
@@ -654,29 +636,10 @@ static Expression* parse_primary_expression(Parser* parser)
             Identifier* identifier = current_token(parser)->data.identifier;
             Location identifer_loc = consume(parser);
 
-            // Attempt to get the declaration that this corrosponds to.
-            Declaration* declaration = semantic_checker_lookup_ordinairy(
-                    &parser->sc, identifier, true);
-
-            // Check that we either got a declaration, and make sure that it
-            // isn't a typedef declaration.
-            if (declaration == NULL)
-            {
-                diagnostic_error_at(parser->dm, identifer_loc,
-                        "use of undeclared identifier '%s'",
-                        identifier->string.ptr);
-                return expression_create_error(&parser->ast.ast_allocator);
-            }
-            else if (declaration_is(declaration, DECLARATION_TYPEDEF))
-            {
-                diagnostic_error_at(parser->dm, identifer_loc,
-                        "unexpected type name '%s': expected expression",
-                        identifier->string.ptr);
-                return expression_create_error(&parser->ast.ast_allocator);
-            }
-
-            return expression_create_reference(&parser->ast.ast_allocator,
-                    identifier, identifer_loc, declaration);
+            bool is_function_call = is_match(parser, TOKEN_LPAREN);
+      
+            return semantic_checker_handle_reference_expression(&parser->sc,
+                    identifer_loc, identifier, is_function_call);
         }
 
         case TOKEN_NUMBER:
@@ -688,15 +651,8 @@ static Expression* parse_primary_expression(Parser* parser)
             bool success = parse_preprocessing_number(&value, parser->dm,
                     &number_tok);
             
-            if (!success)
-            {
-                return expression_create_error(&parser->ast.ast_allocator);
-            }
-            else
-            {
-                return expression_create_number(&parser->ast.ast_allocator,
-                        loc, value);
-            }
+            return semantic_checker_handle_number_expression(&parser->sc,
+                    loc, value, success);
         }
 
         case TOKEN_CHARACTER:
@@ -711,20 +667,15 @@ static Expression* parse_primary_expression(Parser* parser)
             bool success = parse_char_literal(&value, parser->dm, &char_token,
                     wide);
 
-            if (!success)
-            {
-                return expression_create_error(&parser->ast.ast_allocator);
-            }
-            else
-            {
-                return expression_create_character(&parser->ast.ast_allocator,
-                        loc, value);
-            }
+            return semantic_checker_handle_char_expression(&parser->sc, loc,
+                    value, success);
         }
 
         case TOKEN_STRING:
         case TOKEN_WIDE_STRING:
         {
+            Location start_location = current_token_start_location(parser);
+
             TokenVector toks = token_vector_create(1);
             LocationVector locs = location_vector_create(1);
 
@@ -763,18 +714,20 @@ static Expression* parse_primary_expression(Parser* parser)
                 // printf("%s\n", string.string.ptr);
             }
 
-            return NULL;
+            return semantic_checker_handle_error_expression(&parser->sc,
+                    start_location);
         }
 
         default:
-            diagnostic_error_at(parser->dm,
-                    current_token_start_location(parser),
-                    "expected expression");
+        {
+            Location err_loc = current_token_start_location(parser);
+            diagnostic_error_at(parser->dm, err_loc, "expected expression");
 
             // Do not do error recovery since the function calling this one 
-            // could be pretty much anything. So We will just create and error
-            // and move on. Since the ast will get poisoned anyways.
-            return expression_create_error(&parser->ast.ast_allocator);
+            // could be pretty much anything.
+            return semantic_checker_handle_error_expression(&parser->sc,
+                    err_loc);
+        }
     }
 }
 
@@ -784,7 +737,7 @@ static Expression* parse_postfix_expression(Parser* parser)
             TOKEN_DOT, TOKEN_ARROW, TOKEN_PLUS_PLUS, TOKEN_MINUS_MINUS};
     static const size_t num_operators = countof(operators);
 
-    /* Note: here '(' type-name ')' { ... } is not handled */
+    /* NOTE: here '(' type-name ')' { ... } is not handled */
 
     Expression* expr = parse_primary_expression(parser);
 
@@ -797,20 +750,16 @@ static Expression* parse_postfix_expression(Parser* parser)
                 Location lbracket_loc = consume(parser);
                 Expression* member = parse_expression(parser);
 
-                Location rbracket_loc = LOCATION_INVALID;
-                if (!is_match(parser, TOKEN_RBRACKET))
+                Location rbracket_loc;
+                if (!try_match(parser, TOKEN_RBRACKET, &rbracket_loc))
                 {
-                    diagnostic_error_at(parser->dm,
-                            current_token_start_location(parser),
+                    diagnostic_error_at(parser->dm, rbracket_loc,
                             "expected ']'");
-                }
-                else
-                {
-                    rbracket_loc = consume(parser);
+                    rbracket_loc = LOCATION_INVALID;
                 }
 
-                expr = expression_create_array(&parser->ast.ast_allocator,
-                        lbracket_loc, rbracket_loc, expr, member);
+                expr = semantic_checker_handle_array_expression(&parser->sc,
+                        expr, lbracket_loc, member, rbracket_loc);
                 break;
             }
 
@@ -820,19 +769,16 @@ static Expression* parse_postfix_expression(Parser* parser)
                 Expression* expr_list = NULL;
                 if (!is_match(parser, TOKEN_RPAREN))
                 {
+                    // TODO: only parse if it actually starts an expression?
                     expr_list = parse_argument_expression_list(parser);
                 }
 
-                Location rparen_loc = LOCATION_INVALID;
-                if (!is_match(parser, TOKEN_RPAREN))
+                Location rparen_loc;
+                if (!try_match(parser, TOKEN_RPAREN, &rparen_loc))
                 {
-                    diagnostic_error_at(parser->dm,
-                            current_token_start_location(parser),
-                            "expected ')'");
-                }
-                else
-                {
-                    rparen_loc = consume(parser);
+                    diagnostic_error_at(parser->dm, rparen_loc, "expected ')'");
+                    rparen_loc = LOCATION_INVALID;
+                    recover(parser, TOKEN_RPAREN, RECOVER_EAT_TOKEN);
                 }
                 
                 break;
@@ -844,10 +790,12 @@ static Expression* parse_postfix_expression(Parser* parser)
 
                 if (!is_match(parser, TOKEN_IDENTIFIER))
                 {
-                    diagnostic_error_at(parser->dm,
-                            current_token_start_location(parser),
+                    Location current = current_token_start_location(parser);
+                    diagnostic_error_at(parser->dm, current,
                             "expected identifier after '.'");
-                    return expression_create_error(&parser->ast.ast_allocator);
+                    expr = semantic_checker_handle_error_expression(
+                            &parser->sc, op_loc);
+                    break;
                 }
 
                 Identifier* identifier = current_token(parser)->data.identifier;
@@ -863,11 +811,12 @@ static Expression* parse_postfix_expression(Parser* parser)
 
                 if (!is_match(parser, TOKEN_IDENTIFIER))
                 {
-                    diagnostic_error_at(parser->dm,
-                            current_token_start_location(parser),
+                    Location current = current_token_start_location(parser);
+                    diagnostic_error_at(parser->dm, current,
                             "expected identifier after '->'");
-                    recover(parser, TOKEN_SEMI, RECOVER_NONE);
-                    return expression_create_error(&parser->ast.ast_allocator);
+                    expr = semantic_checker_handle_error_expression(
+                            &parser->sc, op_loc);
+                    break;
                 }
 
                 Identifier* identifier = current_token(parser)->data.identifier;
@@ -880,16 +829,18 @@ static Expression* parse_postfix_expression(Parser* parser)
             case TOKEN_PLUS_PLUS:
             {
                 Location op_loc = consume(parser);
-                expr = expression_create_unary(&parser->ast.ast_allocator, 
-                        EXPRESSION_UNARY_POST_INCREMENT, op_loc, expr);
+                return NULL;
+                // expr = expression_create_unary(&parser->ast.ast_allocator, 
+                //         EXPRESSION_UNARY_POST_INCREMENT, op_loc, expr);
                 break;
             }
 
             case TOKEN_MINUS_MINUS:
             {
                 Location op_loc = consume(parser);
-                expr = expression_create_unary(&parser->ast.ast_allocator, 
-                        EXPRESSION_UNARY_POST_DECREMENT, op_loc, expr);
+                return NULL;
+                // expr = expression_create_unary(&parser->ast.ast_allocator, 
+                //         EXPRESSION_UNARY_POST_DECREMENT, op_loc, expr);
                 break;
             }
         }
@@ -902,13 +853,11 @@ static Expression* parse_argument_expression_list(Parser* parser)
 {
     // TODO: figure out how we want to represent this...
 
-    Expression* expr = parse_assignment_expression(parser);
-
-    while (is_match(parser, TOKEN_COMMA))
+    do
     {
-        Location comma_loc = consume(parser);
-        parse_assignment_expression(parser);
+        Expression* expr = parse_assignment_expression(parser);
     }
+    while (try_match(parser, TOKEN_COMMA, NULL));
 
     return NULL;
 }
@@ -922,17 +871,19 @@ static Expression* parse_unary_expression(Parser* parser)
             Location op_loc = consume(parser);
             Expression* expr = parse_unary_expression(parser);
             
-            return expression_create_unary(&parser->ast.ast_allocator,
-                    EXPRESSION_UNARY_PRE_INCREMENT, op_loc, expr);
+            return NULL;
+            // return expression_create_unary(&parser->ast.ast_allocator,
+            //         EXPRESSION_UNARY_PRE_INCREMENT, op_loc, expr);
         }
 
         case TOKEN_MINUS_MINUS:
         {
             Location op_loc = consume(parser);
             Expression* expr = parse_unary_expression(parser);
-            
-            return expression_create_unary(&parser->ast.ast_allocator,
-                    EXPRESSION_UNARY_PRE_DECREMENT, op_loc, expr);
+
+            return NULL;
+            // return expression_create_unary(&parser->ast.ast_allocator,
+            //         EXPRESSION_UNARY_PRE_DECREMENT, op_loc, expr);
         }
 
         case TOKEN_AND:
@@ -940,8 +891,9 @@ static Expression* parse_unary_expression(Parser* parser)
             Location op_loc = consume(parser);
             Expression* expr = parse_cast_expression(parser);
             
-            return expression_create_unary(&parser->ast.ast_allocator,
-                    EXPRESSION_UNARY_ADDRESS, op_loc, expr);
+            return NULL;
+            // return expression_create_unary(&parser->ast.ast_allocator,
+            //         EXPRESSION_UNARY_ADDRESS, op_loc, expr);
         }
 
         case TOKEN_STAR:
@@ -949,8 +901,9 @@ static Expression* parse_unary_expression(Parser* parser)
             Location op_loc = consume(parser);
             Expression* expr = parse_cast_expression(parser);
             
-            return expression_create_unary(&parser->ast.ast_allocator,
-                    EXPRESSION_UNARY_DEREFERENCE, op_loc, expr);
+            return NULL;
+            // return expression_create_unary(&parser->ast.ast_allocator,
+            //         EXPRESSION_UNARY_DEREFERENCE, op_loc, expr);
         }
 
         case TOKEN_PLUS:
@@ -958,8 +911,9 @@ static Expression* parse_unary_expression(Parser* parser)
             Location op_loc = consume(parser);
             Expression* expr = parse_cast_expression(parser);
             
-            return expression_create_unary(&parser->ast.ast_allocator,
-                    EXPRESSION_UNARY_PLUS, op_loc, expr);
+            return NULL;
+            // return expression_create_unary(&parser->ast.ast_allocator,
+            //         EXPRESSION_UNARY_PLUS, op_loc, expr);
         }
 
         case TOKEN_MINUS:
@@ -967,8 +921,9 @@ static Expression* parse_unary_expression(Parser* parser)
             Location op_loc = consume(parser);
             Expression* expr = parse_cast_expression(parser);
             
-            return expression_create_unary(&parser->ast.ast_allocator,
-                    EXPRESSION_UNARY_MINUS, op_loc, expr);
+            return NULL;
+            // return expression_create_unary(&parser->ast.ast_allocator,
+            //         EXPRESSION_UNARY_MINUS, op_loc, expr);
         }
 
         case TOKEN_TILDE:
@@ -976,8 +931,9 @@ static Expression* parse_unary_expression(Parser* parser)
             Location op_loc = consume(parser);
             Expression* expr = parse_cast_expression(parser);
             
-            return expression_create_unary(&parser->ast.ast_allocator,
-                    EXPRESSION_UNARY_BIT_NOT, op_loc, expr);
+            return NULL;
+            // return expression_create_unary(&parser->ast.ast_allocator,
+            //         EXPRESSION_UNARY_BIT_NOT, op_loc, expr);
         }
 
         case TOKEN_NOT:
@@ -985,13 +941,15 @@ static Expression* parse_unary_expression(Parser* parser)
             Location op_loc = consume(parser);
             Expression* expr = parse_cast_expression(parser);
             
-            return expression_create_unary(&parser->ast.ast_allocator,
-                    EXPRESSION_UNARY_NOT, op_loc, expr);
+            return NULL;
+            // return expression_create_unary(&parser->ast.ast_allocator,
+            //         EXPRESSION_UNARY_NOT, op_loc, expr);
         }
 
         case TOKEN_SIZEOF:
         {
             Location sizeof_loc = consume(parser);
+            
             if (is_match(parser, TOKEN_LPAREN) && 
                     is_typename_start(parser, next_token(parser)))
             {
@@ -999,16 +957,12 @@ static Expression* parse_unary_expression(Parser* parser)
 
                 QualifiedType type = parse_type_name(parser);
                 
-                Location rparen_loc = LOCATION_INVALID;
-                if (!is_match(parser, TOKEN_RPAREN))
+                Location rparen_loc;
+                if (!try_match(parser, TOKEN_RPAREN, &rparen_loc))
                 {
-                    diagnostic_error_at(parser->dm,
-                            current_token_start_location(parser),
+                    diagnostic_error_at(parser->dm, rparen_loc,
                             "expected ')' after type name");
-                }
-                else
-                {
-                    rparen_loc = consume(parser);
+                    rparen_loc = LOCATION_INVALID;
                 }
 
                 return NULL;
@@ -1109,8 +1063,9 @@ static Expression* parse_multiplicative_expression(Parser* parser)
         Location op_loc = consume(parser);
         Expression* rhs = parse_cast_expression(parser);
 
-        expr = expression_create_binary(&parser->ast.ast_allocator, type, 
-                op_loc, expr, rhs);
+        return NULL;
+        // expr = expression_create_binary(&parser->ast.ast_allocator, type, 
+        //         op_loc, expr, rhs);
     }
 
     return expr;
@@ -1139,8 +1094,9 @@ static Expression* parse_additive_expression(Parser* parser)
         Location op_loc = consume(parser);
         Expression* rhs = parse_multiplicative_expression(parser);
 
-        expr = expression_create_binary(&parser->ast.ast_allocator, type, 
-                op_loc, expr, rhs);
+        return NULL;
+        // expr = expression_create_binary(&parser->ast.ast_allocator, type, 
+        //         op_loc, expr, rhs);
     }
 
     return expr;
@@ -1169,8 +1125,9 @@ static Expression* parse_shift_expression(Parser* parser)
         Location op_loc = consume(parser);
         Expression* rhs = parse_additive_expression(parser);
 
-        expr = expression_create_binary(&parser->ast.ast_allocator, type,
-                op_loc, expr, rhs);
+        return NULL;
+        // expr = expression_create_binary(&parser->ast.ast_allocator, type,
+        //         op_loc, expr, rhs);
     }
 
     return expr;
@@ -1208,8 +1165,9 @@ static Expression* parse_relational_expression(Parser* parser)
         Location op_loc = consume(parser);
         Expression* rhs = parse_shift_expression(parser);
 
-        expr = expression_create_binary(&parser->ast.ast_allocator, type,
-                op_loc, expr, rhs);
+        return NULL;
+        // expr = expression_create_binary(&parser->ast.ast_allocator, type,
+        //         op_loc, expr, rhs);
     }
 
     return expr;
@@ -1239,8 +1197,9 @@ static Expression* parse_equality_expression(Parser* parser)
         Location op_loc = consume(parser);
         Expression* rhs = parse_relational_expression(parser);
 
-        expr = expression_create_binary(&parser->ast.ast_allocator, type, 
-                op_loc, expr, rhs);
+        return NULL;
+        // expr = expression_create_binary(&parser->ast.ast_allocator, type, 
+        //         op_loc, expr, rhs);
     }
 
     return expr;
@@ -1255,8 +1214,9 @@ static Expression* parse_and_expression(Parser* parser)
         Location op_loc = consume(parser);
         Expression* rhs = parse_equality_expression(parser);
 
-        expr = expression_create_binary(&parser->ast.ast_allocator,
-                EXPRESSION_BINARY_AND, op_loc, expr, rhs);
+        return NULL;
+        // expr = expression_create_binary(&parser->ast.ast_allocator,
+        //         EXPRESSION_BINARY_AND, op_loc, expr, rhs);
     }
 
     return expr;
@@ -1271,8 +1231,9 @@ static Expression* parse_exclusive_or_expression(Parser* parser)
         Location op_loc = consume(parser);
         Expression* rhs = parse_and_expression(parser);
 
-        expr = expression_create_binary(&parser->ast.ast_allocator,
-                EXPRESSION_BINARY_XOR, op_loc, expr, rhs);
+        return NULL;
+        // expr = expression_create_binary(&parser->ast.ast_allocator,
+        //         EXPRESSION_BINARY_XOR, op_loc, expr, rhs);
     }
 
     return expr;
@@ -1287,8 +1248,9 @@ static Expression* parse_inclusive_or_expression(Parser* parser)
         Location op_loc = consume(parser);
         Expression* rhs = parse_exclusive_or_expression(parser);
 
-        expr = expression_create_binary(&parser->ast.ast_allocator,
-                EXPRESSION_BINARY_OR, op_loc, expr, rhs);
+        return NULL;
+        // expr = expression_create_binary(&parser->ast.ast_allocator,
+        //         EXPRESSION_BINARY_OR, op_loc, expr, rhs);
     }
 
     return expr;
@@ -1303,8 +1265,9 @@ static Expression* parse_logical_and_expression(Parser* parser)
         Location op_loc = consume(parser);
         Expression* rhs = parse_inclusive_or_expression(parser);
 
-        expr = expression_create_binary(&parser->ast.ast_allocator, 
-                EXPRESSION_BINARY_LOGICAL_AND, op_loc, expr, rhs);
+        return NULL;
+        // expr = expression_create_binary(&parser->ast.ast_allocator, 
+        //         EXPRESSION_BINARY_LOGICAL_AND, op_loc, expr, rhs);
     }
 
     return expr;
@@ -1319,8 +1282,9 @@ static Expression* parse_logical_or_expression(Parser* parser)
         Location op_loc = consume(parser);
         Expression* rhs = parse_logical_and_expression(parser);
 
-        expr = expression_create_binary(&parser->ast.ast_allocator,
-                EXPRESSION_BINARY_LOGICAL_OR, op_loc, expr, rhs);
+        return NULL;
+        // expr = expression_create_binary(&parser->ast.ast_allocator,
+        //         EXPRESSION_BINARY_LOGICAL_OR, op_loc, expr, rhs);
     }
 
     return expr;
@@ -1336,7 +1300,13 @@ static Expression* parse_conditional_expression(Parser* parser)
 
         Expression* true_expr = parse_expression(parser);
 
-        Location colon = match(parser, TOKEN_COLON);
+        // Note: both clang and gcc seem to act as if colon existed anyways
+        Location colon;
+        if (!try_match(parser, TOKEN_COLON, &colon))
+        {
+            diagnostic_error_at(parser->dm, colon, "expected ':'");
+            colon = LOCATION_INVALID;
+        }
 
         Expression* false_expr = parse_conditional_expression(parser);
 
@@ -1413,8 +1383,9 @@ static Expression* parse_assignment_expression(Parser* parser)
         Expression* rhs = parse_assignment_expression(parser);
 
         // Now make our new binary expression...
-        expr = expression_create_binary(&parser->ast.ast_allocator,
-                type, op_location, expr, rhs);
+        return NULL;
+        // expr = expression_create_binary(&parser->ast.ast_allocator,
+        //         type, op_location, expr, rhs);
     }
 
     return expr;
@@ -1432,11 +1403,11 @@ static Expression* parse_expression(Parser* parser)
     while (is_match(parser, TOKEN_COMMA))
     {
         Location comma_loc = consume(parser);
-
         Expression* rhs = parse_assignment_expression(parser);
 
-        expr = expression_create_binary(&parser->ast.ast_allocator,
-                EXPRESSION_COMMA, comma_loc, expr, rhs);
+        return NULL;
+        // expr = expression_create_binary(&parser->ast.ast_allocator,
+        //         EXPRESSION_COMMA, comma_loc, expr, rhs);
     }
 
     return expr;
@@ -1539,31 +1510,9 @@ static Statement* parse_default_statement(Parser* parser)
             colon_loc, stmt);
 }
 
-static Statement* parse_function_body(Parser* parser)
-{
-    // Create and push our function scope
-    FunctionScope func_scope = function_scope_create();
-    sematic_checker_push_function_scope(&parser->sc, &func_scope);
-
-    Statement* stmt = parse_compound_statement(parser);
-
-    // Finish the function by checking all of our labels...
-    sematic_checker_act_on_end_of_function(&parser->sc);
-
-    // Delete our function scope
-    sematic_checker_pop_function_scope(&parser->sc);
-    function_scope_delete(&func_scope);
-
-    return stmt;
-}
-
-static Statement* parse_compound_statement(Parser* parser)
+static Statement* parse_compound_statement_internal(Parser* parser)
 {
     assert(is_match(parser, TOKEN_LCURLY));
-
-    // Set-up the new scope for declarations
-    Scope scope = scope_new_block();
-    semantic_checker_push_scope(&parser->sc, &scope);
 
     Location l_curly = consume(parser);
 
@@ -1575,22 +1524,31 @@ static Statement* parse_compound_statement(Parser* parser)
     }
 
     Location r_curly = LOCATION_INVALID;
-    if (!is_match(parser, TOKEN_RCURLY))
+    if (!try_match(parser, TOKEN_RCURLY, &r_curly))
     {
         diagnostic_error_at(parser->dm, current_token_start_location(parser),
                 "expected '}'");
     }
-    else
-    {
-        r_curly = consume(parser);
-    }
+
+    return statement_create_compound(&parser->ast.ast_allocator, l_curly,
+            r_curly, &stmts);
+}
+
+static Statement* parse_compound_statement(Parser* parser)
+{
+    assert(is_match(parser, TOKEN_LCURLY));
+
+    // Set-up the new scope for declarations
+    Scope scope = scope_new_block();
+    semantic_checker_push_scope(&parser->sc, &scope);
+
+    Statement* stmt = parse_compound_statement_internal(parser);
 
     // Make sure to pop the scope at the end.
     semantic_checker_pop_scope(&parser->sc);
     scope_delete(&scope);
 
-    return statement_create_compound(&parser->ast.ast_allocator, l_curly,
-            r_curly, &stmts);
+    return stmt;
 }
 
 static Location parse_trailing_semi(Parser* parser, const char* context)
@@ -1851,7 +1809,7 @@ static Statement* parse_for_statement(Parser* parser)
         init = semantic_checker_handle_error_statement(&parser->sc);
     }
 
-    if (!try_match(parser, TOKEN_SEMI))
+    if (!try_match(parser, TOKEN_SEMI, NULL))
     {
         diagnostic_error_at(parser->dm, current_token_start_location(parser),
                 "expected ';' in 'for' statement specifier");
@@ -1874,7 +1832,7 @@ static Statement* parse_for_statement(Parser* parser)
         cond = parse_expression(parser);
     }
 
-    if (!try_match(parser, TOKEN_SEMI))
+    if (!try_match(parser, TOKEN_SEMI, NULL))
     {
         diagnostic_error_at(parser->dm, current_token_start_location(parser),
                 "expected ';' in 'for' statement specifier");
@@ -2168,6 +2126,37 @@ static Initializer* parse_initializer_list(Parser* parser)
     return NULL;
 }
 
+static void parse_declarator_internal(Parser* parser, Declarator* declarator)
+{
+    // If we get a pointer before our declarator do this first.
+    if (is_match(parser, TOKEN_STAR))
+    {
+        Location star_location = consume(parser);
+        TypeQualifiers qualifiers = parse_type_qualifier_list_opt(parser);
+
+        // Hold off on pushing the pointer declarator. So that the correct
+        // precedence of the declarators can be achieved. Instead we will just
+        // recurse so that we can parse other declarators first.
+        parse_declarator_internal(parser, declarator);
+
+        declarator_push_pointer(declarator, qualifiers);
+        return;
+    }
+    
+    parse_direct_declarator(parser, declarator);
+}
+
+static Declarator parse_declarator_new(Parser* parser,
+        DeclarationSpecifiers* specifiers, DeclaratorContext ctx)
+{
+    Declarator declarator = declarator_create(specifiers, ctx);
+    parse_declarator_internal(parser, &declarator);
+    return declarator;
+}
+
+// TODO: i want to change this to pare declarator, which returns a declarator
+// TODO: struct. and then just have like a parse declarator internal that does
+// TODO: all of this.
 static void parse_declarator(Parser* parser, Declarator* declarator)
 {
     // If we get a pointer before our declarator do this first.
@@ -2182,7 +2171,6 @@ static void parse_declarator(Parser* parser, Declarator* declarator)
         parse_declarator(parser, declarator);
 
         declarator_push_pointer(declarator, qualifiers);
-
         return;
     }
     
@@ -2192,16 +2180,7 @@ static void parse_declarator(Parser* parser, Declarator* declarator)
 static Declaration* parse_init_declarator(Parser* parser,
         DeclarationSpecifiers* specifiers, DeclaratorContext context)
 {
-    // TODO: this needs some reworking here. So that we declare the declarator
-    // TODO: then process the initializer. So that we can do some self-init.
-    // TODO: This will require a decent ammount of reword in the semantic
-    // TODO: checker.
-    
-    // TODO: will also have to factor in the next token to determine if it is 
-    // TODO: a declaration, definition etc...
-
     Declarator declarator = declarator_create(specifiers, context);
-    
     parse_declarator(parser, &declarator);
 
     Declaration* decl = semantic_checker_process_declarator(&parser->sc, 
@@ -2209,13 +2188,9 @@ static Declaration* parse_init_declarator(Parser* parser,
 
     declarator_delete(&declarator);
 
-    // Then parse the initializer if there is one and try to add it to the
-    // declaration.
+    // Then parse the initializer if there is one
     if (is_match(parser, TOKEN_EQUAL))
     {
-        // TODO: possibly check for c++ concept default?, this parses in clang
-        // TODO: but then fails with a weird message about class stuff? in C??
-
         Location equal_loc = consume(parser);
         Initializer* initializer = parse_initializer(parser);
 
@@ -2231,24 +2206,13 @@ static Declaration* parse_init_declarator_list(Parser* parser,
 {
     // TODO: make a declaration vector and turn it into a list of declarations
     // TODO: if needed...
-
-    Declaration* decl = NULL;
-    bool first_decl = true;
+    Declaration* decl;
     do
     {
         decl = parse_init_declarator(parser, specifiers, context);
 
-        if (first_decl && declaration_is(decl, DECLARATION_FUNCTION))
-        {
-            if (is_match(parser, TOKEN_LCURLY))
-            {
-                break;
-            }
-        }
-
-        first_decl = false;
     }
-    while (try_match(parser, TOKEN_COMMA));
+    while (try_match(parser, TOKEN_COMMA, NULL));
  
     return decl;
 }
@@ -2308,7 +2272,7 @@ static void parse_identifier_list(Parser* parser, Declarator* declarator)
             identifier_vector_push(&vec, identifier);
         }
     }
-    while (try_match(parser, TOKEN_COMMA));
+    while (try_match(parser, TOKEN_COMMA, NULL));
 
     // Match the end of the parameter list
     if (!is_match(parser, TOKEN_RPAREN))
@@ -2393,7 +2357,7 @@ static void parse_paramater_type_list(Parser* parser, Declarator* declarator)
 
         declaration_vector_push(&params, declaration);
     }
-    while (try_match(parser, TOKEN_COMMA));
+    while (try_match(parser, TOKEN_COMMA, NULL));
 
     // Match the end of the parameter list
     if (!is_match(parser, TOKEN_RPAREN))
@@ -2461,15 +2425,15 @@ static void parse_array_declarator(Parser* parser, Declarator* declarator)
     // Test again for static, erroring if we got it twice
     if (is_match(parser, TOKEN_STATIC) && !is_static)
     {
-        consume(parser);
-
+        static_loc = consume(parser);
         is_static = true;
     }
     else if (is_match(parser, TOKEN_STATIC) && is_static)
     {
         Location duplicate = consume(parser);
         diagnostic_error_at(parser->dm, duplicate,
-                "got duplicate 'static' array qualifier");
+                "duplicate 'static' array qualifier");
+        recover(parser, TOKEN_RBRACKET, RECOVER_STOP_AT_SEMI);
     }
 
     // Make sure we don't accidentally match the start of a dereference
@@ -2501,8 +2465,8 @@ static void parse_array_declarator(Parser* parser, Declarator* declarator)
         rbracket_loc = consume(parser);
     }
 
-    declarator_push_array(declarator, lbracket_loc, rbracket_loc, qualifiers,
-            expression, is_static, is_star);
+    declarator_push_array(declarator, lbracket_loc, rbracket_loc, static_loc,
+            qualifiers, expression, is_static, is_star);
 }
 
 static void parse_direct_declarator(Parser* parser, Declarator* declarator)
@@ -2544,8 +2508,8 @@ static void parse_direct_declarator(Parser* parser, Declarator* declarator)
         //
         // Also this one below should be parsed as a function type
         // 3. void()
-        if (is_typename_start(parser, next_token(parser))
-                || is_next_match(parser, TOKEN_RPAREN))
+        if (is_typename_start(parser, next_token(parser)) ||
+                is_next_match(parser, TOKEN_RPAREN))
         {
             goto parse_tail;
         }
@@ -2566,7 +2530,10 @@ static void parse_direct_declarator(Parser* parser, Declarator* declarator)
     }
     else if (!identifier_needed)
     {
-        // Do nothing, we don't need an identifier.
+        // 'Set' the declarators location so that we can provide warning about
+        // functions not have parameter names if we need.
+        Location location = current_token_start_location(parser);
+        declarator_set_identifier(declarator, NULL, location);
     }
     else
     {
@@ -2611,7 +2578,7 @@ static TypeQualifiers parse_type_qualifier_list(Parser* parser)
         // Note: the below will consume the token itself
         declaration_specifiers_add_qualifier(parser, &qualifiers, qualifier);
     }
-    while (has_match(parser, type_qualifier, type_qualifier_count)); 
+    while (has_match(parser, type_qualifier, type_qualifier_count));
 
     return qualifiers.qualifiers;
 }
@@ -2695,7 +2662,7 @@ static void parse_struct_declarator_list(Parser* parser,
     {
         Declaration* decl = parse_struct_declarator(parser);
     }
-    while (try_match(parser, TOKEN_COMMA));
+    while (try_match(parser, TOKEN_COMMA, NULL));
 }
 
 static Declaration* parse_struct_declaration(Parser* parser)
@@ -2751,7 +2718,7 @@ static void parse_struct_declaration_list(Parser* parser, Declaration* decl)
     Scope members = scope_new_member();
     semantic_checker_push_scope(&parser->sc, &members);
 
-    while (!is_match(parser, TOKEN_EOF))
+    while (!is_match_two(parser, TOKEN_RCURLY, TOKEN_EOF))
     {
         if (!is_typename_start(parser, current_token(parser)))
         {
@@ -2764,27 +2731,17 @@ static void parse_struct_declaration_list(Parser* parser, Declaration* decl)
 
         // Otherwise we can parse a struct declaration.
         parse_struct_declaration(parser);
-
-        // Check if we are done parsing a struct
-        if (is_match(parser, TOKEN_RCURLY))
-        {
-            break;
-        }
     }
 
     semantic_checker_pop_scope(&parser->sc);
     scope_delete(&members);
 
     Location closing_curly = LOCATION_INVALID;
-    if (!is_match(parser, TOKEN_RCURLY))
+    if (!try_match(parser, TOKEN_RCURLY, &closing_curly))
     {
-        diagnostic_error_at(parser->dm, current_token_start_location(parser),
-                "expected '}'");
+        Location current = current_token_start_location(parser);
+        diagnostic_error_at(parser->dm, current, "expected '}'");
         recover(parser, TOKEN_SEMI, RECOVER_NONE);
-    }
-    else
-    {
-        closing_curly = consume(parser);
     }
 }
 
@@ -3010,6 +2967,26 @@ static Declaration* parse_enum_specificier(Parser* parser)
     parse_enumerator_list(parser, declaration);
 
     return declaration;
+}
+
+static QualifiedType parse_type_name(Parser* parser)
+{
+    const TokenType operators[] = {TOKEN_STAR, TOKEN_LPAREN, TOKEN_LBRACKET};
+    const size_t num_operators = countof(operators);
+
+    // TODO: this should be parse specifier qualifier list... but idk...
+    DeclarationSpecifiers specifiers = parse_specifier_qualifier_list(parser);
+    Declarator declarator = declarator_create(&specifiers,
+            DECLARATION_CONTEXT_TYPE_NAME);
+    
+    parse_declarator(parser, &declarator);
+
+    QualifiedType type = semantic_checker_process_typename(&parser->sc,
+            &declarator);
+
+    declarator_delete(&declarator);
+
+    return type;
 }
 
 static void declaration_specifiers_add_storage(Parser* parser,
@@ -3382,7 +3359,6 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser)
                 // This elimates things like 'signed float' and other weird 
                 // mistakes like that.
                 declaration_specifiers_finish(&parser->sc, &specifiers);
-                
                 return specifiers;
         }
     }
@@ -3396,7 +3372,18 @@ static Declaration* parse_declaration(Parser* parser, DeclaratorContext context)
 
     if (is_match(parser, TOKEN_SEMI))
     {
-        return NULL;
+        Declaration* decl = declaration_specifiers_get_declaration(&specifiers);
+
+        if (decl == NULL)
+        {
+            // diagnostic_warning_at(parser->dm, specifiers.location,
+            //         "declaration does not declare anything");
+            return NULL;
+        }
+        else
+        {
+            return decl;
+        }
     }
 
     // Check for a valid declaration returning early if we don't get anything
@@ -3412,82 +3399,172 @@ static Declaration* parse_declaration(Parser* parser, DeclaratorContext context)
     //             "declaration does not declare anything");
     //     return NULL;
     // }
-
     return parse_init_declarator_list(parser, &specifiers, context);
 }
 
-static QualifiedType parse_type_name(Parser* parser)
+// TODO: support for KNR functions is missing here!
+static void parse_function_body(Parser* parser, Declaration* declaration)
 {
-    const TokenType operators[] = {TOKEN_STAR, TOKEN_LPAREN, TOKEN_LBRACKET};
-    const size_t num_operators = countof(operators);
+    assert(declaration_is(declaration, DECLARATION_FUNCTION));
+    assert(!is_match(parser, TOKEN_SEMI));
 
-    // TODO: this should be parse specifier qualifier list... but idk...
-    DeclarationSpecifiers specifiers = parse_specifier_qualifier_list(parser);
-    Declarator declarator = declarator_create(&specifiers,
-            DECLARATION_CONTEXT_TYPE_NAME);
-
-    if (has_match(parser, operators, num_operators))
-    {
-        parse_direct_declarator(parser, &declarator);
-    }
-
-    QualifiedType type = semantic_checker_process_typename(&parser->sc,
-            &declarator);
-
-    declarator_delete(&declarator);
-
-    return (QualifiedType) {0};
-}
-
-// The definitions of the functions we will use for pasing
-
-static Declaration* parse_top_level(Parser* parser)
-{
-    // Check that we are okay to start a typename bailing out if this is invalid
-    if (!is_typename_start(parser, current_token(parser)))
+    if (!is_match(parser, TOKEN_LCURLY))
     {
         diagnostic_error_at(parser->dm, current_token_start_location(parser),
-                "expected top level declaration or definition");
+                "expected function body after function declarator");
         recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
-
-        return declaration_create_error(&parser->ast.ast_allocator,
-                current_token_start_location(parser));
+        return;
     }
 
-    // Here we actually do the work!
-    Declaration* decl = parse_declaration(parser, DECLARATION_CONTEXT_FILE);
+    // Create and push our function scope
+    FunctionScope func_scope = function_scope_create(declaration);
+    sematic_checker_push_function_scope(&parser->sc, &func_scope);
 
-    // TODO: we will need to check for redeclarations
+    Scope function_body = scope_new_function_declaration();
+    semantic_checker_push_scope(&parser->sc, &function_body);
 
-    if (/*declaration_is(decl, DECLARATION_FUNCTION) && */
-            is_match(parser, TOKEN_LCURLY))
+    // TODO: we will need the semantic checkers help to create a function
+    // TODO: scope and then inject all of this stuff before parsing the compound
+    // TODO: statement. This will require some serious effort to do.
+    semantic_checker_add_function_parameters(&parser->sc, declaration);
+
+    Statement* stmt = parse_compound_statement_internal(parser);
+
+    // Finish the function by checking all of our labels...
+    sematic_checker_act_on_end_of_function(&parser->sc);
+
+    // Delete our function scope
+    semantic_checker_pop_scope(&parser->sc);
+    scope_delete(&function_body);
+
+    sematic_checker_pop_function_scope(&parser->sc);
+    function_scope_delete(&func_scope);
+}
+
+static void parse_top_level_declaration_finish(Parser* parser)
+{
+    if (!is_match(parser, TOKEN_SEMI))
     {
-        // If it already have a body error but still parse the function body
-        bool set_body = true;
-        if (/*declaration_function_has_body(decl)*/0)
-        {
-            set_body = false;
-
-            diagnostic_error_at(parser->dm, decl->base.location,
-                    "redefinition of '%s'", decl->base.identifier->string.ptr);
-        }
-
-        // Parse the body and set if approperiate
-        Statement* body = parse_function_body(parser);
-
-        if (/*set_body*/0)
-        {
-            declaration_function_set_body(decl, body);
-        }
+        diagnostic_error_at(parser->dm, current_token_start_location(parser),
+                "expected ';' after top level declarator");
+        recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
     }
     else
     {
-        parse_trailing_semi(parser, "top level declaration");
+        consume(parser);
+    }
+}
+
+static void parse_top_level_declaration_rest(Parser* parser,
+        DeclarationSpecifiers* specifiers)
+{
+    // Here keep trying to parse declarations until we are done
+    while (try_match(parser, TOKEN_COMMA, NULL))
+    {
+        Declaration* declaration = parse_init_declarator(parser, specifiers,
+                DECLARATION_CONTEXT_FILE);
+        declaration_vector_push(&parser->ast.top_level_decls, declaration);
     }
 
-    // TODO: need to check redeclaration of symbol
+    // Here we should be done with our top level declarations if they are in a
+    // list. So try to match the final semi that should be there.
+    parse_top_level_declaration_finish(parser);
+}
 
-    return decl;
+static void parse_top_level_declaration(Parser* parser)
+{
+    DeclarationSpecifiers specifiers = parse_declaration_specifiers(parser);
+
+    if (is_match(parser, TOKEN_SEMI))
+    {
+        parse_top_level_declaration_finish(parser);
+        return;
+    }
+
+    // Parse and push the declaration into the declaration vector.
+    Declaration* declaration = parse_init_declarator(parser, &specifiers,
+            DECLARATION_CONTEXT_FILE);
+    declaration_vector_push(&parser->ast.top_level_decls, declaration);
+
+    // Here we try to match a comma or a semi after the declaration. If so we
+    // continue on parsing the rest of that top level declaration.
+    if (is_match_two(parser, TOKEN_COMMA, TOKEN_SEMI))
+    {
+        parse_top_level_declaration_rest(parser, &specifiers);
+        return;
+    }
+
+    // If we didn't get a function declaration we, try to get a trailing semi
+    // producing an error if it wasnt found
+    if (!declaration_is(declaration, DECLARATION_FUNCTION))
+    {
+        parse_top_level_declaration_finish(parser);
+        return;
+    }
+
+    assert(declaration_is(declaration, DECLARATION_FUNCTION));
+
+    // A way to inherit clang's behaviour of not alloing function definitions
+    // for invalid declarations.
+    if (!declaration_is_valid(declaration))
+    {
+        parse_top_level_declaration_finish(parser);
+        return;
+    }
+
+    parse_function_body(parser, declaration);
+}
+
+// The definitions of the functions we will use for pasing
+static void parse_top_level(Parser* parser)
+{
+    switch (current_token_type(parser))
+    {
+        case TOKEN_EOF:
+            return;
+
+        case TOKEN_SEMI:
+        {
+            Location semi = consume(parser);
+            while (try_match(parser, TOKEN_SEMI, NULL))
+                ;
+
+            diagnostic_error_at(parser->dm, semi,
+                    "extra ';' outside of a function");
+            return;
+        }
+
+        case TOKEN_RCURLY:
+        {
+            Location curly = consume(parser);
+            diagnostic_error_at(parser->dm, curly,
+                    "extraneous closing brace ('}')");
+            return;
+        }
+
+        // All the rest of the tokens exept identifier. Since we want to still
+        // enable implicit int at the top level
+        default:
+        {
+            // Generic error for naughty tokens
+            if (!is_typename_start(parser, current_token(parser)))
+            {
+                diagnostic_error_at(parser->dm,
+                        current_token_start_location(parser),
+                        "expected top level declaration or definition");
+                recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
+                return;
+            }
+        }
+
+        /* FALLTHROUGH */
+
+        case TOKEN_IDENTIFIER:
+            parse_top_level_declaration(parser);
+            return;
+    }
+    
+    panic("unreachable");
 }
 
 static void parse_translation_unit_internal(Parser* parser)
@@ -3496,17 +3573,9 @@ static void parse_translation_unit_internal(Parser* parser)
     Scope file = scope_new_file();
     semantic_checker_push_scope(&parser->sc, &file);
 
-    while (current_token_type(parser) != TOKEN_EOF)
+    while (!is_match(parser, TOKEN_EOF))
     {
-        Declaration* decl = parse_top_level(parser);
-
-        // Can be null if we just got a type name followed by a ;
-        if (decl == NULL)
-        {
-            continue;
-        }
-
-        declaration_vector_push(&parser->ast.top_level_decls, decl);
+        parse_top_level(parser);
     }
 
     // Here we can pop and delete since all of our needed decl's are in the top
@@ -3522,7 +3591,6 @@ void parse_translation_unit(DiagnosticManager* dm, Preprocessor* pp)
     parser.pp = pp;
     preprocessor_advance_token(pp, &parser.token);
     parser.ast = ast_create();
-    parser.current_context = (AstContext) {0};
     parser.sc = sematic_checker_create(dm, &pp->identifiers, &parser.ast);
     parser.paren_count = 0;
     parser.bracket_count = 0;

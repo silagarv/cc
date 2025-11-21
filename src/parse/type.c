@@ -128,9 +128,19 @@ static Type* type_create_builtin(AstAllocator* allocator, TypeKind kind,
     return type;
 }
 
+static Type* type_create_error(AstAllocator* allocator)
+{
+    assert(sizeof(TypeBase) == sizeof(TypeError));
+
+    Type* type = type_create_builtin(allocator, TYPE_ERROR, 0, 0, false);
+
+    return type;
+}
+
 TypeBuiltins type_builtins_initialise(AstAllocator* allocator)
 {
     TypeBuiltins builtins;
+    builtins.type_error = type_create_error(allocator);
     builtins.type_void = type_create_builtin(allocator, TYPE_VOID, 0, 0, false);    
     builtins.type_char = type_create_builtin(allocator, TYPE_CHAR, 1, 1, true);
     builtins.type_unsigned_char = type_create_builtin(allocator, TYPE_U_CHAR, 1,
@@ -184,6 +194,13 @@ QualifiedType type_create_pointer(AstAllocator* allocator,
     return (QualifiedType) {qualifiers, type};
 }
 
+QualifiedType type_pointer_get_pointee(const QualifiedType* pointer)
+{
+    assert(qualified_type_is(pointer, TYPE_POINTER));
+
+    return pointer->type->type_pointer.underlying_type;
+}
+
 QualifiedType type_create_array(AstAllocator* allocator,
         QualifiedType* element_type, size_t length, bool is_static,
         bool is_star, bool is_vla)
@@ -205,6 +222,13 @@ QualifiedType type_create_array(AstAllocator* allocator,
 
     // Cannot really add qualifiers to arrays
     return (QualifiedType) {TYPE_QUALIFIER_NONE, type};
+}
+
+QualifiedType type_array_get_element_type(const QualifiedType* type)
+{
+    assert(qualified_type_is(type, TYPE_ARRAY));
+
+    return type->type->type_array.element_type;
 }
 
 QualifiedType type_create_function(AstAllocator* allocator,
@@ -277,12 +301,60 @@ Type* type_create_typedef(AstAllocator* allocator, QualifiedType type,
     size_t type_align = type.type->type_base.type_alignment;
     bool complete = type.type->type_base.is_complete;
 
+    // Here even with multiple typedef's we will get the real type very fast
+    // since we don't let a long chain form.
+    QualifiedType real_type = type;
+    if (qualified_type_is(&real_type, TYPE_TYPEDEF))
+    {
+        // If it's a typedef just go down the chain. Otherwise, we will need to
+        // check specifically for anonymous structs and unions so redo their
+        // type properly
+        if (qualified_type_is(&real_type, TYPE_TYPEDEF))
+        {
+            real_type = type.type->type_typedef.real_type;
+        }
+        else
+        {
+            // TODO:
+            real_type = type.type->type_typedef.real_type;
+        }
+    }
+
     Type* new_type = type_create_base(allocator, sizeof(TypeTypedef),
             TYPE_TYPEDEF, type_size, type_align, complete);
+    new_type->type_typedef.real_type = real_type;   
     new_type->type_typedef.underlying_type = type;
     new_type->type_typedef.tdef = decl;
 
     return new_type;
+}
+
+QualifiedType qualified_type_typedef_get_underlying_type(
+        const QualifiedType* type)
+{
+    assert(qualified_type_is(type, TYPE_TYPEDEF));
+
+    return type->type->type_typedef.underlying_type;
+}
+
+QualifiedType qualified_type_typedef_get_real_type(const QualifiedType* type)
+{
+    return type->type->type_typedef.real_type;
+}
+
+TypeKind qualified_type_get_kind(const QualifiedType* type)
+{
+    return type->type->type_base.type;
+}
+
+bool type_is(const Type* type, TypeKind kind)
+{
+    if (type == NULL)
+    {
+        return false;
+    }
+
+    return type->type_base.type == kind;
 }
 
 bool qualified_type_is(const QualifiedType* type, TypeKind kind)
@@ -293,6 +365,58 @@ bool qualified_type_is(const QualifiedType* type, TypeKind kind)
     }
 
     return type->type->type_base.type == kind;
+}
+
+bool qualified_type_is_integer(const QualifiedType* type)
+{
+    QualifiedType real_type = qualified_type_get_canonical(type);
+    switch (qualified_type_get_kind(&real_type))
+    {
+        case TYPE_CHAR:
+        case TYPE_S_CHAR:
+        case TYPE_U_CHAR:
+        case TYPE_S_SHORT:
+        case TYPE_U_SHORT:
+        case TYPE_S_INT:
+        case TYPE_U_INT:
+        case TYPE_S_LONG:
+        case TYPE_U_LONG:
+        case TYPE_S_LONG_LONG:
+        case TYPE_U_LONG_LONG:
+            return true;
+
+        // From clang we only allow complete enum declarations to be considered
+        // pointers.
+        case TYPE_ENUM:
+        {
+            Declaration* enum_decl = type->type->type_enum.enum_decl;
+            return declaration_enum_has_entries(enum_decl);
+        }
+
+        default:
+            return false;
+    }
+}
+
+QualifiedType type_get_canonical(const Type* type)
+{
+    if (type == NULL)
+    {
+        return (QualifiedType) {0};
+    }
+
+    if (type_is(type, TYPE_TYPEDEF))
+    {
+        return type->type_typedef.real_type;
+    }
+
+    return (QualifiedType) {TYPE_QUALIFIER_NONE, (Type*) type};
+}
+
+QualifiedType qualified_type_get_canonical(const QualifiedType* type)
+{
+    // TODO: do this properly
+    return type_get_canonical(type->type);
 }
 
 bool type_is_builtin(const Type* t1)
@@ -401,9 +525,17 @@ void type_print(const QualifiedType* t1)
             break;
 
         case TYPE_TYPEDEF:
-            printf("typename '%s'",
+            printf("typename '%s' : ",
                     t1->type->type_typedef.tdef->base.identifier->string.ptr);
+            type_print(&t1->type->type_typedef.real_type);
             break;
+
+        case TYPE_STRUCT:
+        {
+            Declaration* decl = t1->type->type_struct.decl;
+            printf("struct %s ", decl->base.identifier->string.ptr);    
+            break;
+        }
 
         case TYPE_FUNCTION:
             printf("function returning ");

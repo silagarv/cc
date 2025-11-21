@@ -23,19 +23,18 @@ To building, run 'make' in the cc directory and it wll output an executable name
 ## Current TODO
 - Declaration parsing
     - complete the building of the function types
-    - build declarations from the declarator
-    - want to redo some parts of struct/union parsing for making sure we build them
+    - complete struct / union parsing and building
+    - figure out how we want to store structs / unions once they are fully built
 
 - Scoping
-    - complete different scope types
-    - make some fixes for symbol lookup
+    - Figure out how to go form function prototype scope -> function scope
     - make some fixes for external declarations
 
 - Semantic
     - expressions
-    - statements -> should be pretty okay once the other things are implemented
     - declarations
     - initializers
+    - Finish proper switch statement building
 
 - AST
     - create expressions for all expression types

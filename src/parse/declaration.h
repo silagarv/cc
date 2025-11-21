@@ -30,9 +30,14 @@ typedef struct DeclarationSpecifiers {
     TypeSpecifierWidth type_spec_width;
     TypeSpecifierSign type_spec_sign;
     TypeSpecifierComplex type_spec_complex;
-    Location location;
+    Location location; // the absolute starting location for these
     Declaration* declaration; // The declaration for a union / struct / enum
 } DeclarationSpecifiers;
+
+// TODO: what I want to to turn ourdeclarations into a list all of the time
+// e.g struct decl then instace of it should become a list of declarations
+// TODO: then function parameters should stay the same though. Should also have
+// TODO: an empty declaration option to create
 
 typedef enum DeclarationType {
     DECLARATION_ERROR = -1, /* an error in a declaration */
@@ -74,6 +79,9 @@ typedef struct DeclarationBase {
 
     // Is this declaration implicit (not found in source).
     bool implicit;
+
+    // Is this declaration invalid.
+    bool invalid;
 } DeclarationBase;
 
 typedef struct DeclarationVariable {
@@ -157,6 +165,9 @@ typedef struct DeclarationEnum {
 
     // Did we get any entries?
     bool complete;
+
+    // Was this an anonymous enum
+    bool anonymous;
 } DeclarationEnum;
 
 typedef struct DeclarationLabel {
@@ -176,7 +187,7 @@ typedef struct DeclarationList {
     DeclarationBase base;
 
     // The actual declarations that we have
-    Declaration* declarations;
+    Declaration** declarations;
     size_t num_declaration;
 } DeclarationList;
 
@@ -242,6 +253,7 @@ typedef struct DeclaratorPieceArray {
     DeclaratorPieceBase base;
     Location lbracket;
     Location rbracket;
+    Location static_location;
     TypeQualifiers qualifiers;
     Expression* expression;
     bool is_static;
@@ -298,6 +310,8 @@ typedef struct Declarator {
 } Declarator;
 
 DeclarationSpecifiers declaration_specifiers_create(Location location);
+Declaration* declaration_specifiers_get_declaration(
+        const DeclarationSpecifiers* decl_spec);
 
 char* tag_kind_to_name(DeclarationType type);
 char* declarator_context_to_name(DeclaratorContext context);
@@ -307,20 +321,18 @@ Declarator declarator_create(DeclarationSpecifiers* specifiers,
 void declarator_delete(Declarator* declarator);
 
 DeclaratorContext declarator_get_context(const Declarator* declarator);
-
 bool declarator_identifier_allowed(const Declarator* declarator);
 bool declarator_identifier_required(const Declarator* declarator);
 bool declarator_has_identifier(const Declarator* declarator);
 void declarator_set_identifier(Declarator* declarator, Identifier* identifier,
         Location identifier_location);
-
-void declarator_set_invalid(Declarator* declarator);
 bool declarator_is_invalid(const Declarator* declarator);
+void declarator_set_invalid(Declarator* declarator);
 
 void declarator_push_pointer(Declarator* declarator, TypeQualifiers qualifiers);
 void declarator_push_array(Declarator* declarator, Location lbracket,
-        Location rbracket, TypeQualifiers qualifiers, Expression* expression,
-        bool is_static, bool is_star);
+        Location rbracket, Location static_location, TypeQualifiers qualifiers,
+        Expression* expression, bool is_static, bool is_star);
 
 void declarator_push_function_empty(Declarator* declarator, ...);
 void declarator_push_function_knr(Declarator* declarator, ...);
@@ -328,13 +340,14 @@ void declarator_push_function(Declarator* declarator, AstAllocator* allocator,
         Location lparen_loc, Location rparen_loc, DeclarationVector* params,
         bool is_variadic);
 
-// TODO: this will need some stuff added to it
-void declarator_piece_push_function(Declarator* declarator, bool is_variadic);
-
 // TODO: redo this completely with our ast allocator
 
 bool declaration_is(const Declaration* decl, DeclarationType type);
+bool declaration_is_tag(const Declaration* decl);
 bool declaration_has_identifier(const Declaration* decl);
+bool declaration_is_valid(const Declaration* decl);
+void declaration_set_invalid(Declaration* decl);
+QualifiedType declaration_get_type(const Declaration* decl);
 
 // Create an error declaraiton
 Declaration* declaration_create_error(AstAllocator* allocator,
@@ -355,7 +368,8 @@ Declaration* declaration_create_typedef(AstAllocator* allocator,
 void declaration_typedef_set_type(Declaration* tdef, Type* new_type);
 
 Declaration* declaration_create_enum(AstAllocator* allocator,
-        Location location, Identifier* identifier, QualifiedType type);
+        Location location, Identifier* identifier, QualifiedType type,
+        bool anonymous);
 bool declaration_enum_has_entries(const Declaration* declaration);
 void declaration_enum_set_entries(Declaration* declaration,
         Declaration** entries, size_t num_entries);
@@ -372,7 +386,8 @@ void declaration_struct_add_members(Declaration* declaration,
 bool declaration_struct_is_complete(const Declaration* declaration);
 
 Declaration* declaration_create_function(AstAllocator* allocator,
-        Location location, Identifier* identifier, QualifiedType type);
+        Location location, Identifier* identifier, QualifiedType type,
+        TypeStorageSpecifier storage, TypeFunctionSpecifier function_spec);
 
 // Create a declaration of label identifier at the given location, and indicate
 // if this label was implictly constructed.

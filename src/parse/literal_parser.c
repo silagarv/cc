@@ -28,6 +28,11 @@ typedef enum EscapeSequenceResult {
     ESCAPE_SEQUENCE_RESULT_FATAL
 } EscapeSequenceResult;
 
+ValueType literal_value_get_type(const LiteralValue* value)
+{
+    return value->type;
+}
+
 static int parse_integer_prefix(const char* string, size_t len, size_t* pos)
 {
     assert(*pos == 0 && "not at start of integer");
@@ -1023,11 +1028,17 @@ bool parse_char_literal(CharValue* value, DiagnosticManager* dm,
     }
     while (pos < len - 1);
 
-    if (num_digits > 1)
+    if (!wide && num_digits > 1)
     {
         diagnostic_warning_at(dm, loc, "multi-character character constant");
 
         // WIDE CHARACTER LITERALS MAY NOT CONTAIN MORE THAN 1 DIGIT!!!
+    }
+    else if (wide && num_digits > 1)
+    {
+        diagnostic_error_at(dm, loc, "wide character literals may not contain "
+                "multiple characters");
+        fatal_error = true;
     }
 
     if (fatal_error)

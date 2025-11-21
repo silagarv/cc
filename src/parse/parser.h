@@ -40,9 +40,6 @@ typedef struct Parser {
     // large arena so that we can effeciently free and allocate it.
     Ast ast;
 
-    // Stores the current context of the parser for statements and expressions.
-    AstContext current_context;
-
     // The semantic checker taking care of all of our declarations and needed
     // things for that.
     SemanticChecker sc;

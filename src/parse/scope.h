@@ -14,16 +14,16 @@
 
 #include "parse/symbol.h"
 
-// TODO: below is probably not needed...
 typedef enum ScopeFlags {
     SCOPE_FILE = 1 << 0, // File scope?
     SCOPE_BLOCK = 1 << 1, // Block scope
     SCOPE_FUNCTION = 1 << 2, // Function declaration
-    SCOPE_MEMBER = 1 << 3, // structs / unions
-    SCOPE_FOR = 1 << 4, // for loop statements (AND declarations)
-    SCOPE_WHILE = 1 << 5, // while loop statments
-    SCOPE_DO_WHILE = 1 << 6, // do/while loop statements
-    SCOPE_SWITCH = 1 << 7, // switch scope
+    SCOPE_FUNCTION_BODY = 1 << 3, // Function definitions
+    SCOPE_MEMBER = 1 << 4, // structs / unions
+    SCOPE_FOR = 1 << 5, // for loop statements (AND declarations)
+    SCOPE_WHILE = 1 << 6, // while loop statments
+    SCOPE_DO_WHILE = 1 << 7, // do/while loop statements
+    SCOPE_SWITCH = 1 << 8, // switch scope
 } ScopeFlags;
 
 // Add some sort of a symbol table in here
@@ -49,6 +49,8 @@ typedef struct Scope {
 
 // The way we will keep track of labels within functions.
 typedef struct FunctionScope {
+    Declaration* function; // the function that we are parsing at the moment
+
     SymbolTable label_declarations; // All labels even from goto's
     PtrSet used_label_idents; // the identifiers of all of our used labels
     DeclarationVector used_labels; // The labels we have actually used.
@@ -59,6 +61,7 @@ bool scope_is(const Scope* scope, ScopeFlags flags);
 Scope scope_new_file(void);
 Scope scope_new_block(void);
 Scope scope_new_function_prototype(void);
+Scope scope_new_function_declaration(void);
 Scope scope_new_member(void);
 Scope scope_new_for(void);
 Scope scope_new_while(void);
@@ -94,8 +97,10 @@ bool scope_contains(const Scope* scope, Identifier* name);
 bool scope_add_symbol(const Scope* scope, Declaration* declaration);
 
 // Function scopes are specially for function labels
-FunctionScope function_scope_create(void);
+FunctionScope function_scope_create(Declaration* function);
 void function_scope_delete(FunctionScope* scope);
+
+Declaration* function_scope_get_function(const FunctionScope* scope);
 
 // Look up a label in the function scope returning labels which have been
 // implicitly created.

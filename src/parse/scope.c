@@ -72,6 +72,23 @@ Scope scope_new_function_prototype(void)
     return scope;
 }
 
+Scope scope_new_function_declaration(void)
+{
+    Scope scope = (Scope)
+    {
+        .flags = SCOPE_FUNCTION_BODY,
+        .parent = NULL,
+        .ordinairy = symbol_table_create(),
+        .tag = symbol_table_create(),
+        .members = {0},
+        .has_ordinairy = true,
+        .has_tag = true,
+        .has_members = false,
+    };
+
+    return scope;
+}
+
 Scope scope_new_member(void)
 {
     Scope scope = (Scope)
@@ -204,7 +221,7 @@ static bool scope_allows_common(const Scope* scope, const ScopeFlags* flags,
 static bool scope_allows_declaration(const Scope* scope)
 {
     static const ScopeFlags decl_scopes[] = {SCOPE_FILE, SCOPE_FUNCTION,
-            SCOPE_BLOCK, SCOPE_FOR};
+            SCOPE_FUNCTION_BODY, SCOPE_BLOCK, SCOPE_FOR};
     static const size_t num_scopes = sizeof(decl_scopes) / 
             sizeof(decl_scopes[0]);
 
@@ -436,10 +453,13 @@ Declaration* scope_lookup_member(Scope* scope, Identifier* name)
 
 // Function scope functions.
 
-FunctionScope function_scope_create(void)
+FunctionScope function_scope_create(Declaration* function)
 {
+    assert(declaration_is(function, DECLARATION_FUNCTION));
+
     FunctionScope scope = (FunctionScope)
     {
+        .function = function,
         .label_declarations = symbol_table_create(),
         .used_label_idents = pointer_set_create(),
         .used_labels = declaration_vector_create(1)
@@ -453,6 +473,11 @@ void function_scope_delete(FunctionScope* scope)
     symbol_table_delete(&scope->label_declarations);
     pointer_set_delete(&scope->used_label_idents);
     declaration_vector_free(&scope->used_labels, NULL);
+}
+
+Declaration* function_scope_get_function(const FunctionScope* scope)
+{
+    return scope->function;
 }
 
 // Look up a label in the function scope returning labels which have been
