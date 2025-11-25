@@ -3,6 +3,7 @@
 
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "files/location.h"
 #include "files/source_manager.h"
@@ -34,10 +35,16 @@ typedef struct DiagnosticManager {
     DiagnosticColours colours;
     SourceManager* sm;
 
-    // TODO: keep track of warnings / errors for exit code?
+    size_t warning_count;
+    size_t error_count;
 } DiagnosticManager;
 
 DiagnosticManager diagnostic_manager_init(SourceManager* sm);
+
+size_t diagnostic_manager_get_warning_count(const DiagnosticManager* dm);
+size_t diagnostic_manager_get_error_count(const DiagnosticManager* dm);
+
+void diagnostic_emit_count(DiagnosticManager* dm);
 
 void diagnostic_error(DiagnosticManager* dm, const char* fmt, ...);
 void diagnostic_warning(DiagnosticManager* dm, const char* fmt, ...);

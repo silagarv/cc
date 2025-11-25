@@ -9,7 +9,8 @@
 #include "parse/ast_allocator.h"
 #include "parse/type.h"
 #include "parse/literal_parser.h"
-#include <stdbool.h>
+
+union Initializer;
 
 typedef enum ExpressionType {
     EXPRESSION_ERROR,
@@ -162,14 +163,22 @@ typedef struct ExpressionMemberAccess {
 } ExpressionMemberAccess;
 
 // TODO: how to do this
-typedef struct ExpressionCompoundLiteral ExpressionCompoundLiteral;
+typedef struct ExpressionCompoundLiteral {
+    ExpressionBase base;
+    Location lparen_loc;
+    Location rparen_loc;
+    Location lcurly_loc;
+    Location rcurly_loc;
+    QualifiedType type;
+    union Initializer* initializer;
+} ExpressionCompoundLiteral;
 
 typedef struct ExpressionSizeofType {
     ExpressionBase base;
     Location sizeof_loc;
     Location lparen_loc;
     Location rparen_loc;
-    Type* type;
+    QualifiedType target_type;
 } ExpressionSizeofType;
 
 typedef struct ExpressionSizeofExpression {
@@ -182,14 +191,15 @@ typedef struct ExpressionCast {
     ExpressionBase base;
     Location lparen_loc;
     Location rparen_loc;
-    Type* type;
+    QualifiedType type;
     Expression* rhs;
-}ExpressionCast;
+    bool implicit;
+} ExpressionCast;
 
 typedef struct ExpressionUnary {
     ExpressionBase base;
     Location op_loc;
-    Expression* rhs; // This is not nesseccarily true btw...
+    Expression* rhs;
 } ExpressionUnary;
 
 typedef struct ExpressionBinary {
@@ -222,22 +232,26 @@ typedef struct ExpressionError {
 union Expression {
     ExpressionBase base;
 
+    ExpressionParenthesised parenthesised;
     ExpressionReference reference;
-
     ExpressionInteger integer;
     ExpressionFloating floating;
     ExpressionCharacter character;
     ExpressionStringLiteral string;
 
     ExpressionArrayAccess array;
+    ExpressionFunctionCall call;
+    ExpressionMemberAccess access;
+    ExpressionCompoundLiteral compound_literal;
+
+    ExpressionSizeofExpression sizeof_expression;
+    ExpressionSizeofType sizeof_type;
+    
+    ExpressionCast cast;
 
     ExpressionUnary unary;
-    
     ExpressionBinary binary;
-
     ExpressionConditional conditional;
-
-    ExpressionParenthesised parenthesised;
 
     ExpressionError error;
 };
@@ -256,16 +270,21 @@ Expression* expression_create_error(AstAllocator* allocator,
 
 Expression* expression_create_parenthesised(AstAllocator* allocator,
         Location lparen_loc, Location rparen_loc, Expression* inside);
+Expression* expression_parenthesised_get_inner(const Expression* expr);
 
 Expression* expression_create_reference(AstAllocator* allocator,
         Identifier* identifier, Location location,
         union Declaration* declaration, QualifiedType expr_type);
+    
 Expression* expression_create_integer(AstAllocator* allocator,
         Location location, IntegerValue value, QualifiedType type);
+    
 Expression* expression_create_float(AstAllocator* allocator, Location location,
         FloatingValue value, QualifiedType type);
+
 Expression* expression_create_character(AstAllocator* allocator,
         Location location, CharValue value, QualifiedType expr_type);
+
 Expression* expression_create_array(AstAllocator* allocator, 
         Location lbracket_loc, Location rbracket_loc, Expression* lhs,
         Expression* member, QualifiedType expr_type, bool lhs_is_array);

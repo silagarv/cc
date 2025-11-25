@@ -80,6 +80,11 @@ DeclarationSpecifiers declaration_specifiers_create(Location location)
     return specifiers;
 }
 
+bool declaration_specifiers_has_declaration(const DeclarationSpecifiers* d)
+{
+    return d->declaration != NULL;
+}
+
 Declaration* declaration_specifiers_get_declaration(
         const DeclarationSpecifiers* decl_spec)
 {
@@ -389,6 +394,8 @@ void declaration_enum_set_entries(Declaration* declaration,
     declaration->enumeration.entries = entries;
     declaration->enumeration.num_entries = num_entries;
     declaration->enumeration.complete = true;
+
+    type_enum_set_complete(&declaration->enumeration.base.qualified_type);
 }
 
 Declaration* declaration_create_enum_constant(AstAllocator* allocator,
@@ -416,6 +423,21 @@ int declaration_enum_constant_get_value(const Declaration* enum_constant)
     assert(declaration_is(enum_constant, DECLARATION_ENUM_CONSTANT));
 
     return enum_constant->enumeration_constant.value;
+}
+
+Declaration* declaration_create_field(AstAllocator* allocator,
+        Location location, Identifier* identifier, QualifiedType type,
+        Location colon_location, Expression* expression)
+{
+    Declaration* decl = declaration_create_base(allocator,
+            sizeof(DeclarationField), DECLARATION_FIELD, location, identifier,
+            type, TYPE_STORAGE_SPECIFIER_NONE, TYPE_FUNCTION_SPECIFIER_NONE,
+            false);
+    decl->field.colon_location = colon_location;
+    decl->field.bitfield = expression;
+    decl->field.has_bitfield = expression != NULL;
+
+    return decl;
 }
 
 Declaration* declaration_create_struct(AstAllocator* allocator,

@@ -95,6 +95,13 @@ Expression* expression_create_parenthesised(AstAllocator* allocator,
     return expr;
 }
 
+Expression* expression_parenthesised_get_inner(const Expression* expr)
+{
+    assert(expression_is(expr, EXPRESSION_PARENTHESISED));
+
+    return expr->parenthesised.inside;
+}
+
 Expression* expression_create_reference(AstAllocator* allocator,
         Identifier* identifier, Location location,
         union Declaration* declaration, QualifiedType expr_type)
@@ -156,100 +163,27 @@ Expression* expression_create_array(AstAllocator* allocator,
     return expr;
 }
 
-// Expression* expression_create_error(AstAllocator* allocator)
-// {
-//     Expression* expr = expression_create_base(allocator,
-//             sizeof(ExpressionError), EXPRESSION_ERROR);
+Expression* expression_create_unary(AstAllocator* allocator, 
+        ExpressionType type, Location op_loc, Expression* expression,
+        QualifiedType expr_type)
+{
+    Expression* expr = expression_create_base(allocator,
+            sizeof(ExpressionUnary), type, expr_type);
+    expr->unary.op_loc = op_loc;
+    expr->unary.rhs = expression;
     
-//     // Poison the expression on creation so that we don't try to do semantic
-//     // analysis on it!
-//     expr->base.poisoned = true;
+    return expr;
+}
 
-//     return expr;
-// }
-
-// static Expression* expression_create_integer(AstAllocator* allocator,
-//         Location location, IntegerValue value)
-// {
-//     Expression* expr = expression_create_base(allocator,
-//             sizeof(ExpressionInteger), EXPRESSION_INTEGER_CONSTANT);
-//     expr->integer.num_location = location;
-//     expr->integer.value = value;
-
-//     return expr;
-// }
-
-// static Expression* expression_create_float(AstAllocator* allocator,
-//         Location location, FloatingValue value)
-// {
-//     Expression* expr = expression_create_base(allocator,
-//             sizeof(ExpressionInteger), EXPRESSION_FLOATING_CONSTANT);
-//     expr->floating.num_location = location;
-//     expr->floating.value = value;
-
-//     return expr;
-// }
-
-// Expression* expression_create_number(AstAllocator* allocator, Location location,
-//         LiteralValue value)
-// {
-//     if (value.type == VALUE_INTEGER_TYPE)
-//     {
-//         return expression_create_integer(allocator, location,
-//                 value.value.integer);
-//     }
-//     else
-//     {
-//         return expression_create_float(allocator, location,
-//                 value.value.floating);
-//     }
-// }
-
-// Expression* expression_create_character(AstAllocator* allocator,
-//         Location location, CharValue value)
-// {
-//     Expression* expr = expression_create_base(allocator,
-//             sizeof(ExpressionCharacter), EXPRESSION_CHARACTER_CONSTANT);
-//     expr->character.value = value;
-
-//     return expr;
-// }
-
-// Expression* expression_create_array(AstAllocator* allocator,
-//         Location lbracket_loc, Location rbracket_loc, Expression* lhs,
-//         Expression* member)
-// {
-//     Expression* expr = expression_create_base(allocator,
-//             sizeof(ExpressionArrayAccess), EXPRESSION_ARRAY_ACCESS);
-//     expr->array.lbracket_loc = lbracket_loc;
-//     expr->array.rbracket_loc = rbracket_loc;
-//     expr->array.lhs = lhs;
-//     expr->array.member = member;
-
-//     return expr;
-// }
-
-// Expression* expression_create_unary(AstAllocator* allocator,
-//         ExpressionType type, Location op_loc, Expression* expression)
-// {
-//     Expression* expr = expression_create_base(allocator,
-//             sizeof(ExpressionUnary), type);
-//     expr->unary.op_loc = op_loc;
-//     expr->unary.rhs = expr;
-
-//     return expr;
-// }
-
-// Expression* expression_create_binary(AstAllocator* allocator,
-//         ExpressionType type, Location op_loc, Expression* lhs, Expression* rhs)
-// {
-//     Expression* expr = expression_create_base(allocator,
-//             sizeof(ExpressionBinary), type);
-//     expr->binary.op_loc = op_loc;
-//     expr->binary.lhs = lhs;
-//     expr->binary.rhs = rhs;
-
-//     return expr;
-// }
-
-
+Expression* expression_create_binary(AstAllocator* allocator, 
+        ExpressionType type, Location op_loc, Expression* lhs, Expression* rhs,
+        QualifiedType expr_type)
+{
+    Expression* expr = expression_create_base(allocator,
+            sizeof(ExpressionUnary), type, expr_type);
+    expr->binary.lhs = lhs;
+    expr->binary.op_loc = op_loc;
+    expr->binary.rhs = rhs;
+            
+    return expr;
+}

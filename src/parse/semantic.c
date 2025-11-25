@@ -1,17 +1,13 @@
 #include "semantic.h"
 
-#include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
+#include <assert.h>
+
+#include "util/panic.h"
 
 #include "files/location.h"
-#include "parse/ast_allocator.h"
-#include "parse/expression.h"
-#include "parse/initializer.h"
-#include "parse/literal_parser.h"
-#include "parse/parser.h"
-#include "util/buffer.h"
 
 #include "driver/diagnostic.h"
 
@@ -22,7 +18,11 @@
 #include "parse/symbol.h"
 #include "parse/type.h"
 #include "parse/declaration.h"
-#include "util/panic.h"
+#include "parse/ast_allocator.h"
+#include "parse/expression.h"
+#include "parse/initializer.h"
+#include "parse/literal_parser.h"
+#include "parse/parser.h"
 
 SemanticChecker sematic_checker_create(DiagnosticManager* dm, 
         IdentifierTable* identifiers, Ast* ast)
@@ -458,14 +458,41 @@ static void semantic_checker_process_function(SemanticChecker* sc,
     QualifiedType* types = semantic_checker_types_from_declaraions(sc, 
             decls, num_paramaters);
 
-    // bool has_void = false;
-    // for (size_t i = 0; i < num_paramaters; i++)
-    // {
-    //     QualifiedType current_type = types[i];
-    // }
+    // Check that we only have one 'void' type if applicable
+    bool invalid = false;
+    for (size_t i = 0; i < num_paramaters; i++)
+    {
+        QualifiedType current_type = types[i];
+        QualifiedType real_type = qualified_type_get_canonical(&current_type);
 
-    // TODO: we need to do some checking on the types that are present in the
-    // TODO: function declarator. Mainly handling void types correctly!
+        // TODO: if this happens clang set the type to 'int' according to its
+        // TODO: ast-dump, but do I want to do this?
+        if (qualified_type_is(&real_type, TYPE_VOID) &&
+                (num_paramaters != 1 || function->is_variadic))
+        {
+            diagnostic_error_at(sc->dm, decls[i]->base.location,
+                    "'void' must be the first and only parameter if specified");
+            types[i] = (QualifiedType) {TYPE_QUALIFIER_NONE, 
+                    sc->ast->base_types.type_signed_int};
+            invalid = true;
+        }
+    }
+
+    // Now if we have one parameter and it is void type, set the number of
+    // parameters to 0
+    if (num_paramaters == 1)
+    {
+        QualifiedType real_type = qualified_type_get_canonical(&types[0]);
+        if (qualified_type_is(&real_type, TYPE_VOID))
+        {
+            num_paramaters = 0;
+            if (type_qualifier_has_any(real_type.qualifiers))
+            {
+                diagnostic_error_at(sc->dm, decls[0]->base.location,
+                        "'void' as a parameter must not have type qualifiers");
+            }
+        }
+    }
 
     QualifiedType new_type = type_create_function(&sc->ast->ast_allocator,
             *type, types, num_paramaters, false, function->is_variadic);
@@ -477,7 +504,6 @@ QualifiedType semantic_checker_process_type(SemanticChecker* sc,
 {
     // TODO: now that we have the declarator context we can acccept / decline
     // TODO: vmt and vla's
-
     DeclaratorContext context = declarator->context;
 
     // First start by getting the type from the declaration specifiers
@@ -496,17 +522,14 @@ QualifiedType semantic_checker_process_type(SemanticChecker* sc,
         switch (piece.base.type)
         {
             case DECLARATOR_PIECE_ARRAY:
-                // printf("processing array piece\n");
                 semantic_checker_process_array(sc, &type, &piece, context);
                 break;
 
             case DECLARATOR_PIECE_POINTER:
-                // printf("processing pointer piece\n");
                 semantic_checker_process_pointer(sc, &type, &piece, context);
                 break;
 
             case DECLARATOR_PIECE_FUNCTION:
-                // printf("processing function piece\n");
                 semantic_checker_process_function(sc, &type, &piece, context);
                 break;
 
@@ -612,9 +635,9 @@ void semantic_checker_insert_tag(SemanticChecker* sc, Declaration* decl)
 void semantic_checker_insert_member(SemanticChecker* sc, Declaration* decl)
 {
     assert(scope_is(sc->scope, SCOPE_MEMBER) && "must be a member scope");
+    assert(declaration_is(decl, DECLARATION_FIELD));
 
-    panic("useless function");
-    // scope_insert_member();
+    scope_insert_member(sc->scope, decl);
 }
 
 QualifiedType semantic_checker_process_typename(SemanticChecker* sc,
@@ -726,7 +749,7 @@ Declaration* semantic_checker_process_variable(SemanticChecker* sc,
         case DECLARATION_CONTEXT_STRUCT:
         case DECLARATION_CONTEXT_FUNCTION_PARAM:
         case DECLARATION_CONTEXT_TYPE_NAME:
-            panic("bad context type!");
+            panic("context type not support in sc-process-variable");
             return NULL;
 
         case DECLARATION_CONTEXT_BLOCK:
@@ -860,6 +883,80 @@ Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
     {
         return semantic_checker_process_variable(sc, declarator, type);
     }
+}
+
+Declaration* semantic_checker_process_struct_declarator(SemanticChecker* sc,
+        Declarator* declarator, Location colon_location,
+        Expression* expression)
+{
+    // Don't even try if we have an invalid declarator. This is mainly here
+    // to simplify the logic of the parsing functions.
+    if (declarator->invalid)
+    {
+        return NULL;
+    }
+
+    // Regardless of what needs to be done next we must figure our the type
+    // from the declarator.
+    QualifiedType type = semantic_checker_process_type(sc, declarator);
+
+    // Ensure that the storage specifiers were removed already.
+    assert(declarator->specifiers->storage_spec == TYPE_STORAGE_SPECIFIER_NONE);
+
+    Identifier* identifier = declarator->identifier;
+    Location identifier_loc = declarator->identifier_location;
+
+    if (!qualified_type_is_complete(&type))
+    {
+        diagnostic_error_at(sc->dm, identifier_loc,
+                "field has incomplete type");
+        colon_location = LOCATION_INVALID;
+        expression = NULL;
+    }
+
+    // Ensure no previous struct member under the same name
+    Declaration* previous = semantic_checker_lookup_member(sc, identifier);
+    if (previous != NULL)
+    {
+        diagnostic_error_at(sc->dm, identifier_loc, "duplicate member '%s'",
+                identifier->string.ptr);
+        return NULL;
+    }
+
+    // Had a bitfield
+    // TODO: change to expression part only once we fully have them
+    if (colon_location != LOCATION_INVALID /*expression != NULL*/)
+    {
+        // check the bitfield is of an integral type...
+        if (!qualified_type_is_integer(&type))
+        {
+            diagnostic_error_at(sc->dm, identifier_loc,
+                    "bit-field '%s' has not integral type",
+                    identifier->string.ptr);
+            return NULL;
+        }
+
+        // Then check that the bitfield expression itself has an integral type
+        diagnostic_error_at(sc->dm, identifier_loc, "bitfields not supported");
+        /*return NULL;*/
+    }
+
+    // Check that we do not have a function type. note that a pointer to a
+    // function is fine here.
+    if (qualified_type_is(&type, TYPE_FUNCTION))
+    {
+        // Do not return NULL here since we will allow this for syntax purposes
+        diagnostic_error_at(sc->dm, identifier_loc,
+                "field '%s' declarated as function", identifier->string.ptr);
+    }
+
+    // Create the declaration for the field of the struct
+    Declaration* member_decl = declaration_create_field(&sc->ast->ast_allocator,
+            identifier_loc, identifier, type, colon_location, expression);
+
+    semantic_checker_insert_member(sc, member_decl);
+
+    return member_decl;
 }
 
 void semantic_checker_declaration_add_initializer(SemanticChecker* sc,
@@ -1086,7 +1183,7 @@ Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
         if (type == DECLARATION_ENUM && identifier != NULL)
         {
             diagnostic_warning_at(sc->dm, declaration->base.location,
-                    "forward reference to '%s' type", tag_kind_to_name(type));
+                    "ISO C forbids forward references to 'enum' types");
         }
     }
     else if (!is_definition && previous != NULL)
@@ -1243,6 +1340,206 @@ void sematic_checker_act_on_end_of_function(SemanticChecker* sc)
 }
 
 // TODO: make some functions for lvalues and stuff
+
+static bool type_is_subscriptable(const QualifiedType* type)
+{
+    if (qualified_type_is(type, TYPE_POINTER))
+    {
+        return true;
+    }
+    else if (qualified_type_is(type, TYPE_ARRAY))
+    {
+        return true;
+    }
+
+    return false;
+}
+
+static QualifiedType get_inner_type(const QualifiedType* type)
+{
+    assert(type_is_subscriptable(type));
+
+    if (qualified_type_is(type, TYPE_POINTER))
+    {
+        return type_pointer_get_pointee(type);
+    }
+    else
+    {
+        return type_array_get_element_type(type);
+    }
+}
+
+typedef enum ExpressionValueKind {
+    VALUE_KIND_LVALUE,
+    VALUE_KIND_MODIFIABLE_LVALUE,
+    VALUE_KIND_RVALUE,
+    VALUE_KIND_FUNCTION_DESIGNATOR
+} ExpressionValueKind;
+
+static bool expression_value_kind_is_lvalue(ExpressionValueKind kind)
+{
+    return kind == VALUE_KIND_LVALUE || kind == VALUE_KIND_MODIFIABLE_LVALUE;
+}
+
+static ExpressionValueKind expression_classify(SemanticChecker* sc,
+        const Expression* expression)
+{
+    QualifiedType expr_type = expression_get_qualified_type(expression);
+    QualifiedType real_type = qualified_type_get_canonical(&expr_type);
+
+    // If it is not an object type then we have a function.
+    if (!qualifier_type_is_object_type(&real_type))
+    {
+        return VALUE_KIND_FUNCTION_DESIGNATOR;
+    }
+
+    ExpressionValueKind kind;
+    switch (expression_get_kind(expression))
+    {
+        case EXPRESSION_ERROR:
+
+        case EXPRESSION_ENUMERATION_CONSTANT:
+        case EXPRESSION_INTEGER_CONSTANT:    
+        case EXPRESSION_FLOATING_CONSTANT:
+        case EXPRESSION_CHARACTER_CONSTANT:
+
+        case EXPRESSION_FUNCTION_CALL:
+
+        case EXPRESSION_CAST:
+
+        case EXPRESSION_UNARY_PLUS:
+        case EXPRESSION_UNARY_MINUS:
+        case EXPRESSION_UNARY_BIT_NOT:
+        case EXPRESSION_UNARY_NOT:
+
+        case EXPRESSION_UNARY_PRE_INCREMENT:
+        case EXPRESSION_UNARY_PRE_DECREMENT:
+        case EXPRESSION_UNARY_POST_INCREMENT:
+        case EXPRESSION_UNARY_POST_DECREMENT:
+
+        case EXPRESSION_SIZEOF_TYPE:
+        case EXPRESSION_SIZEOF_EXPRESSION:
+
+        case EXPRESSION_BINARY_TIMES:
+        case EXPRESSION_BINARY_DIVIDE:
+        case EXPRESSION_BINARY_MODULO:
+        case EXPRESSION_BINARY_ADD:
+        case EXPRESSION_BINARY_SUBTRACT:
+        case EXPRESSION_BINARY_SHIFT_LEFT:
+        case EXPRESSION_BINARY_SHIFT_RIGHT:
+        case EXPRESSION_BINARY_LESS_THAN:
+        case EXPRESSION_BINARY_GREATER_THAN:
+        case EXPRESSION_BINARY_LESS_THAN_EQUAL:
+        case EXPRESSION_BINARY_GREATER_THAN_EQUAL:
+        case EXPRESSION_BINARY_EQUAL:
+        case EXPRESSION_BINARY_NOT_EQUAL:
+        case EXPRESSION_BINARY_AND:
+        case EXPRESSION_BINARY_XOR:
+        case EXPRESSION_BINARY_OR:
+        case EXPRESSION_BINARY_LOGICAL_AND:
+        case EXPRESSION_BINARY_LOGICAL_OR:
+
+        case EXPRESSION_BINARY_ASSIGN:
+        case EXPRESSION_BINARY_TIMES_ASSIGN:
+        case EXPRESSION_BINARY_DIVIDE_ASSIGN:
+        case EXPRESSION_BINARY_MODULO_ASSIGN:
+        case EXPRESSION_BINARY_ADD_ASSIGN:
+        case EXPRESSION_BINARY_SUBTRACT_ASSIGN:
+        case EXPRESSION_BINARY_SHIFT_LEFT_ASSIGN:
+        case EXPRESSION_BINARY_SHIFT_RIGHT_ASSIGN:
+        case EXPRESSION_BINARY_AND_ASSIGN:
+        case EXPRESSION_BINARY_XOR_ASSIGN:
+        case EXPRESSION_BINARY_OR_ASSIGN:
+
+        case EXPRESSION_CONDITIONAL:
+
+        case EXPRESSION_COMMA:
+            return VALUE_KIND_RVALUE;
+
+        case EXPRESSION_REFERENCE:
+        case EXPRESSION_ARRAY_ACCESS:
+        case EXPRESSION_STRING_LITERAL:
+        case EXPRESSION_COMPOUND_LITERAL:
+            kind = VALUE_KIND_LVALUE;
+            break;
+
+        // the result of a member access (dot) operator if its left-hand
+        // argument is lvalue 
+        case EXPRESSION_MEMBER_ACCESS:
+
+        // the result of a member access through pointer -> operator 
+        case EXPRESSION_MEMBER_POINTER_ACCESS:
+            panic("TODO: both member access cases");
+            kind = VALUE_KIND_LVALUE;
+            break;
+
+        // address and dereferene definitely are but the below seem to also
+        // be accepted by clang and gcc
+        case EXPRESSION_UNARY_ADDRESS:
+            // the result of the indirection (unary *) operator applied to a 
+            // pointer to object 
+
+        case EXPRESSION_UNARY_DEREFERENCE:
+            panic("TODO: unary address operators");
+            kind = VALUE_KIND_LVALUE;
+            break;
+
+        case EXPRESSION_PARENTHESISED:
+        {
+            Expression* inner = expression_parenthesised_get_inner(expression);
+            return expression_classify(sc, inner);
+        }
+
+        default:
+            panic("cannot classify expression kind; unimplemented");
+            return VALUE_KIND_RVALUE;
+    }
+
+    // Should only try to check for modifiable lvalues if we have an lvalue
+    assert(kind == VALUE_KIND_LVALUE);
+    
+    // TODO: check if expression is modifiable lvalue or not
+
+    return kind;
+}
+
+static bool expression_is_modifiable_lvalue(const Expression* expression)
+{
+    ExpressionValueKind kind = expression_classify(NULL, expression);
+
+    // Get the real type
+    QualifiedType type = expression_get_qualified_type(expression);
+    QualifiedType real_type = qualified_type_get_canonical(&type);
+
+    // Must be complete type
+    if (!qualified_type_is_complete(&real_type))
+    {
+        return false;
+    }
+    
+    // Must not be an array type
+    if (qualified_type_is(&real_type, TYPE_ARRAY))
+    {
+        return false;
+    }
+
+    // Must not be const qualified
+    TypeQualifiers qualifiers = real_type.qualifiers;
+    if (type_qualifier_is_const(qualifiers))
+    {
+        return false;
+    }
+
+    // If its a struct / union must not have any const qualified members
+    // (recursively)
+    if (qualified_type_is(&real_type, TYPE_STRUCT) ||
+            qualified_type_is(&real_type, TYPE_UNION))
+    {
+        panic("struct / union modifiable lvalue not implemented");
+    }
+
+    return true;
+}
 
 Expression* semantic_checker_handle_error_expression(SemanticChecker* sc,
         Location location)
@@ -1402,34 +1699,6 @@ Expression* semantic_checker_handle_char_expression(SemanticChecker* sc,
 
 // TODO: string literals
 
-static bool type_is_subscriptable(const QualifiedType* type)
-{
-    if (qualified_type_is(type, TYPE_POINTER))
-    {
-        return true;
-    }
-    else if (qualified_type_is(type, TYPE_ARRAY))
-    {
-        return true;
-    }
-
-    return false;
-}
-
-static QualifiedType get_inner_type(const QualifiedType* type)
-{
-    assert(type_is_subscriptable(type));
-
-    if (qualified_type_is(type, TYPE_POINTER))
-    {
-        return type_pointer_get_pointee(type);
-    }
-    else
-    {
-        return type_array_get_element_type(type);
-    }
-}
-
 Expression* semantic_checker_handle_array_expression(SemanticChecker* sc,
         Expression* lhs, Location lbracket_loc, Expression* member,
         Location rbracket_loc)
@@ -1475,6 +1744,43 @@ Expression* semantic_checker_handle_array_expression(SemanticChecker* sc,
     // Create the array expression remembering which side is the array side
     return expression_create_array(&sc->ast->ast_allocator,
             lbracket_loc, rbracket_loc, lhs, member, expr_type, lhs_is_array);
+}
+
+Expression* semantic_checker_handle_increment_expression(SemanticChecker* sc,
+        ExpressionType type, Expression* expression, Location operator_loc)
+{
+    assert(type == EXPRESSION_UNARY_PRE_INCREMENT ||
+            type == EXPRESSION_UNARY_POST_INCREMENT ||
+            type == EXPRESSION_UNARY_PRE_DECREMENT ||
+            type == EXPRESSION_UNARY_POST_DECREMENT);
+
+    // Ignore if invalid expression
+    if (expression_is_invalid(expression))
+    {
+        return semantic_checker_handle_error_expression(sc, operator_loc);
+    }
+
+    // Expression firstly needs to be an lvalue
+    ExpressionValueKind kind = expression_classify(sc, expression);
+    if (!expression_value_kind_is_lvalue(kind))
+    {
+        diagnostic_error_at(sc->dm, operator_loc,
+                "expression is not assignable");
+        return semantic_checker_handle_error_expression(sc, operator_loc);
+    }
+
+    if (kind != VALUE_KIND_MODIFIABLE_LVALUE)
+    {
+        diagnostic_error_at(sc->dm, operator_loc,
+                "read only variable is not assignable");
+        return semantic_checker_handle_error_expression(sc, operator_loc);
+    }
+
+    // TODO: determine the type... I think some integer types get promoted
+    QualifiedType qual_type = {0};
+    return NULL;
+    // return expression_create_unary(&sc->ast->ast_allocator, type, operator_loc,
+    //         expression, qual_type);
 }
 
 bool semantic_checker_check_case_allowed(SemanticChecker* sc,

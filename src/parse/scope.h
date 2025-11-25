@@ -91,6 +91,7 @@ Declaration* scope_lookup_member(Scope* scope, Identifier* name);
 
 void scope_insert_ordinairy(Scope* scope, Declaration* declaration);
 void scope_insert_tag(Scope* scope, Declaration* declaration);
+void scope_insert_member(Scope* scope, Declaration* declaration);
 
 // Should be changed to type + recursive
 bool scope_contains(const Scope* scope, Identifier* name);

@@ -45,4 +45,7 @@ bool preprocessor_peek_token(Preprocessor* pp, Token* token);
 
 TokenType preprocessor_peek_next_token_type(Preprocessor* pp);
 
+// TODO: to help error recovery
+void preprocessor_insert_token(Preprocessor* pp, Token token);
+
 #endif /* PREPROCESSOR_H */

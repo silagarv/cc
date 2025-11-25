@@ -231,6 +231,7 @@ const char* complex_specifier_to_name(TypeSpecifierComplex complex);
 const char* type_specifier_to_name(TypeSpecifierType type);
 
 // Some functions to check for specific type qualifiers
+bool type_qualifier_has_any(TypeQualifiers qualifiers);
 bool type_qualifier_is_const(TypeQualifiers qualifiers);
 bool type_qualifier_is_restrict(TypeQualifiers qualifiers);
 bool type_qualifier_is_volatile(TypeQualifiers qualifiers);
@@ -255,6 +256,8 @@ QualifiedType type_create_function(AstAllocator* allocator,
 QualifiedType type_create_enum(AstAllocator* allocator, Type* base);
 void type_enum_set_declaration(QualifiedType* enum_type,
         union Declaration* decl);
+void type_enum_set_complete(QualifiedType* enum_type);
+bool type_enum_is_complete(const QualifiedType* enum_type);
 
 Type* type_create_struct(AstAllocator* allocator);
 void type_struct_set_declaration(Type* type, union Declaration* declaration);
@@ -286,6 +289,9 @@ bool type_is_equal(const Type* t1, const Type* t2);
 bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2);
 bool qualifier_type_is_equal_canonical(const QualifiedType* t1, 
         const QualifiedType* t2);
+bool qualified_type_is_complete(const QualifiedType* type);
+bool type_is_object_type(const Type* type);
+bool qualifier_type_is_object_type(const QualifiedType* type);
 
 void type_print(const QualifiedType* t1);
 

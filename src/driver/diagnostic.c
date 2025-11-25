@@ -48,13 +48,51 @@ static const DiagnosticColours colour_on =
 
 DiagnosticManager diagnostic_manager_init(SourceManager* sm)
 {
-    int tty = isatty(STDERR_FILENO);
-
     DiagnosticManager dm;
     dm.sm = sm;
-    dm.colours = tty ? colour_on : colour_off;
+    dm.colours = isatty(STDERR_FILENO) ? colour_on : colour_off;
+
+    dm.warning_count = 0;
+    dm.error_count = 0;
 
     return dm;
+}
+
+size_t diagnostic_manager_get_warning_count(const DiagnosticManager* dm)
+{
+    return dm->warning_count;
+}
+
+size_t diagnostic_manager_get_error_count(const DiagnosticManager* dm)
+{
+    return dm->error_count;
+}
+
+void diagnostic_emit_count(DiagnosticManager* dm)
+{
+    size_t w_count = diagnostic_manager_get_warning_count(dm);
+    size_t e_count = diagnostic_manager_get_error_count(dm);
+
+    if (e_count == 0 && w_count == 0)
+    {
+        return;
+    }
+
+    if (e_count == 0 && w_count > 0)
+    {
+        fprintf(stderr, "%zu warning%s generated.\n", w_count,
+                w_count > 1 ? "s" : "");
+        return;
+    }
+
+    if (e_count && w_count > 0)
+    {
+        fprintf(stderr, "%zu warning%s and ", w_count,
+                w_count > 1 ? "s" : "");
+    }
+
+    fprintf(stderr, "%zu error%s generated.\n",
+            e_count, e_count > 1 ? "s" : "");
 }
 
 static const char* kind_to_name(DiagnosticKind kind)
@@ -92,6 +130,15 @@ static const char* kind_to_colour(DiagnosticManager* dm, DiagnosticKind kind)
 void diagnostic_internal(DiagnosticManager* dm, DiagnosticKind kind,
         const char* fmt, va_list ap)
 {
+    if (kind == DIAGNOSTIC_ERROR)
+    {
+        dm->error_count++;
+    }
+    else if (kind == DIAGNOSTIC_WARNING)
+    {
+        dm->warning_count++;
+    }
+    
     fprintf(stderr, "%s%s%s:%s%s ",
             dm->colours.highlight,
             kind_to_colour(dm, kind),
@@ -139,6 +186,15 @@ void diagnostic_internal_at(DiagnosticManager* dm, DiagnosticKind kind,
         Location loc, const char* fmt, va_list ap)
 {
     assert(loc != LOCATION_INVALID);
+
+    if (kind == DIAGNOSTIC_ERROR)
+    {
+        dm->error_count++;
+    }
+    else if (kind == DIAGNOSTIC_WARNING)
+    {
+        dm->warning_count++;
+    }
 
     SourceFile* sf = source_manager_from_location(dm->sm, loc);
     ResolvedLocation resolved = line_map_resolve_location(&sf->line_map, loc);

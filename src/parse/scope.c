@@ -228,6 +228,13 @@ static bool scope_allows_declaration(const Scope* scope)
     return scope_allows_common(scope, decl_scopes, num_scopes);
 }
 
+static bool scope_allows_member(const Scope* scope)
+{
+    static const ScopeFlags decl_scopes[] = {SCOPE_MEMBER};
+
+    return scope_allows_common(scope, decl_scopes, 1);
+}
+
 static bool scope_allows_break(const Scope* scope)
 {
     static const ScopeFlags break_scopes[] = {SCOPE_FOR, SCOPE_WHILE,
@@ -287,6 +294,17 @@ static Scope* scope_get_declaration_scope(Scope* scope)
 {
     return scope_get_allowed_scope(scope, scope_allows_declaration,
             scope_get_next_declaration_scope);
+}
+
+static Scope* scope_get_next_member_scope(Scope* scope)
+{
+    return scope_get_next_allowed_scope(scope, scope_allows_member);
+}
+
+static Scope* scope_get_member_scope(Scope* scope)
+{
+    return scope_get_allowed_scope(scope, scope_allows_member,
+            scope_get_next_member_scope);
 }
 
 static Scope* scope_get_next_break_scope(Scope* scope)
@@ -427,6 +445,11 @@ Declaration* scope_lookup_tag(Scope* scope, Identifier* name,
     return NULL;
 }
 
+Declaration* scope_lookup_member(Scope* scope, Identifier* name)
+{
+    return symbol_table_lookup(&scope->members, name);
+}
+
 void scope_insert_ordinairy(Scope* scope, Declaration* declaration)
 {
     Scope* victim = scope_get_declaration_scope(scope);
@@ -446,10 +469,16 @@ void scope_insert_tag(Scope* scope, Declaration* declaration)
     symbol_table_insert(&victim->tag, declaration);
 }
 
-Declaration* scope_lookup_member(Scope* scope, Identifier* name)
+void scope_insert_member(Scope* scope, Declaration* declaration)
 {
-    return symbol_table_lookup(&scope->members, name);
+    Scope* victim = scope_get_member_scope(scope);
+    assert(scope_is(scope, SCOPE_MEMBER));
+
+    assert(!scope_lookup_member(victim, declaration->base.identifier));
+
+    symbol_table_insert(&victim->members, declaration);
 }
+
 
 // Function scope functions.
 

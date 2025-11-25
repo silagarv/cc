@@ -360,7 +360,8 @@ static bool is_statement_start(Parser* parser, const Token* tok);
 // Functions for parsing our constants which include integer, floating point
 // enumeration and character constants
 static Expression* parse_primary_expression(Parser* parser);
-static Expression* parse_postfix_expression(Parser* parser);
+static Expression* parse_postfix_expression(Parser* parser,
+        Expression* compound_literal);
 static Expression* parse_argument_expression_list(Parser* parser);
 static Expression* parse_unary_expression(Parser* parser);
 static Expression* parse_cast_expression(Parser* parser);
@@ -442,10 +443,10 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser);
 static TypeQualifiers parse_type_qualifier_list(Parser* parser);
 static TypeQualifiers parse_type_qualifier_list_opt(Parser* parser);
 
-static Declaration* parse_struct_declarator(Parser* parser);
-static void parse_struct_declarator_list(Parser* parser,
-        DeclarationSpecifiers* specififers);
-static Declaration* parse_struct_declaration(Parser* parser);
+static Declaration* parse_struct_declarator(Parser* parser,
+        DeclarationSpecifiers* specifiers);
+static void parse_struct_declaration(Parser* parser, Declaration* decl,
+        DeclarationVector* members);
 static void parse_struct_declaration_list(Parser* parser, Declaration* decl);
 static Declaration* parse_struct_or_union_specifier(Parser* parser);
 
@@ -731,15 +732,21 @@ static Expression* parse_primary_expression(Parser* parser)
     }
 }
 
-static Expression* parse_postfix_expression(Parser* parser)
+static Expression* parse_postfix_expression(Parser* parser,
+        Expression* compound_literal)
 {
     static const TokenType operators[] = {TOKEN_LBRACKET, TOKEN_LPAREN,
             TOKEN_DOT, TOKEN_ARROW, TOKEN_PLUS_PLUS, TOKEN_MINUS_MINUS};
     static const size_t num_operators = countof(operators);
 
-    /* NOTE: here '(' type-name ')' { ... } is not handled */
-
-    Expression* expr = parse_primary_expression(parser);
+    // How a handle compound literal is handled. Since the start of it looks
+    // exactly like a cast expression we parse the cast first. Then since we see
+    // a '{' we then parse the compound literal. After a compound literal we
+    // should end up here. But since we that is hard we just pass in the 
+    // compound literal expression and DON'T parse a primary expression. 
+    Expression* expr = compound_literal != NULL 
+            ? compound_literal
+            : parse_primary_expression(parser);
 
     while (has_match(parser, operators, num_operators))
     {
@@ -829,18 +836,16 @@ static Expression* parse_postfix_expression(Parser* parser)
             case TOKEN_PLUS_PLUS:
             {
                 Location op_loc = consume(parser);
-                return NULL;
-                // expr = expression_create_unary(&parser->ast.ast_allocator, 
-                //         EXPRESSION_UNARY_POST_INCREMENT, op_loc, expr);
+                expr = semantic_checker_handle_increment_expression(&parser->sc,
+                        EXPRESSION_UNARY_POST_INCREMENT, expr, op_loc);
                 break;
             }
 
             case TOKEN_MINUS_MINUS:
             {
                 Location op_loc = consume(parser);
-                return NULL;
-                // expr = expression_create_unary(&parser->ast.ast_allocator, 
-                //         EXPRESSION_UNARY_POST_DECREMENT, op_loc, expr);
+                expr = semantic_checker_handle_increment_expression(&parser->sc,
+                        EXPRESSION_UNARY_POST_DECREMENT, expr, op_loc);
                 break;
             }
         }
@@ -870,20 +875,16 @@ static Expression* parse_unary_expression(Parser* parser)
         {
             Location op_loc = consume(parser);
             Expression* expr = parse_unary_expression(parser);
-            
-            return NULL;
-            // return expression_create_unary(&parser->ast.ast_allocator,
-            //         EXPRESSION_UNARY_PRE_INCREMENT, op_loc, expr);
+            return semantic_checker_handle_increment_expression(&parser->sc,
+                        EXPRESSION_UNARY_PRE_INCREMENT, expr, op_loc);
         }
 
         case TOKEN_MINUS_MINUS:
         {
             Location op_loc = consume(parser);
             Expression* expr = parse_unary_expression(parser);
-
-            return NULL;
-            // return expression_create_unary(&parser->ast.ast_allocator,
-            //         EXPRESSION_UNARY_PRE_DECREMENT, op_loc, expr);
+            return semantic_checker_handle_increment_expression(&parser->sc,
+                        EXPRESSION_UNARY_PRE_DECREMENT, expr, op_loc);
         }
 
         case TOKEN_AND:
@@ -976,61 +977,62 @@ static Expression* parse_unary_expression(Parser* parser)
         }
 
         default:
-            return parse_postfix_expression(parser);
+            return parse_postfix_expression(parser, NULL);
     }
+}
+
+static Expression* parse_compound_literal(Parser* parser, Location lparen_loc,
+        QualifiedType type, Location rparen_loc)
+{
+    assert(is_match(parser, TOKEN_LCURLY));
+
+    Location l_curly = consume(parser);
+
+    Initializer* initializer = parse_initializer(parser);
+
+    Location rcurly;
+    if (!try_match(parser, TOKEN_RCURLY, &rcurly))
+    {
+        diagnostic_error_at(parser->dm, rparen_loc,
+                "expected '}' after initializer");
+    }
+    
+    // TODO: create the compound literal
+    Expression* compound_literal = NULL;
+    return parse_postfix_expression(parser, compound_literal);
 }
 
 static Expression* parse_cast_expression(Parser* parser)
 {
-    /* ( type-name ) cast-expression */
-    while (is_match(parser, TOKEN_LPAREN) && 
-            is_typename_start(parser, next_token(parser)))
+    // If we cant possible have a cast expression just parse a unary expression
+    if (!is_match(parser, TOKEN_LPAREN) ||
+            !is_typename_start(parser, next_token(parser)))
     {
-        consume(parser);
-
-        QualifiedType type = parse_type_name(parser);
-        
-        Location rparen_loc = LOCATION_INVALID;
-        if (!is_match(parser, TOKEN_RPAREN))
-        {
-            diagnostic_error_at(parser->dm,
-                    current_token_start_location(parser),
-                    "expected ')' after type name");
-        }
-        else
-        {
-            rparen_loc = consume(parser);
-        }
-
-        /* ( type-name ) { initializer-list }
-         * ( type-name ) { initializer-list , }
-         * 
-         * Although this is technically a postfix expression we cannot handle it
-         * there is we eat all of the typenames so handle it here.
-         */
-        if (is_match(parser, TOKEN_LCURLY))
-        {
-            Location l_curly = consume(parser);
-            
-            Initializer* initializer = parse_initializer_list(parser);
-
-            Location r_curly = LOCATION_INVALID;
-            if (!is_match(parser, TOKEN_RCURLY))
-            {
-                diagnostic_error_at(parser->dm,
-                        current_token_start_location(parser),
-                        "expected '}'");
-            }
-            else
-            {
-                r_curly = consume(parser);
-            }
-
-            return NULL;
-        }
+        return parse_unary_expression(parser);
+    }
+    assert(is_match(parser, TOKEN_LPAREN));
+    
+    Location lparen_loc = consume(parser);
+    
+    QualifiedType type = parse_type_name(parser);
+    
+    Location rparen_loc;
+    if (!try_match(parser, TOKEN_RPAREN, &rparen_loc))
+    {
+        diagnostic_error_at(parser->dm, rparen_loc,
+                "expected ')' after type name");
     }
 
-    Expression* expr = parse_unary_expression(parser);
+    // Here we do a little trickery to get this parsing properly, see parse
+    // postfix expression for details
+    if (is_match(parser, TOKEN_LCURLY))
+    {
+        return parse_compound_literal(parser, lparen_loc, type, rparen_loc);
+    }
+
+    Expression* expr = parse_cast_expression(parser);
+
+    // TODO: create the cast expression
 
     return expr;
 }
@@ -1094,7 +1096,6 @@ static Expression* parse_additive_expression(Parser* parser)
         Location op_loc = consume(parser);
         Expression* rhs = parse_multiplicative_expression(parser);
 
-        return NULL;
         // expr = expression_create_binary(&parser->ast.ast_allocator, type, 
         //         op_loc, expr, rhs);
     }
@@ -2508,8 +2509,9 @@ static void parse_direct_declarator(Parser* parser, Declarator* declarator)
         //
         // Also this one below should be parsed as a function type
         // 3. void()
-        if (is_typename_start(parser, next_token(parser)) ||
-                is_next_match(parser, TOKEN_RPAREN))
+        if (!identifier_needed &&
+                (is_typename_start(parser, next_token(parser)) ||
+                is_next_match(parser, TOKEN_RPAREN)))
         {
             goto parse_tail;
         }
@@ -2523,7 +2525,8 @@ static void parse_direct_declarator(Parser* parser, Declarator* declarator)
             diagnostic_error_at(parser->dm,
                     current_token_start_location(parser),
                     "expected ')'");
-            recover(parser, TOKEN_RPAREN, RECOVER_STOP_AT_SEMI);
+            recover(parser, TOKEN_RPAREN,
+                    RECOVER_EAT_TOKEN | RECOVER_STOP_AT_SEMI);
             return;
         }
         Location rparen_loc = consume(parser);
@@ -2537,9 +2540,18 @@ static void parse_direct_declarator(Parser* parser, Declarator* declarator)
     }
     else
     {
-        // Diagnose and set as invalid so we do not accidentilly try to use it     
-        diagnostic_error_at(parser->dm, current_token_start_location(parser),
-                "expected identifier or '('");
+        // Give an appriopriate diagnostic based on the current context
+        Location current = current_token_start_location(parser);
+        if (declarator_get_context(declarator) == DECLARATION_CONTEXT_STRUCT)
+        {
+            diagnostic_error_at(parser->dm, current,
+                    "expected member name or ';' after declaration specifiers");
+        }
+        else
+        {   
+            diagnostic_error_at(parser->dm, current,
+                    "expected identifier or '('");
+        }        
         declarator_set_invalid(declarator);
         return;
     }
@@ -2567,7 +2579,7 @@ static TypeQualifiers parse_type_qualifier_list(Parser* parser)
     DeclarationSpecifiers qualifiers = { .qualifiers = TYPE_QUALIFIER_NONE };
     do
     {
-        TypeQualifiers qualifier = TYPE_QUALIFIER_NONE; // Quiet clang
+        TypeQualifiers qualifier;
         switch (current_token_type(parser))
         {
             case TOKEN_CONST: qualifier = TYPE_QUALIFIER_CONST; break;
@@ -2619,27 +2631,16 @@ static DeclarationSpecifiers parse_specifier_qualifier_list(Parser* parser)
     return specifiers;
 }
 
-static Declaration* parse_struct_declarator(Parser* parser)
+static Declaration* parse_struct_declarator(Parser* parser,
+        DeclarationSpecifiers* specifiers)
 {   
-    // Do we have a bitfield by itself?
-    if (is_match(parser, TOKEN_COLON))
+    Declarator declarator = declarator_create(specifiers,
+            DECLARATION_CONTEXT_STRUCT);
+    if (!is_match(parser, TOKEN_COLON))
     {
-        consume(parser);
-        parse_constant_expression(parser);
-
-        return NULL;
+        parse_declarator(parser, &declarator);
     }
 
-    // TODO: will need to change this function and actuall pass in the declspec
-    DeclarationSpecifiers specifiers = {0};
-    
-    // Otherwise, we want to create and parse our declarator. 
-    Declarator declarator = declarator_create(&specifiers,
-            DECLARATION_CONTEXT_STRUCT);
-
-    parse_declarator(parser, &declarator);
-
-    // Then let's check if we have a bitfield after wards.
     Location colon_loc = LOCATION_INVALID;
     Expression* expr = NULL;
     if (is_match(parser, TOKEN_COLON))
@@ -2648,36 +2649,44 @@ static Declaration* parse_struct_declarator(Parser* parser)
         expr = parse_constant_expression(parser);
     }
 
-    // TODO: add in our struct declarator somehow below we create it all
+    // Process declaration and delete declarator
+    Declaration* declaraton = semantic_checker_process_struct_declarator(
+            &parser->sc, &declarator, colon_loc, expr);
 
     declarator_delete(&declarator);
-
-    return NULL;
+    
+    return declaraton;
 }
 
-static void parse_struct_declarator_list(Parser* parser,
-        DeclarationSpecifiers* specififers)
+static void parse_struct_declaration(Parser* parser, Declaration* decl,
+        DeclarationVector* members)
 {
-    do
-    {
-        Declaration* decl = parse_struct_declarator(parser);
-    }
-    while (try_match(parser, TOKEN_COMMA, NULL));
-}
+    assert(declaration_is(decl, DECLARATION_STRUCT) ||
+            declaration_is(decl, DECLARATION_UNION));
 
-static Declaration* parse_struct_declaration(Parser* parser)
-{
     DeclarationSpecifiers specifiers = parse_specifier_qualifier_list(parser);
 
+    // Struct declarations will always need to have a name to be useful. Unless
+    // we implement c11's anonymous struct/union injection into the scope.
     if (is_match(parser, TOKEN_SEMI))
     {
         Location loc = consume(parser);
         diagnostic_warning_at(parser->dm, loc,
                 "declaration does not declare anything");
-        return NULL;
+        return;
     }
-    
-    parse_struct_declarator_list(parser, &specifiers);
+
+    // Parse all of our structure memers if we have them
+    do
+    {
+        Declaration* member = parse_struct_declarator(parser, &specifiers);
+
+        if (member != NULL)
+        {
+            declaration_vector_push(members, member);
+        }
+    }
+    while (try_match(parser, TOKEN_COMMA, NULL));
 
     if (!is_match(parser, TOKEN_SEMI))
     {
@@ -2690,15 +2699,13 @@ static Declaration* parse_struct_declaration(Parser* parser)
             recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
         }
 
-        return NULL;
+        return;
     }
 
     assert(is_match(parser, TOKEN_SEMI));
 
     // Consume the ';'
     consume(parser);
-
-    return NULL;
 }
 
 static void parse_struct_declaration_list(Parser* parser, Declaration* decl)
@@ -2715,11 +2722,24 @@ static void parse_struct_declaration_list(Parser* parser, Declaration* decl)
         return;
     }
 
-    Scope members = scope_new_member();
-    semantic_checker_push_scope(&parser->sc, &members);
+    Scope member_scope = scope_new_member();
+    semantic_checker_push_scope(&parser->sc, &member_scope);
 
+    DeclarationVector members = declaration_vector_create(32);
     while (!is_match_two(parser, TOKEN_RCURLY, TOKEN_EOF))
     {
+        // Consume any extra ';' that appear inside the struct and warn about
+        // them.
+        if (is_match(parser, TOKEN_SEMI))
+        {
+            Location semi = consume(parser);
+            while (try_match(parser, TOKEN_SEMI, NULL))
+                ;
+            diagnostic_warning_at(parser->dm, semi,
+                    "extra ';' inside a struct");
+            continue;
+        }
+
         if (!is_typename_start(parser, current_token(parser)))
         {
             Location loc = current_token_start_location(parser);
@@ -2730,11 +2750,12 @@ static void parse_struct_declaration_list(Parser* parser, Declaration* decl)
         }
 
         // Otherwise we can parse a struct declaration.
-        parse_struct_declaration(parser);
+        parse_struct_declaration(parser, decl, &members);
     }
+    declaration_vector_free(&members, NULL);
 
     semantic_checker_pop_scope(&parser->sc);
-    scope_delete(&members);
+    scope_delete(&member_scope);
 
     Location closing_curly = LOCATION_INVALID;
     if (!try_match(parser, TOKEN_RCURLY, &closing_curly))
@@ -2808,9 +2829,8 @@ static void parse_enumerator_list(Parser* parser, Declaration* enum_decl)
     if (is_match(parser, TOKEN_RCURLY))
     {
         diagnostic_error_at(parser->dm, current_token_start_location(parser), 
-                "cannot have an empty enum");
+                "use of empty enum");
         consume(parser);
-
         declaration_enum_set_entries(enum_decl, NULL, 0);
 
         return;

@@ -80,6 +80,9 @@ QualifiedType semantic_checker_process_typename(SemanticChecker* sc,
         Declarator* declarator);
 Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
         Declarator* declarator);
+Declaration* semantic_checker_process_struct_declarator(SemanticChecker* sc,
+        Declarator* declarator, Location colon_location,
+        Expression* expression);
 void semantic_checker_declaration_add_initializer(SemanticChecker* sc,
         Declaration* declaration, Location equals, Initializer* initializer);
 
@@ -114,7 +117,8 @@ Expression* semantic_checker_handle_array_expression(SemanticChecker* sc,
         Location rbracket_loc);
 // TODO: semantic_checker_handle_function_call_expression(...);
 // TODO: semantic_checker_handle_member_expression(...);
-
+Expression* semantic_checker_handle_increment_expression(SemanticChecker* sc,
+        ExpressionType type, Expression* expression, Location operator_loc);
 
 
 // Semantic checking functions for the rest of our statement types

@@ -129,6 +129,15 @@ typedef struct DeclarationTypedef {
 typedef struct DeclarationField {
     // the base declaration containing the type of the field
     DeclarationBase base;
+
+    // The colon location for this field
+    Location colon_location;
+
+    // The bitfield expression if present
+    Expression* bitfield;
+
+    // True if we have a bitfield, false otherwise
+    bool has_bitfield;
 } DeclarationField;
 
 typedef struct DeclarationCompound {
@@ -310,6 +319,7 @@ typedef struct Declarator {
 } Declarator;
 
 DeclarationSpecifiers declaration_specifiers_create(Location location);
+bool declaration_specifiers_has_declaration(const DeclarationSpecifiers* d);
 Declaration* declaration_specifiers_get_declaration(
         const DeclarationSpecifiers* decl_spec);
 
@@ -361,8 +371,6 @@ Declaration* declaration_create_variable(AstAllocator* allocator,
 void declaration_variable_add_initializer(Declaration* declaration,
         Initializer* initializer);
 
-// TODO: function
-
 Declaration* declaration_create_typedef(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type);
 void declaration_typedef_set_type(Declaration* tdef, Type* new_type);
@@ -378,6 +386,10 @@ Declaration* declaration_create_enum_constant(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type,
         Location equals, Expression* expression, int value);
 int declaration_enum_constant_get_value(const Declaration* enum_constant);
+
+Declaration* declaration_create_field(AstAllocator* allocator,
+        Location location, Identifier* identifier, QualifiedType type,
+        Location colon_location, Expression* expression);
 
 Declaration* declaration_create_struct(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type);

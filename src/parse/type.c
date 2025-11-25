@@ -96,6 +96,11 @@ const char* type_specifier_to_name(TypeSpecifierType type)
     }
 }
 
+bool type_qualifier_has_any(TypeQualifiers qualifiers)
+{
+    return (qualifiers != TYPE_QUALIFIER_NONE);
+}
+
 bool type_qualifier_is_const(TypeQualifiers qualifiers)
 {
     return (qualifiers & TYPE_QUALIFIER_CONST) != 0;
@@ -250,7 +255,7 @@ QualifiedType type_create_enum(AstAllocator* allocator, Type* base)
 {
     size_t base_size = base->type_base.type_size;
     size_t align_size = base->type_base.type_alignment;
-    bool complete = base->type_base.is_complete;
+    bool complete = false;
     Type* type = type_create_base(allocator, sizeof(TypeEnum), TYPE_ENUM,
             base_size, align_size, complete);
     type->type_enum.enum_decl = NULL;
@@ -264,6 +269,20 @@ void type_enum_set_declaration(QualifiedType* enum_type,
     assert(enum_type->type->type_enum.enum_decl == NULL);
 
     enum_type->type->type_enum.enum_decl = decl;
+}
+
+void type_enum_set_complete(QualifiedType* enum_type)
+{
+    assert(qualified_type_is(enum_type, TYPE_ENUM));
+
+    enum_type->type->type_base.is_complete = true;
+}
+
+bool type_enum_is_complete(const QualifiedType* enum_type)
+{
+    assert(qualified_type_is(enum_type, TYPE_ENUM));
+
+    return enum_type->type->type_base.is_complete;
 }
 
 Type* type_create_struct(AstAllocator* allocator)
@@ -372,6 +391,7 @@ bool qualified_type_is_integer(const QualifiedType* type)
     QualifiedType real_type = qualified_type_get_canonical(type);
     switch (qualified_type_get_kind(&real_type))
     {
+        case TYPE_BOOL: // TODO: is this correct
         case TYPE_CHAR:
         case TYPE_S_CHAR:
         case TYPE_U_CHAR:
@@ -415,8 +435,16 @@ QualifiedType type_get_canonical(const Type* type)
 
 QualifiedType qualified_type_get_canonical(const QualifiedType* type)
 {
-    // TODO: do this properly
-    return type_get_canonical(type->type);
+    QualifiedType qual_type = type_get_canonical(type->type);
+
+    // Get all of the possible type qualifiers
+    TypeQualifiers qualifiers = TYPE_QUALIFIER_NONE;
+    qualifiers |= type->qualifiers;
+    qualifiers |= qual_type.qualifiers;
+    
+    qual_type.qualifiers = qualifiers;
+
+    return qual_type;
 }
 
 bool type_is_builtin(const Type* t1)
@@ -458,6 +486,33 @@ bool qualifier_type_is_equal_canonical(const QualifiedType* t1,
         const QualifiedType* t2)
 {
     return t1->type == t2->type;
+}
+
+bool qualified_type_is_complete(const QualifiedType* qual_type)
+{
+    QualifiedType real_type = qualified_type_get_canonical(qual_type);
+    
+    switch (qualified_type_get_kind(&real_type))
+    {
+        case TYPE_ENUM:
+            return type_enum_is_complete(qual_type);
+
+        // TODO: struct and union types
+
+        default:
+            return real_type.type->type_base.is_complete;
+    }
+}
+
+bool type_is_object_type(const Type* type)
+{
+    // Object types is anything but a function
+    return !type_is(type, TYPE_FUNCTION);
+}
+
+bool qualifier_type_is_object_type(const QualifiedType* type)
+{
+    return type_is_object_type(type->type);
 }
 
 void type_print(const QualifiedType* t1)
