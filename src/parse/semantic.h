@@ -72,17 +72,18 @@ Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
         DeclarationType type, Location tag_type_loc, Identifier* identifier,
         Location identifier_location, bool is_definition);
 
-// TODO: this will need some context e.g. if static is allowed etc.
+// The one directly below is in case of not getting a declarator after our
+// specifiers and getting a comma only.
+Declaration* semantic_checker_process_specifiers(SemanticChecker* sc,
+        DeclarationSpecifiers* specifiers);
 Declaration* semantic_checker_process_function_param(SemanticChecker* sc,
         Declarator* declarator);
-
 QualifiedType semantic_checker_process_typename(SemanticChecker* sc,
         Declarator* declarator);
 Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
         Declarator* declarator);
 Declaration* semantic_checker_process_struct_declarator(SemanticChecker* sc,
-        Declarator* declarator, Location colon_location,
-        Expression* expression);
+        Declarator* declarator);
 void semantic_checker_declaration_add_initializer(SemanticChecker* sc,
         Declaration* declaration, Location equals, Initializer* initializer);
 

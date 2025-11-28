@@ -19,7 +19,6 @@
 #include "parse/ast_allocator.h"
 
 vector_of_impl(Declaration*, Declaration, declaration)
-vector_of_impl(DeclaratorPiece, DeclaratorPiece, declarator_piece)
 
 char* tag_kind_to_name(DeclarationType type)
 {
@@ -92,7 +91,7 @@ Declaration* declaration_specifiers_get_declaration(
 }
 
 Declarator declarator_create(DeclarationSpecifiers* specifiers,
-        DeclaratorContext context)
+        DeclaratorContext context, AstAllocator* allocator)
 {
     Declarator declarator = (Declarator)
     {
@@ -100,16 +99,12 @@ Declarator declarator_create(DeclarationSpecifiers* specifiers,
         .specifiers = specifiers,
         .identifier = NULL,
         .identifier_location = LOCATION_INVALID,
-        .pieces = declarator_piece_vector_create(1),
+        .piece_stack = NULL,
+        .allocator = allocator,
         .invalid = false
     };
 
     return declarator;
-}
-
-void declarator_delete(Declarator* declarator)
-{
-    declarator_piece_vector_free(&declarator->pieces, NULL);
 }
 
 DeclaratorContext declarator_get_context(const Declarator* declarator)
@@ -176,59 +171,122 @@ bool declarator_is_invalid(const Declarator* declarator)
     return declarator->invalid;
 }
 
-void declarator_push_pointer(Declarator* declarator, TypeQualifiers qualifiers)
+bool declarator_allowed_bitfields(Declarator* declarator)
 {
-    DeclaratorPiece piece = (DeclaratorPiece)
-    {
-        .pointer.base.type = DECLARATOR_PIECE_POINTER,
-        .pointer.qualifiers = qualifiers
-    };
-
-    declarator_piece_vector_push(&declarator->pieces, piece);
+    return declarator->context == DECLARATION_CONTEXT_STRUCT;
 }
 
-void declarator_push_array(Declarator* declarator, Location lbracket,
+Location declarator_get_colon_location(Declarator* declarator)
+{
+    return declarator->colon_location;
+}
+
+Expression* declarator_get_bitfield_expression(Declarator* declarator)
+{
+    return declarator->bitfield_expression;
+}
+
+DeclaratorPiece* declarator_get_function_piece(const Declarator* declarator)
+{
+    DeclaratorPiece* lowest = NULL;
+
+    DeclaratorPiece* piece = declarator->piece_stack;
+    while (piece != NULL)
+    {
+        switch (piece->base.type)
+        {
+            case DECLARATOR_PIECE_FUNCTION:
+                lowest = piece;
+                break;
+
+            case DECLARATOR_PIECE_ARRAY:
+            case DECLARATOR_PIECE_POINTER:
+                break;
+
+            default:
+                panic("unexpected declarator piece type");
+                break;
+        }
+        
+        piece = piece->base.next;
+    }
+    
+    return lowest;
+}
+
+Declaration* declarator_function_piece_get_decls(const DeclaratorPiece* piece)
+{
+    assert(piece->base.type == DECLARATOR_PIECE_FUNCTION);
+
+    return piece->function.all_decls;
+}
+
+bool declarator_has_function(const Declarator* declarator)
+{
+    return declarator_get_function_piece(declarator) != NULL;
+}
+
+void declarator_push_pointer(Declarator* declarator, TypeQualifiers qualifiers)
+{
+    DeclaratorPiece* piece = ast_allocator_alloc(declarator->allocator,
+            sizeof(DeclaratorPiece));
+    piece->base.type = DECLARATOR_PIECE_POINTER;
+    piece->base.next = declarator->piece_stack;
+    piece->pointer.qualifiers = qualifiers;
+
+    declarator->piece_stack = piece;
+}
+
+void declarator_push_array(Declarator* declarator, Location lbracket, 
         Location rbracket, Location static_location, TypeQualifiers qualifiers,
         Expression* expression, bool is_static, bool is_star)
 {
-    DeclaratorPiece piece = (DeclaratorPiece)
-    {
-        .array.base.type = DECLARATOR_PIECE_ARRAY,
-        .array.lbracket = lbracket,
-        .array.rbracket = rbracket,
-        .array.static_location = static_location,
-        .array.qualifiers = qualifiers,
-        .array.expression = expression,
-        .array.is_static = is_static,
-        .array.is_star = is_star
-    };
+    DeclaratorPiece* piece = ast_allocator_alloc(declarator->allocator,
+            sizeof(DeclaratorPiece));
+    piece->base.type = DECLARATOR_PIECE_ARRAY;
+    piece->base.next = declarator->piece_stack;
+    piece->array.lbracket = lbracket;
+    piece->array.rbracket = rbracket;
+    piece->array.static_location = static_location;
+    piece->array.qualifiers = qualifiers;
+    piece->array.expression = expression;
+    piece->array.is_static = is_static;
+    piece->array.is_star = is_star;
 
-    declarator_piece_vector_push(&declarator->pieces, piece);
+    declarator->piece_stack = piece;
 }
 
-void declarator_push_function(Declarator* declarator, AstAllocator* allocator,
-        Location lparen_loc, Location rparen_loc, DeclarationVector* params,
+void declarator_push_function(Declarator* declarator, Location lparen_loc,
+        Location rparen_loc, DeclarationVector* params, Declaration* all_decls,
         bool is_variadic)
 {   
     size_t num_params = declaration_vector_size(params);
-    Declaration** alloced = ast_allocator_alloc(allocator,
+    Declaration** alloced = ast_allocator_alloc(declarator->allocator,
             num_params * sizeof(Declaration*));
     for (size_t i = 0; i < num_params; i++)
     {
         alloced[i] = declaration_vector_get(params, i);
     }
 
-    DeclaratorPiece piece = (DeclaratorPiece)
-    {
-        .function.base.type = DECLARATOR_PIECE_FUNCTION,
-        .function.lparen_loc = lparen_loc,
-        .function.rparen_loc = rparen_loc,
-        .function.paramaters = alloced,
-        .function.num_paramaters = num_params,
-        .function.is_variadic = is_variadic
-    };
+    DeclaratorPiece* piece = ast_allocator_alloc(declarator->allocator,
+            sizeof(DeclaratorPiece));
+    piece->base.type = DECLARATOR_PIECE_FUNCTION;
+    piece->base.next = declarator->piece_stack;
+    piece->function.lparen_loc = lparen_loc;
+    piece->function.rparen_loc = rparen_loc;
+    piece->function.paramaters = alloced;
+    piece->function.num_paramaters = num_params;
+    piece->function.all_decls = all_decls;
+    piece->function.is_variadic = is_variadic;
 
-    declarator_piece_vector_push(&declarator->pieces, piece);
+    declarator->piece_stack = piece;
+}
+
+void declarator_add_bitfield(Declarator* declarator, Location colon_location,
+        Expression* expression)
+{
+    declarator->colon_location = colon_location;
+    declarator->bitfield_expression = expression;
 }
 
 bool declaration_is(const Declaration* decl, DeclarationType type)
@@ -281,6 +339,33 @@ void declaration_set_invalid(Declaration* decl)
 QualifiedType declaration_get_type(const Declaration* decl)
 {
     return decl->base.qualified_type;
+}
+
+TypeStorageSpecifier declaration_get_storage_class(const Declaration* decl)
+{
+    return decl->base.storage_class;
+}
+
+Location declaration_get_location(const Declaration* decl)
+{
+    return decl->base.location;
+}
+
+void declaration_set_next(Declaration* decl, Declaration* next)
+{
+    assert(decl->base.next == NULL);
+
+    decl->base.next = next;
+}
+
+Declaration* declaration_get_next(Declaration* decl)
+{
+    return decl->base.next;
+}
+
+Declaration** declaration_get_next_ptr(Declaration* decl)
+{
+    return &decl->base.next;
 }
 
 // This is a function to create a barebones base declaration.
@@ -477,15 +562,52 @@ bool declaration_struct_is_complete(const Declaration* declaration)
     return type_struct_is_complete(type.type);
 }
 
+Declaration* declaration_create_union(AstAllocator* allocator,
+        Location location, Identifier* identifier, QualifiedType type)
+{
+    Declaration* decl = declaration_create_base(allocator,
+            sizeof(DeclarationCompound), DECLARATION_UNION, location,
+            identifier, type, TYPE_STORAGE_SPECIFIER_NONE,
+            TYPE_FUNCTION_SPECIFIER_NONE, false);
+
+    return decl;
+}
+
+// TODO: below
+void declaration_union_add_members(Declaration* declaration,
+        Declaration** members, size_t num_members);
+bool declaration_union_is_complete(const Declaration* declaration);
+
 Declaration* declaration_create_function(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type,
-        TypeStorageSpecifier storage, TypeFunctionSpecifier function_spec)
+        TypeStorageSpecifier storage, TypeFunctionSpecifier function_spec,
+        Declaration* all_decls)
 {
     Declaration* declaration = declaration_create_base(allocator,
             sizeof(DeclarationFunction), DECLARATION_FUNCTION, location,
             identifier, type, storage, function_spec, false);
+    declaration->function.parameters = NULL;
+    declaration->function.num_parameters = 0;
+    declaration->function.function_body = NULL;
+    declaration->function.prev = NULL;
+    declaration->function.all_decls = all_decls;
 
     return declaration;
+}
+
+bool declaration_function_has_body(const Declaration* declaration)
+{
+    assert(declaration_is(declaration, DECLARATION_FUNCTION));
+
+    return declaration->function.function_body != NULL;
+}
+
+void declaration_function_set_body(Declaration* declaraiton,
+        union Statement* body)
+{
+    assert(!declaration_function_has_body(declaraiton));
+
+    declaraiton->function.function_body = body;
 }
 
 Declaration* declaration_create_label(AstAllocator* allocator, 
@@ -501,17 +623,3 @@ Declaration* declaration_create_label(AstAllocator* allocator,
     return decl;
 }
 
-bool declaration_function_has_body(Declaration* declaraiton)
-{
-    assert(declaration_is(declaraiton, DECLARATION_FUNCTION));
-
-    return declaraiton->function.function_body != NULL;
-}
-
-void declaration_function_set_body(Declaration* declaraiton,
-        union Statement* body)
-{
-    assert(!declaration_function_has_body(declaraiton));
-
-    declaraiton->function.function_body = body;
-}

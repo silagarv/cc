@@ -306,11 +306,37 @@ bool type_struct_is_complete(Type* type)
     return type->type_struct.base.is_complete;
 }
 
-// TODO: make sure we set the members
+void type_struct_set_complete(Type* type)
+{
+    type->type_struct.base.is_complete = true;
+}
 
-Type* type_create_union(AstAllocator* allocator);
-void type_union_set_declaration(Type* type, union Declaration* declaration);
-bool type_union_is_complete(Type* type);
+Type* type_create_union(AstAllocator* allocator)
+{
+    Type* type = type_create_base(allocator, sizeof(TypeCompound),
+            TYPE_UNION, 0, 0, false);
+    type->type_union.decl = NULL;
+    type->type_union.members = NULL;
+    type->type_union.num_members = 0;
+
+    return type;
+}
+
+void type_union_set_declaration(Type* type, union Declaration* declaration)
+{
+    type->type_union.decl = declaration;
+}
+
+bool type_union_is_complete(Type* type)
+{
+    return type->type_union.base.is_complete;
+}
+
+void type_union_set_complete(Type* type)
+{
+    type->type_union.base.is_complete = true;
+}
+
 // TODO: make sure we set the members
 
 Type* type_create_typedef(AstAllocator* allocator, QualifiedType type,
@@ -363,6 +389,11 @@ QualifiedType qualified_type_typedef_get_real_type(const QualifiedType* type)
 
 TypeKind qualified_type_get_kind(const QualifiedType* type)
 {
+    if (type == NULL)
+    {
+        return TYPE_ERROR;
+    }
+
     return type->type->type_base.type;
 }
 
@@ -388,6 +419,11 @@ bool qualified_type_is(const QualifiedType* type, TypeKind kind)
 
 bool qualified_type_is_integer(const QualifiedType* type)
 {
+    if (type->type == NULL)
+    {
+        return false;
+    }
+
     QualifiedType real_type = qualified_type_get_canonical(type);
     switch (qualified_type_get_kind(&real_type))
     {

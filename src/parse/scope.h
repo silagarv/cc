@@ -5,13 +5,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "parse/declaration.h"
 #include "util/hash_map.h"
 #include "util/ptr_set.h"
 #include "util/str.h"
 
 #include "lex/identifier_table.h"
 
+#include "parse/declaration.h"
 #include "parse/symbol.h"
 
 typedef enum ScopeFlags {
@@ -45,6 +45,18 @@ typedef struct Scope {
 
     // The direct parent scope of this one, or null if at file level
     struct Scope* parent;
+
+    // Below we store a linked list of all of the declarations in this scope so
+    // that we can have a list of all of the declarations that we could possibly
+    // need. This helps us since we will will possibly need to later use this in
+    // order to recontruct the parameter lists and any other declarations that
+    // are allowed in functions.
+
+    // The first declaration in this scope
+    Declaration* first;
+    
+    // A pointer to the current declarations base 'next' field
+    Declaration** next;
 } Scope;
 
 // The way we will keep track of labels within functions.
@@ -93,9 +105,9 @@ void scope_insert_ordinairy(Scope* scope, Declaration* declaration);
 void scope_insert_tag(Scope* scope, Declaration* declaration);
 void scope_insert_member(Scope* scope, Declaration* declaration);
 
-// Should be changed to type + recursive
-bool scope_contains(const Scope* scope, Identifier* name);
-bool scope_add_symbol(const Scope* scope, Declaration* declaration);
+// get the declaration list from a scope
+Declaration* scope_get_declarations(const Scope* scope);
+void scope_add_declaration(Scope* scope, Declaration* decl);
 
 // Function scopes are specially for function labels
 FunctionScope function_scope_create(Declaration* function);

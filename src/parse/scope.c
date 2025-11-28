@@ -28,6 +28,8 @@ Scope scope_new_file(void)
         .has_ordinairy = true,
         .has_tag = true,
         .has_members = false,
+        .first = NULL,
+        .next = NULL
     };
 
     return scope;
@@ -50,6 +52,8 @@ Scope scope_new_block(void)
         .has_ordinairy = true,
         .has_tag = true,
         .has_members = false,
+        .first = NULL,
+        .next = NULL
     };
 
     return scope;
@@ -67,6 +71,8 @@ Scope scope_new_function_prototype(void)
         .has_ordinairy = true,
         .has_tag = true,
         .has_members = false,
+        .first = NULL,
+        .next = NULL
     };
 
     return scope;
@@ -84,6 +90,8 @@ Scope scope_new_function_declaration(void)
         .has_ordinairy = true,
         .has_tag = true,
         .has_members = false,
+        .first = NULL,
+        .next = NULL
     };
 
     return scope;
@@ -101,6 +109,8 @@ Scope scope_new_member(void)
         .has_ordinairy = false,
         .has_tag = false,
         .has_members = true,
+        .first = NULL,
+        .next = NULL
     };
 
     return scope;
@@ -118,6 +128,8 @@ Scope scope_new_for(void)
         .has_ordinairy = true,
         .has_tag = true,
         .has_members = false,
+        .first = NULL,
+        .next = NULL
     };
 
     return scope;
@@ -135,6 +147,8 @@ Scope scope_new_while(void)
         .has_ordinairy = false,
         .has_tag = false,
         .has_members = false,
+        .first = NULL,
+        .next = NULL
     };
 
     return scope;
@@ -152,6 +166,8 @@ Scope scope_new_do_while(void)
         .has_ordinairy = false,
         .has_tag = false,
         .has_members = false,
+        .first = NULL,
+        .next = NULL
     };
 
     return scope;
@@ -169,6 +185,8 @@ Scope scope_new_switch(void)
         .has_ordinairy = false,
         .has_tag = false,
         .has_members = false,
+        .first = NULL,
+        .next = NULL
     };
 
     return scope;
@@ -456,8 +474,8 @@ void scope_insert_ordinairy(Scope* scope, Declaration* declaration)
 
     assert(!scope_lookup_ordinairy(victim, declaration->base.identifier,
             false));
-
     symbol_table_insert(&victim->ordinairy, declaration);
+    scope_add_declaration(victim, declaration);
 }
 
 void scope_insert_tag(Scope* scope, Declaration* declaration)
@@ -465,8 +483,8 @@ void scope_insert_tag(Scope* scope, Declaration* declaration)
     Scope* victim = scope_get_declaration_scope(scope);
 
     assert(!scope_lookup_tag(victim, declaration->base.identifier, false));
-
     symbol_table_insert(&victim->tag, declaration);
+    scope_add_declaration(victim, declaration);
 }
 
 void scope_insert_member(Scope* scope, Declaration* declaration)
@@ -477,8 +495,27 @@ void scope_insert_member(Scope* scope, Declaration* declaration)
     assert(!scope_lookup_member(victim, declaration->base.identifier));
 
     symbol_table_insert(&victim->members, declaration);
+    scope_add_declaration(victim, declaration);
 }
 
+Declaration* scope_get_declarations(const Scope* scope)
+{
+    return scope->first;
+}
+
+void scope_add_declaration(Scope* scope, Declaration* decl)
+{
+    if (scope->first == NULL)
+    {
+        scope->first = decl;
+        scope->next = declaration_get_next_ptr(decl);
+    }
+    else
+    {
+        *scope->next = decl;
+        scope->next = declaration_get_next_ptr(decl);
+    }
+}
 
 // Function scope functions.
 

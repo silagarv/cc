@@ -41,6 +41,11 @@ void symbol_table_delete(SymbolTable* table)
 
 Declaration* symbol_table_lookup(SymbolTable* table, Identifier* identifier)
 {
+    if (identifier == NULL)
+    {
+        return NULL;
+    }
+
     return hash_map_get(&table->symbols, identifier);
 }
 
@@ -51,6 +56,12 @@ bool symbol_table_contains(SymbolTable* table, Identifier* identifier)
 
 void symbol_table_insert(SymbolTable* table, Declaration* symbol)
 {
+    // Only go to try to add if the declaration has an identifier
+    if (!declaration_has_identifier(symbol))
+    {
+        return;
+    }
+
     assert(!symbol_table_contains(table, symbol->base.identifier));
 
     hash_map_insert(&table->symbols, symbol->base.identifier, symbol);

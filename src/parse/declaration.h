@@ -39,6 +39,103 @@ typedef struct DeclarationSpecifiers {
 // TODO: then function parameters should stay the same though. Should also have
 // TODO: an empty declaration option to create
 
+// Below is declarator pieces. These help us to form declarations whilst we are
+// parsing the declaration. 
+typedef enum DeclaratorPieceType {
+    DECLARATOR_PIECE_POINTER,
+    DECLARATOR_PIECE_ARRAY,
+    DECLARATOR_PIECE_FUNCTION,
+    DECLARATOR_PIECE_KNR_FUNCTION
+} DeclaratorPieceType;
+
+typedef struct DeclaratorPieceBase {
+    // The type of piece this is
+    DeclaratorPieceType type;
+
+    // A pointer to the next piece
+    union DeclaratorPiece* next;
+} DeclaratorPieceBase;
+
+typedef struct DeclaratorPiecePointer {
+    DeclaratorPieceBase base;
+    TypeQualifiers qualifiers;
+} DeclaratorPiecePointer;
+
+typedef struct DeclaratorPieceArray {
+    DeclaratorPieceBase base;
+    Location lbracket;
+    Location rbracket;
+    Location static_location;
+    TypeQualifiers qualifiers;
+    Expression* expression;
+    bool is_static;
+    bool is_star;
+} DeclaratorPieceArray;
+
+typedef struct DeclaratorPieceFunction {
+    DeclaratorPieceBase base;
+    Location lparen_loc;
+    Location rparen_loc;
+    Declaration** paramaters;
+    size_t num_paramaters;
+    Declaration* all_decls;
+    bool is_variadic;
+} DeclaratorPieceFunction;
+
+typedef struct DeclaratorPieceKnrFunction {
+    DeclaratorPieceBase base;
+    Identifier** identifiers;
+    size_t num_identifiers;
+} DeclaratorPieceKnrFunction;
+
+typedef union DeclaratorPiece {
+    DeclaratorPieceBase base;
+    DeclaratorPiecePointer pointer;
+    DeclaratorPieceArray array;
+    DeclaratorPieceFunction function;
+    DeclaratorPieceKnrFunction knr_function;
+} DeclaratorPiece;
+
+// Where is this declaration trying to be definied
+typedef enum DeclaratorContext {
+    DECLARATION_CONTEXT_FILE,
+    DECLARATION_CONTEXT_STRUCT,
+    DECLARATION_CONTEXT_FUNCTION_PARAM,
+    DECLARATION_CONTEXT_BLOCK,
+    DECLARATION_CONTEXT_TYPE_NAME
+} DeclaratorContext;
+
+// Here is our declarator vector that we are going to use to help us parse
+// declarations correctly. Note that we definitely eventually want this to
+// contain more locations and things that we can use.
+typedef struct Declarator {
+    // The declaration context for this declarator.
+    DeclaratorContext context;
+
+    // The declaration specifiers for this declarator.
+    DeclarationSpecifiers* specifiers;
+
+    // the identifer and it's location if present. If no identifer was present
+    // then the location of the token which would have been the identifier is
+    // used. This is so we can get locations for function parameters and such
+    Identifier* identifier;
+    Location identifier_location;
+
+    // All of the decarlator pieces that have been seen for this declarator
+    DeclaratorPiece* piece_stack;
+
+    // The allocator for this declarator. Note this is simply a pointer to the
+    // same allocator the parse uses so it does not need freeing.
+    AstAllocator* allocator;
+
+    // The colon location and expresion for the bitfield if present and allowed
+    Location colon_location;
+    Expression* bitfield_expression;
+
+    // true if this declarator was found to be invalid during parsing
+    bool invalid;
+} Declarator;
+
 typedef enum DeclarationType {
     DECLARATION_ERROR = -1, /* an error in a declaration */
     DECLARATION_VARIABLE, /* of any local or otherwise variable */
@@ -82,6 +179,9 @@ typedef struct DeclarationBase {
 
     // Is this declaration invalid.
     bool invalid;
+
+    // A pointer to the next declaration in this scope
+    union Declaration* next;
 } DeclarationBase;
 
 typedef struct DeclarationVariable {
@@ -110,6 +210,9 @@ typedef struct DeclarationFunction {
 
     // The number of parameters that we actually got.
     size_t num_parameters;
+
+    // All of the declarations present in the function paramater list (structs)
+    Declaration* all_decls;
 
     // The body of this function or NULL if there are only declarations of this
     // function and no definitions.
@@ -240,84 +343,6 @@ union Declaration {
 
 vector_of_decl(Declaration*, Declaration, declaration);
 
-// Below is declarator pieces. These help us to form declarations whilst we are
-// parsing the declaration. 
-typedef enum DeclaratorPieceType {
-    DECLARATOR_PIECE_POINTER,
-    DECLARATOR_PIECE_ARRAY,
-    DECLARATOR_PIECE_FUNCTION,
-    DECLARATOR_PIECE_KNR_FUNCTION
-} DeclaratorPieceType;
-
-typedef struct DeclaratorPieceBase {
-    DeclaratorPieceType type;
-} DeclaratorPieceBase;
-
-typedef struct DeclaratorPiecePointer {
-    DeclaratorPieceBase base;
-    TypeQualifiers qualifiers;
-} DeclaratorPiecePointer;
-
-typedef struct DeclaratorPieceArray {
-    DeclaratorPieceBase base;
-    Location lbracket;
-    Location rbracket;
-    Location static_location;
-    TypeQualifiers qualifiers;
-    Expression* expression;
-    bool is_static;
-    bool is_star;
-} DeclaratorPieceArray;
-
-typedef struct DeclaratorPieceFunction {
-    DeclaratorPieceBase base;
-    Location lparen_loc;
-    Location rparen_loc;
-    Declaration** paramaters;
-    size_t num_paramaters;
-    bool is_variadic;
-} DeclaratorPieceFunction;
-
-typedef struct DeclaratorPieceKnrFunction {
-    DeclaratorPieceBase base;
-    Identifier** identifiers;
-    size_t num_identifiers;
-} DeclaratorPieceKnrFunction;
-
-typedef union DeclaratorPiece {
-    DeclaratorPieceBase base;
-    DeclaratorPiecePointer pointer;
-    DeclaratorPieceArray array;
-    DeclaratorPieceFunction function;
-    DeclaratorPieceKnrFunction knr_function;
-} DeclaratorPiece;
-
-vector_of_decl(DeclaratorPiece, DeclaratorPiece, declarator_piece);
-
-// Where is this declaration trying to be definied
-typedef enum DeclaratorContext {
-    DECLARATION_CONTEXT_FILE,
-    DECLARATION_CONTEXT_STRUCT,
-    DECLARATION_CONTEXT_FUNCTION_PARAM,
-    DECLARATION_CONTEXT_BLOCK,
-    DECLARATION_CONTEXT_TYPE_NAME,
-    /*DECLARATION_CONTEXT_FOR*/
-} DeclaratorContext;
-
-// Here is our declarator vector that we are going to use to help us parse
-// declarations correctly. Note that we definitely eventually want this to
-// contain more locations and things that we can use.
-typedef struct Declarator {
-    DeclaratorContext context;
-    DeclarationSpecifiers* specifiers;
-
-    Identifier* identifier;
-    Location identifier_location;
-    DeclaratorPieceVector pieces;
-
-    bool invalid;
-} Declarator;
-
 DeclarationSpecifiers declaration_specifiers_create(Location location);
 bool declaration_specifiers_has_declaration(const DeclarationSpecifiers* d);
 Declaration* declaration_specifiers_get_declaration(
@@ -327,28 +352,42 @@ char* tag_kind_to_name(DeclarationType type);
 char* declarator_context_to_name(DeclaratorContext context);
 
 Declarator declarator_create(DeclarationSpecifiers* specifiers,
-        DeclaratorContext context);
-void declarator_delete(Declarator* declarator);
+        DeclaratorContext context, AstAllocator* allocator);
 
 DeclaratorContext declarator_get_context(const Declarator* declarator);
+
 bool declarator_identifier_allowed(const Declarator* declarator);
 bool declarator_identifier_required(const Declarator* declarator);
+
 bool declarator_has_identifier(const Declarator* declarator);
 void declarator_set_identifier(Declarator* declarator, Identifier* identifier,
         Location identifier_location);
+
 bool declarator_is_invalid(const Declarator* declarator);
 void declarator_set_invalid(Declarator* declarator);
 
+bool declarator_allowed_bitfields(Declarator* declarator);
+Location declarator_get_colon_location(Declarator* declarator);
+Expression* declarator_get_bitfield_expression(Declarator* declarator);
+
+DeclaratorPiece* declarator_get_function_piece(const Declarator* declarator);
+Declaration* declarator_function_piece_get_decls(const DeclaratorPiece* piece);
+bool declarator_has_function(const Declarator* declarator);
+
 void declarator_push_pointer(Declarator* declarator, TypeQualifiers qualifiers);
-void declarator_push_array(Declarator* declarator, Location lbracket,
+void declarator_push_array(Declarator* declarator, Location lbracket, 
         Location rbracket, Location static_location, TypeQualifiers qualifiers,
         Expression* expression, bool is_static, bool is_star);
-
-void declarator_push_function_empty(Declarator* declarator, ...);
-void declarator_push_function_knr(Declarator* declarator, ...);
-void declarator_push_function(Declarator* declarator, AstAllocator* allocator,
-        Location lparen_loc, Location rparen_loc, DeclarationVector* params,
+void declarator_push_function(Declarator* declarator, Location lparen_loc,
+        Location rparen_loc, DeclarationVector* params, Declaration* all_decls,
         bool is_variadic);
+void declarator_add_bitfield(Declarator* declarator, Location colon_location,
+        Expression* expression);
+
+void declarator_push_function_empty(Declarator* declarator, Location lparen_loc,
+        Location rparen_loc);
+void declarator_push_function_knr(Declarator* declarator, ...);
+
 
 // TODO: redo this completely with our ast allocator
 
@@ -358,6 +397,11 @@ bool declaration_has_identifier(const Declaration* decl);
 bool declaration_is_valid(const Declaration* decl);
 void declaration_set_invalid(Declaration* decl);
 QualifiedType declaration_get_type(const Declaration* decl);
+TypeStorageSpecifier declaration_get_storage_class(const Declaration* decl);
+Location declaration_get_location(const Declaration* decl);
+void declaration_set_next(Declaration* decl, Declaration* next);
+Declaration* declaration_get_next(Declaration* decl);
+Declaration** declaration_get_next_ptr(Declaration* decl);
 
 // Create an error declaraiton
 Declaration* declaration_create_error(AstAllocator* allocator,
@@ -397,17 +441,23 @@ void declaration_struct_add_members(Declaration* declaration,
         Declaration** members, size_t num_members);
 bool declaration_struct_is_complete(const Declaration* declaration);
 
+Declaration* declaration_create_union(AstAllocator* allocator,
+        Location location, Identifier* identifier, QualifiedType type);
+void declaration_union_add_members(Declaration* declaration,
+        Declaration** members, size_t num_members);
+bool declaration_union_is_complete(const Declaration* declaration);
+
 Declaration* declaration_create_function(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type,
-        TypeStorageSpecifier storage, TypeFunctionSpecifier function_spec);
+        TypeStorageSpecifier storage, TypeFunctionSpecifier function_spec,
+        Declaration* all_decls);
+bool declaration_function_has_body(const Declaration* declaration);
+void declaration_function_set_body(Declaration* declaraiton,
+        union Statement* body);
 
 // Create a declaration of label identifier at the given location, and indicate
 // if this label was implictly constructed.
 Declaration* declaration_create_label(AstAllocator* allocator, 
         Identifier* identifier, Location location, bool implicit);
-
-bool declaration_function_has_body(Declaration* declaraiton);
-void declaration_function_set_body(Declaration* declaraiton,
-        union Statement* body);
 
 #endif /* DECLARATION_H */

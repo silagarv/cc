@@ -50,7 +50,6 @@ int compiler_main(int argc, char** argv)
 
     Preprocessor pp = preprocessor_create(&dm, &sm, source);
     parse_translation_unit(&dm, &pp);
-
     diagnostic_emit_count(&dm);
 
     preprocessor_delete(&pp);
