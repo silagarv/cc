@@ -277,50 +277,48 @@ static void skip_line_comment(Lexer* lexer)
             break;
         }
 
+        // Check for line comment terminated by end of file
         if (current == '\0' && at_eof(lexer))
         {
-            // TODO: maybe issue warning about comment ending the thing
             diagnostic_warning_at(lexer->dm, get_curr_location(lexer),
                     "no newline at end of file");
-
             break;
         }
 
         consume_char(lexer);
-    } while (true);
+    }
+    while (true);
 }
 
-static void skip_block_comment(Lexer* lexer)
+static void skip_block_comment(Lexer* lexer, Location start_loc)
 {
     do {
         char current = get_curr_char(lexer);
-
-        if (current == '*')
-        {
-            consume_char(lexer);
-
-            current = get_curr_char(lexer);
-
-            if (current == '/')
-            {
-                consume_char(lexer);
-
-                break;
-            }
-        }
-
         if (current == '\0' && at_eof(lexer))
         {
-            // TODO: this diagnostic should probably be at the start location
-            // TODO: of the comment not at the end of file
-            diagnostic_error_at(lexer->dm, get_curr_location(lexer),
+            diagnostic_error_at(lexer->dm, start_loc,
                     "unterminated /* comment");
+            break;
+        }
 
+        // Check for nested block comments
+        if (current == '/' && peek_char(lexer) == '*')
+        {
+            diagnostic_warning_at(lexer->dm, get_curr_location(lexer),
+                    "'/*' within block comment");
+        }
+
+        // Check for end of comment
+        if (current == '*' && peek_char(lexer) == '/')
+        {
+            consume_char(lexer);
+            consume_char(lexer);
             break;
         }
 
         consume_char(lexer);
-    } while (true);
+    }
+    while (true);
 }
 
 static TokenData lexer_create_literal_node(Lexer* lexer, Buffer* buffer)
@@ -743,7 +741,8 @@ retry_lexing:;
 
     // Make sure our token flags are correctly set up
     token_set_flag(token, whitespace ? TOKEN_FLAG_WHITESPACE : TOKEN_FLAG_NONE);
-    token_set_flag(token, lexer->start_of_line ? TOKEN_FLAG_BOL: TOKEN_FLAG_NONE);
+    token_set_flag(token,
+            lexer->start_of_line ? TOKEN_FLAG_BOL : TOKEN_FLAG_NONE);
     token_unset_flag(token, TOKEN_FLAG_DISABLE_EXPAND);
 
     token->data = (TokenData) {0};
@@ -759,13 +758,17 @@ retry_lexing:;
 
     // Here we will do our actual lexing
     char curr = get_next_char(lexer);
-
     switch (curr)
     {
         case '\0':
             if (at_eof(lexer))
             {
                 // Warn about no newline at eof
+                if (!(token->flags & TOKEN_FLAG_BOL))
+                {
+                    diagnostic_warning_at(lexer->dm, token->loc,
+                            "no newline at end of file");
+                }
 
                 token->type = TOKEN_EOF;
 
@@ -922,7 +925,7 @@ retry_lexing:;
             {
                 consume_char(lexer);
 
-                skip_block_comment(lexer);
+                skip_block_comment(lexer, token->loc);
 
                 whitespace = true;
 
@@ -940,7 +943,7 @@ retry_lexing:;
             }
             break;
 
-            case '*':
+        case '*':
             curr = get_curr_char(lexer);
             if (curr == '=')
             {
@@ -1266,7 +1269,8 @@ retry_lexing:;
             if (!is_ascii(curr))
             {
                 utf32 value;
-                bool conversion_success = utf8_to_utf32((unsigned char**) &token_start, 
+                bool conversion_success = utf8_to_utf32(
+                        (unsigned char**) &token_start, 
                         (unsigned char*) lexer->buffer_end, &value);
                 
                 // TODO: figure out what to do with the value once we have it

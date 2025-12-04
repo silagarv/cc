@@ -189,12 +189,12 @@ static Type* type_create_base(AstAllocator* allocator, size_t alloc_size,
 }
 
 QualifiedType type_create_pointer(AstAllocator* allocator,
-        QualifiedType* base_type, TypeQualifiers qualifiers)
+        QualifiedType base_type, TypeQualifiers qualifiers)
 {
     // Simply create a pointer type and set the underlying type
     Type* type = type_create_base(allocator, sizeof(TypePointer), TYPE_POINTER,
             8, 8, true);
-    type->type_pointer.underlying_type = *base_type;
+    type->type_pointer.underlying_type = base_type;
 
     return (QualifiedType) {qualifiers, type};
 }
@@ -207,19 +207,19 @@ QualifiedType type_pointer_get_pointee(const QualifiedType* pointer)
 }
 
 QualifiedType type_create_array(AstAllocator* allocator,
-        QualifiedType* element_type, size_t length, bool is_static,
+        QualifiedType element_type, size_t length, bool is_static,
         bool is_star, bool is_vla)
 {
     // Get the size of the array if the length if known
-    size_t size = length * element_type->type->type_base.type_size;
+    size_t size = length * element_type.type->type_base.type_size;
 
     // Array of unknown length are incomplete types
     bool is_complete = (length == 0) ? false : true;
 
     // Need to determine the size and align or the array.
     Type* type = type_create_base(allocator, sizeof(TypeArray), TYPE_ARRAY,
-            size, element_type->type->type_base.type_alignment, is_complete);
-    type->type_array.element_type = *element_type;
+            size, element_type.type->type_base.type_alignment, is_complete);
+    type->type_array.element_type = element_type;
     type->type_array.length = length;
     type->type_array.is_static = is_static;
     type->type_array.is_star = is_star;
@@ -236,8 +236,46 @@ QualifiedType type_array_get_element_type(const QualifiedType* type)
     return type->type->type_array.element_type;
 }
 
+TypeFunctionParameter* type_create_function_parameter(AstAllocator* allocator,
+        QualifiedType type)
+{
+    TypeFunctionParameter* param = ast_allocator_alloc(allocator,
+            sizeof(TypeFunctionParameter));
+    param->type = type;
+    param->next = NULL;
+
+    return param;
+}
+
+void type_function_parameter_set_next(TypeFunctionParameter* param,
+        TypeFunctionParameter* next)
+{
+    param->next = next;
+}
+
+TypeFunctionParameter* type_function_parameter_get_next(
+        TypeFunctionParameter* param)
+{
+    return param->next;
+}
+
+QualifiedType type_function_parameter_get_type(TypeFunctionParameter* param)
+{
+    return param->type;
+}
+
+TypeQualifiers qualified_type_get_quals(const QualifiedType* type)
+{
+    return type->qualifiers;
+}
+
+QualifiedType qualified_type_remove_quals(const QualifiedType* type)
+{
+    return (QualifiedType) {TYPE_QUALIFIER_NONE, type->type};
+}
+
 QualifiedType type_create_function(AstAllocator* allocator,
-        QualifiedType return_type, QualifiedType* paramaters,
+        QualifiedType return_type, TypeFunctionParameter* paramaters,
         size_t num_paramaters, bool unspecified_paramters, bool variadic)
 {
     Type* type = type_create_base(allocator, sizeof(TypeFunction),
@@ -299,6 +337,14 @@ Type* type_create_struct(AstAllocator* allocator)
 void type_struct_set_declaration(Type* type, union Declaration* declaration)
 {
     type->type_struct.decl = declaration;
+}
+
+union Declaration* qualified_type_struct_get_declaration(QualifiedType* type)
+{
+    assert(qualified_type_is_compound(type));
+
+    QualifiedType real_type = qualified_type_get_canonical(type);
+    return real_type.type->type_struct.decl;
 }
 
 bool type_struct_is_complete(Type* type)
@@ -387,6 +433,11 @@ QualifiedType qualified_type_typedef_get_real_type(const QualifiedType* type)
     return type->type->type_typedef.real_type;
 }
 
+Type* qualified_type_get_raw(const QualifiedType* type)
+{
+    return type->type;
+}
+
 TypeKind qualified_type_get_kind(const QualifiedType* type)
 {
     if (type == NULL)
@@ -452,6 +503,14 @@ bool qualified_type_is_integer(const QualifiedType* type)
         default:
             return false;
     }
+}
+
+bool qualified_type_is_compound(const QualifiedType* type)
+{
+    QualifiedType real_type = qualified_type_get_canonical(type);
+
+    return qualified_type_is(&real_type, TYPE_STRUCT) ||
+            qualified_type_is(&real_type, TYPE_UNION);
 }
 
 QualifiedType type_get_canonical(const Type* type)
@@ -531,9 +590,11 @@ bool qualified_type_is_complete(const QualifiedType* qual_type)
     switch (qualified_type_get_kind(&real_type))
     {
         case TYPE_ENUM:
-            return type_enum_is_complete(qual_type);
+            return type_enum_is_complete(&real_type);
 
         // TODO: struct and union types
+        case TYPE_STRUCT:
+            return type_struct_is_complete(real_type.type);
 
         default:
             return real_type.type->type_base.is_complete;

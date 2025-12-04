@@ -7,7 +7,8 @@ CFLAGS = -Wall \
 	-g3 \
 	-O0 \
 	-MMD \
-	-MP
+	-MP \
+	#-fsanitize=undefined,address
 CFLAGS += -Wno-unused-parameter \
 	-Wno-unused-variable \
 	-Wno-unused-function \

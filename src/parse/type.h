@@ -31,6 +31,7 @@ typedef enum TypeKind {
     TYPE_STRUCT,
     TYPE_UNION,
     TYPE_ENUM,
+    TYPE_FUNCTION_PARAMETER,
     TYPE_FUNCTION,
     TYPE_POINTER,
     TYPE_TYPEDEF,
@@ -93,6 +94,8 @@ typedef enum TypeSpecifierComplex {
 
 typedef union Type Type;
 
+// TODO: i think it would be nice to merge the qualifiers into the type base
+// TODO: itself to make it a bit more ergonomic to use.
 typedef struct QualifiedType {
     TypeQualifiers qualifiers;
     Type* type;
@@ -158,10 +161,16 @@ typedef struct TypeEnum {
     union Declaration* enum_decl; // the enumeration declaration
 } TypeEnum;
 
+typedef struct TypeFunctionParameter {
+    QualifiedType type;
+    struct TypeFunctionParameter* next;
+} TypeFunctionParameter;
+
 typedef struct TypeFunction {
     TypeBase base;
     QualifiedType return_type; // the return type of the function
-    QualifiedType* paramaters; // the parameters of the function
+    // TypeFunctionParameter* paramaters; // the parameters of the function
+    TypeFunctionParameter* paramaters;
     size_t num_paramaters; // Number of params if known otherwise 0
 
     bool unspecified_paramters; // e.g. int foo()
@@ -241,17 +250,28 @@ TypeBuiltins type_builtins_initialise(AstAllocator* allocator);
 
 // Functions for creating and maniputing types
 QualifiedType type_create_pointer(AstAllocator* allocator,
-        QualifiedType* base_type, TypeQualifiers qualifiers);
+        QualifiedType base_type, TypeQualifiers qualifiers);
 QualifiedType type_pointer_get_pointee(const QualifiedType* pointer);
 
 QualifiedType type_create_array(AstAllocator* allocator,
-        QualifiedType* element_type, size_t length, bool is_static,
+        QualifiedType element_type, size_t length, bool is_static,
         bool is_star, bool is_vla);
 QualifiedType type_array_get_element_type(const QualifiedType* type);
 
+TypeFunctionParameter* type_create_function_parameter(AstAllocator* allocator,
+        QualifiedType type);
+void type_function_parameter_set_next(TypeFunctionParameter* param,
+        TypeFunctionParameter* next);
+TypeFunctionParameter* type_function_parameter_get_next(
+        TypeFunctionParameter* param);
+QualifiedType type_function_parameter_get_type(TypeFunctionParameter* param);
+
 QualifiedType type_create_function(AstAllocator* allocator,
-        QualifiedType return_type, QualifiedType* paramaters,
+        QualifiedType return_type, TypeFunctionParameter* paramaters,
         size_t num_paramaters, bool unspecified_paramters, bool variadic);
+
+TypeQualifiers qualified_type_get_quals(const QualifiedType* type);
+QualifiedType qualified_type_remove_quals(const QualifiedType* type);
 
 QualifiedType type_create_enum(AstAllocator* allocator, Type* base);
 void type_enum_set_declaration(QualifiedType* enum_type,
@@ -261,6 +281,7 @@ bool type_enum_is_complete(const QualifiedType* enum_type);
 
 Type* type_create_struct(AstAllocator* allocator);
 void type_struct_set_declaration(Type* type, union Declaration* declaration);
+union Declaration* qualified_type_struct_get_declaration(QualifiedType* type);
 bool type_struct_is_complete(Type* type);
 void type_struct_set_complete(Type* type);
 // TODO: make sure we set the members
@@ -274,10 +295,12 @@ void type_union_set_complete(Type* type);
 Type* type_create_typedef(AstAllocator* allocator, QualifiedType type,
         union Declaration* decl);
 
+Type* qualified_type_get_raw(const QualifiedType* type);
 TypeKind qualified_type_get_kind(const QualifiedType* type);
 bool type_is(const Type* type, TypeKind kind);
 bool qualified_type_is(const QualifiedType* type, TypeKind kind);
 bool qualified_type_is_integer(const QualifiedType* type);
+bool qualified_type_is_compound(const QualifiedType* type);
 QualifiedType type_get_canonical(const Type* type);
 QualifiedType qualified_type_get_canonical(const QualifiedType* type);
 

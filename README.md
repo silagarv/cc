@@ -22,13 +22,11 @@ To building, run 'make' in the cc directory and it wll output an executable name
 
 ## Current TODO
 - Declaration parsing
-    - complete the building of the function types
-    - complete struct / union parsing and building
-    - figure out how we want to store structs / unions once they are fully built
+    - complete the building of the function types (knr type left only)
+    - complete struct / union building including sizeof and offsets...
 
 - Scoping
-    - Figure out how to go form function prototype scope -> function scope
-    - make some fixes for external declarations
+    - fix redefinitions of externel entities
 
 - Semantic
     - expressions

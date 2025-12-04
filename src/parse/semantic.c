@@ -15,14 +15,12 @@
 
 #include "parse/scope.h"
 #include "parse/statement.h"
-#include "parse/symbol.h"
 #include "parse/type.h"
 #include "parse/declaration.h"
 #include "parse/ast_allocator.h"
 #include "parse/expression.h"
 #include "parse/initializer.h"
 #include "parse/literal_parser.h"
-#include "parse/parser.h"
 
 SemanticChecker sematic_checker_create(DiagnosticManager* dm, 
         IdentifierTable* identifiers, Ast* ast)
@@ -37,6 +35,175 @@ SemanticChecker sematic_checker_create(DiagnosticManager* dm,
     };
 
     return sc;
+}
+
+// -----------------------------------------------------------------------------
+// Start functions for handling scopes
+// -----------------------------------------------------------------------------
+
+void semantic_checker_push_scope(SemanticChecker* sc, Scope* scope)
+{
+    // Set the scopes parent
+    scope_set_parent(scope, sc->scope);
+
+    // Set the sematic checkers scope.
+    sc->scope = scope;
+}
+
+void semantic_checker_pop_scope(SemanticChecker* sc)
+{
+    sc->scope = scope_get_parent(sc->scope);
+}
+
+Scope* semantic_checker_current_scope(SemanticChecker* sc)
+{
+    return sc->scope;
+}
+
+Declaration* semantic_checker_lookup_ordinairy(SemanticChecker* sc,
+        Identifier* identifier, bool recursive)
+{
+    if (identifier == NULL)
+    {
+        return NULL;
+    }
+
+    return scope_lookup_ordinairy(sc->scope, identifier, recursive);
+}
+
+Declaration* semantic_checker_lookup_tag(SemanticChecker* sc,
+        Identifier* identifier, bool recursive)
+{
+    if (identifier == NULL)
+    {
+        return NULL;
+    }
+
+    return scope_lookup_tag(sc->scope, identifier, recursive);
+}
+
+Declaration* semantic_checker_lookup_member(SemanticChecker* sc,
+        Identifier* identifier)
+{
+    assert(scope_is(sc->scope, SCOPE_MEMBER) && "must be a member scope");
+
+    return scope_lookup_member(sc->scope, identifier);
+}
+
+void semantic_checker_insert_ordinairy(SemanticChecker* sc,
+        Declaration* declaration)
+{
+    scope_insert_ordinairy(sc->scope, declaration);
+}
+
+void semantic_checker_insert_tag(SemanticChecker* sc, Declaration* decl)
+{
+    // Any new tag declarations will not be visible outside of function scope
+    // so producte a warning about this.
+    if (scope_is(sc->scope, SCOPE_FUNCTION))
+    {
+        diagnostic_warning_at(sc->dm, decl->base.location,
+                "declaration of '%s %s' will not be visible outside of this "
+                "function", tag_kind_to_name(decl->base.declaration_type),
+                decl->base.identifier->string.ptr);
+    }
+
+    scope_insert_tag(sc->scope, decl);
+}
+
+void semantic_checker_insert_member(SemanticChecker* sc, Declaration* decl)
+{
+    assert(scope_is(sc->scope, SCOPE_MEMBER) && "must be a member scope");
+    assert(declaration_is(decl, DECLARATION_FIELD));
+
+    scope_insert_member(sc->scope, decl);
+}
+
+// -----------------------------------------------------------------------------
+// End functions for handling scopes
+// -----------------------------------------------------------------------------
+// =============================================================================
+// -----------------------------------------------------------------------------
+// Start functions for handling declarations
+// -----------------------------------------------------------------------------
+
+static QualifiedType semantic_checker_get_int_type(SemanticChecker* sc)
+{
+    Type* int_type = sc->ast->base_types.type_signed_int;
+    return (QualifiedType) {TYPE_QUALIFIER_NONE, int_type};
+}
+
+static QualifiedType semantic_checker_get_void_type(SemanticChecker* sc)
+{
+    Type* void_type = sc->ast->base_types.type_void;
+    return (QualifiedType) {TYPE_QUALIFIER_NONE, void_type};
+}
+
+static QualifiedType semantic_checker_decay_type(SemanticChecker* sc,
+        QualifiedType type)
+{
+    // TODO: instead of us going in and manually decaying the types. I would
+    // TODO: like to create a decayed type type. Which stores both the new type
+    // TODO: and the type that it was originally. This is how we would implement
+    // TODO: diagnostics for decayed types differing e.g. 
+    // TODO:                    int arr[10] vs int arr[2]
+    // TODO: occuring in different function prototypes is fine, but we might 
+    // TODO: want to warn when that does occur.
+
+    // Get the real type to see through typedefs.
+    QualifiedType real_type = qualified_type_get_canonical(&type);
+
+    assert(qualified_type_is(&real_type, TYPE_ARRAY)
+            || qualified_type_is(&real_type, TYPE_FUNCTION));
+
+    // Decay function types. To do this turn the function type into a pointer to
+    // the said function type
+    if (qualified_type_is(&real_type, TYPE_FUNCTION))
+    {
+        // Here we can use the original type and avoid desugaring since pointer
+        // doesn't have to go one level lower.
+        return type_create_pointer(&sc->ast->ast_allocator, type,
+                TYPE_QUALIFIER_NONE);
+    }
+
+    // Decay array types.
+    if (qualified_type_is(&real_type, TYPE_ARRAY))
+    {
+        // Here we will avoid having to use the real type if needed so we will
+        // check if the original type is an array type. If it is then we use
+        // that otherwise using the real type to create a pointer
+        QualifiedType element;
+        if (qualified_type_is(&type, TYPE_ARRAY))
+        {
+            element = type_array_get_element_type(&type);
+        }
+        else
+        {
+            element = type_array_get_element_type(&real_type);
+        }
+        return type_create_pointer(&sc->ast->ast_allocator, element,
+                    TYPE_QUALIFIER_NONE);
+    }
+
+    // We should never be here, but as fallback just return the original type
+    panic("failed to decay type");
+    return type;
+}
+
+bool semantic_checker_identifier_is_typename(SemanticChecker* sc,
+        Identifier* identifier)
+{
+    Declaration* decl = semantic_checker_lookup_ordinairy(sc, identifier, true);
+    return declaration_is(decl, DECLARATION_TYPEDEF);
+}
+
+Declaration* semantic_checker_get_typename(SemanticChecker* sc,
+        Identifier* identifier)
+{
+    Declaration* decl = semantic_checker_lookup_ordinairy(sc, identifier, true);
+    assert(declaration_is(decl, DECLARATION_TYPEDEF));
+
+    return decl;
 }
 
 void declaration_specifiers_finish(SemanticChecker* sc,
@@ -181,18 +348,19 @@ static QualifiedType add_type_qualifiers(SemanticChecker* sc,
         }
     }
 
-    if (type_qualifier_is_const(qualifiers))
-    {
-        if (type->type_base.type == TYPE_VOID)
-        {
-            ; // TODO: ...
-        }
-    }
+    // TODO: figure out below if any warning / errors should be used.
+    // if (type_qualifier_is_const(qualifiers))
+    // {
+    //     // if (type->type_base.type == TYPE_VOID)
+    //     // {
+    //     //     ; // TODO: ...
+    //     // }
+    // }
 
-    if (type_qualifier_is_volatile(qualifiers))
-        ; // TODO;
-
-    // TODO: function types?    
+    // if (type_qualifier_is_volatile(qualifiers))
+    // {
+    //     // ; // TODO
+    // }
 
     return (QualifiedType) {.type = type, .qualifiers = qualifiers};
 }
@@ -324,8 +492,11 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
         }
 
         case TYPE_SPECIFIER_TYPE_TYPENAME:
-            type = specifiers->type;
-            break;           
+        {
+            Declaration* typename = specifiers->declaration;
+            type = typename->tdef.new_type;
+            break;
+        }
     }
 
     assert(type != NULL);
@@ -335,8 +506,9 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
     return add_type_qualifiers(sc, specifiers, type);
 }
 
-static void semantic_checker_process_array(SemanticChecker* sc,
-        QualifiedType* type, DeclaratorPiece* piece, DeclaratorContext context)
+static QualifiedType process_array_type(SemanticChecker* sc, Declarator* d,
+        QualifiedType current, DeclaratorPiece* piece, DeclaratorContext ctx,
+        bool* invalid)
 {
     assert(piece->base.type == DECLARATOR_PIECE_ARRAY);
 
@@ -349,10 +521,7 @@ static void semantic_checker_process_array(SemanticChecker* sc,
     bool is_star = array->is_star;
     bool is_vla = array->is_star;
 
-    // NOTE: The error messages have been copied from clang with the behavious
-    // being figured out manually through trial and error.
-
-    // Now that we are allowed to have static at all
+     // Now that we are allowed to have static at all
     if (is_static && is_star)
     {
         diagnostic_error_at(sc->dm, array->static_location,
@@ -368,14 +537,14 @@ static void semantic_checker_process_array(SemanticChecker* sc,
     }
 
     // First check for star modifier.
-    if (is_star && context != DECLARATION_CONTEXT_FUNCTION_PARAM)
+    if (is_star && ctx != DECLARATION_CONTEXT_FUNCTION_PARAM)
     {
         diagnostic_error_at(sc->dm, array->lbracket,
                 "star modifier used outside of function prototype");
     }
 
     // Then check for static
-    if (context != DECLARATION_CONTEXT_FUNCTION_PARAM)
+    if (ctx != DECLARATION_CONTEXT_FUNCTION_PARAM)
     {
         if (is_static)
         {
@@ -394,115 +563,239 @@ static void semantic_checker_process_array(SemanticChecker* sc,
         }
     }
 
-    if (array->expression && 
-            array->expression->base.kind != EXPRESSION_INTEGER_CONSTANT)
-    {
-        diagnostic_error_at(sc->dm, array->lbracket,
-                "cannot determine array size at this time");
-    }
-
     // Finally, we need to check if the array's element type is a complete type
-    if (/*!is_complete_type(type)*/0)
+    if (!qualified_type_is_complete(&current))
     {
-        // TODO: make sure the typename is printed
         diagnostic_error_at(sc->dm, array->lbracket,
                 "array has incomplete element type");
+        return semantic_checker_get_int_type(sc);
     }
 
-    // Finally create and set the new type
-    QualifiedType new_type = type_create_array(&sc->ast->ast_allocator, type,
+    // Finally check for an array of functions
+    QualifiedType real_type = qualified_type_get_canonical(&current);
+    if (qualified_type_is(&real_type, TYPE_FUNCTION))
+    {
+        Identifier* name = declarator_get_identifier(d);
+        const char* string = name != NULL ? name->string.ptr : "type name";
+        diagnostic_error_at(sc->dm, array->lbracket,
+                "'%s' declared as array of functions", string);
+            
+        // Recover by making it an int
+        return semantic_checker_get_int_type(sc);
+    }
+
+    // TODO: will eventually need for work for vlas and other things.
+
+    // TODO: this will need to be changed later to properly fold the expr
+    if (expression && expression_is(expression, EXPRESSION_INTEGER_CONSTANT))
+    {
+        length = expression->integer.value.value;   
+    }
+    else if (expression)
+    {
+        diagnostic_error_at(sc->dm, array->lbracket, "cannot fold expression");
+    }
+
+    // Finally create and return the new type
+    QualifiedType new_type = type_create_array(&sc->ast->ast_allocator, current,
             length, is_static, is_star, is_vla);
-    *type = new_type;
+    return new_type;
 }
 
-static void semantic_checker_process_pointer(SemanticChecker* sc,
-        QualifiedType* type, DeclaratorPiece* piece, DeclaratorContext context)
+static QualifiedType process_pointer_type(SemanticChecker* sc, Declarator* d,
+        QualifiedType current, DeclaratorPiece* piece, DeclaratorContext ctx,
+        bool* invalid)
 {
     assert(piece->base.type == DECLARATOR_PIECE_POINTER);
 
     DeclaratorPiecePointer* pointer = (DeclaratorPiecePointer*) piece;
 
-    // TODO: figure out the restrictions on pointers
-
-    QualifiedType new_type = type_create_pointer(&sc->ast->ast_allocator, type,
-            pointer->qualifiers);
-    *type = new_type;
+    QualifiedType new_type = type_create_pointer(&sc->ast->ast_allocator,
+            current, pointer->qualifiers);
+    return new_type;
 }
 
-static QualifiedType* semantic_checker_types_from_declaraions(
-        SemanticChecker* sc, Declaration** declarations, size_t num_decls)
+QualifiedType check_parameter_type(SemanticChecker* sc, Declaration* parameter,
+        size_t num_paramaters, bool is_variadic)
 {
-    QualifiedType* types = ast_allocator_alloc(&sc->ast->ast_allocator,
-            sizeof(QualifiedType) * num_decls);
-    for (size_t i = 0; i < num_decls; i++)
+    QualifiedType type = declaration_get_type(parameter);
+    QualifiedType real_type = qualified_type_get_canonical(&type);
+
+    // Function types should be decayed to pointers to function
+    if (qualified_type_is(&real_type, TYPE_FUNCTION))
     {
-        types[i] = declarations[i]->base.qualified_type;
+        return semantic_checker_decay_type(sc, type);
+    }
+    
+    // Array types should be decayed to pointer to element type
+    if (qualified_type_is(&real_type, TYPE_ARRAY))
+    {
+        return semantic_checker_decay_type(sc, type);
     }
 
-    return types;
+    // If we aren't a void paramater we are good to go. Incomplete types are
+    // only checked for for an actual function definition
+    if (!qualified_type_is(&real_type, TYPE_VOID))
+    {
+        return type;
+    }
+
+    Location loc = declaration_get_location(parameter);
+
+    // Check that void has not qualifiers and no identifier
+    if (num_paramaters == 1 && !is_variadic)
+    {
+        if (declaration_has_identifier(parameter))
+        {
+            diagnostic_error_at(sc->dm, loc,
+                    "argument may not have 'void' type");
+
+            // Set the declarations type to be 'int' instead
+            QualifiedType new_type = semantic_checker_get_int_type(sc);
+            declaration_set_type(parameter, new_type);
+            declaration_set_invalid(parameter);
+
+            return new_type;
+        }
+        else if (type_qualifier_has_any(real_type.qualifiers))
+        {
+            diagnostic_error_at(sc->dm, loc,
+                    "'void' as parameter must not have type qualifiers");
+
+            // Get the void type with no parameters instead
+            return semantic_checker_get_void_type(sc);
+        }
+    }
+
+    // Can only have one void type.
+    if (num_paramaters > 1 || is_variadic)
+    {
+        diagnostic_error_at(sc->dm, loc,
+                "'void' must be the first and only parameter if specified");
+
+        // Set the declarations type to be 'int' instead
+        QualifiedType new_type = semantic_checker_get_int_type(sc);
+        declaration_set_type(parameter, new_type);
+        declaration_set_invalid(parameter);
+
+        return new_type;
+    }
+
+    return type;
 }
 
-static void semantic_checker_process_function(SemanticChecker* sc,
-        QualifiedType* type, DeclaratorPiece* piece, DeclaratorContext context)
+static QualifiedType process_function_type(SemanticChecker* sc, Declarator* d,
+        QualifiedType current, DeclaratorPiece* piece, DeclaratorContext ctx,
+        bool* invalid)
 {
     assert(piece->base.type == DECLARATOR_PIECE_FUNCTION);
 
     DeclaratorPieceFunction* function = (DeclaratorPieceFunction*) piece;
 
-    QualifiedType clean_type = qualified_type_get_canonical(type);
-    if (qualified_type_is(&clean_type, TYPE_FUNCTION))
+    // TODO: is the call below needed?
+    QualifiedType clean_type = qualified_type_get_canonical(&current);
+    bool return_is_func = qualified_type_is(&clean_type, TYPE_FUNCTION);
+    bool return_is_arr = qualified_type_is(&clean_type, TYPE_ARRAY);
+
+    // Shouldn't both be an array and function type
+    assert(!(return_is_func && return_is_arr));
+
+    // If we're not invalid already and we returning a function or an array we
+    // have a big error. This is the same as clangs stratergy. But I find this
+    // weird since it only allows for one error. I think it would be better to
+    // keep fixing this error if it occurs.
+    if (*invalid == false && (return_is_func || return_is_arr))
     {
-        diagnostic_error_at(sc->dm, function->lparen_loc,
-                "function cannot return function type");
-        // TODO: what do we do here?
+        const char* msg = return_is_func
+                ? "function cannot return function type"
+                : "function cannot return array type";
+        diagnostic_error_at(sc->dm, function->lparen_loc, msg);
+        
+        // Note: clang recovers by setting the return type to be int
+        current = semantic_checker_get_int_type(sc);
+        *invalid = true;
+    }
+
+    // Now we know that the return type of the function will be the current type
+    // so now we will check and warn about any qualifiers on the type.
+    TypeQualifiers quals = qualified_type_get_quals(&current);
+    if (type_qualifier_has_any(quals))
+    {
+        // TODO: a better location for the pointer qualifiers would be nice here
+        Location location = d->identifier_location;
+        if (type_qualifier_is_const(quals))
+        {
+            diagnostic_warning_at(sc->dm, location,
+                    "'const' type qualifier on return type has no effect");
+        }
+
+        if (type_qualifier_is_volatile(quals))
+        {
+            diagnostic_warning_at(sc->dm, location,
+                    "'volatile' type qualifier on return type has no effect");
+        }
+
+        if (type_qualifier_is_restrict(quals))
+        {
+            diagnostic_warning_at(sc->dm, location,
+                    "'restrict' type qualifier on return type has no effect");
+        }
+
+        // If we have any qualifiers remove them here.
+        current = qualified_type_remove_quals(&current);
     }
 
     // Extract the declarations and their types so that they can be used in
     // the function type.
-    Declaration** decls = function->paramaters;
+    DeclarationList decls = function->paramaters;
     size_t num_paramaters = function->num_paramaters;
-    QualifiedType* types = semantic_checker_types_from_declaraions(sc, 
-            decls, num_paramaters);
 
-    // Check that we only have one 'void' type if applicable
-    bool invalid = false;
-    for (size_t i = 0; i < num_paramaters; i++)
+    // Allocate for our future list of parameters
+    TypeFunctionParameter* params = NULL;
+    TypeFunctionParameter* curr_param = NULL;
+
+    // Get the entry and the index of the current parameter
+    DeclarationListEntry* entry = declaration_list_iter(&decls);
+    for (; entry != NULL; entry = declaration_list_next(entry))
     {
-        QualifiedType current_type = types[i];
-        QualifiedType real_type = qualified_type_get_canonical(&current_type);
+        Declaration* decl = declaration_list_entry_get(entry);
+        QualifiedType param_type = check_parameter_type(sc, decl,
+                num_paramaters, function->is_variadic);
+            
+        // Create the function parameter that we are going to push
+        TypeFunctionParameter* new_param = type_create_function_parameter(
+                &sc->ast->ast_allocator, param_type);
 
-        // TODO: if this happens clang set the type to 'int' according to its
-        // TODO: ast-dump, but do I want to do this?
-        if (qualified_type_is(&real_type, TYPE_VOID) &&
-                (num_paramaters != 1 || function->is_variadic))
+        // Append to our list of parameters creating it as we go.
+        if (params == NULL)
         {
-            diagnostic_error_at(sc->dm, decls[i]->base.location,
-                    "'void' must be the first and only parameter if specified");
-            types[i] = (QualifiedType) {TYPE_QUALIFIER_NONE, 
-                    sc->ast->base_types.type_signed_int};
-            invalid = true;
+            params = new_param;
         }
+        else
+        {
+            type_function_parameter_set_next(curr_param, new_param);
+        }
+        curr_param = new_param;
     }
 
-    // Now if we have one parameter and it is void type, set the number of
-    // parameters to 0
-    if (num_paramaters == 1)
+    // Do a finaly check where we set the number of parameters to 0 if there is
+    // one parameter, and we arent variadic, and the parameter has type void
+    if (num_paramaters == 1 && !function->is_variadic)
     {
-        QualifiedType real_type = qualified_type_get_canonical(&types[0]);
+        assert(params);
+        
+        QualifiedType type = type_function_parameter_get_type(params);
+        QualifiedType real_type = qualified_type_get_canonical(&type);
         if (qualified_type_is(&real_type, TYPE_VOID))
         {
             num_paramaters = 0;
-            if (type_qualifier_has_any(real_type.qualifiers))
-            {
-                diagnostic_error_at(sc->dm, decls[0]->base.location,
-                        "'void' as a parameter must not have type qualifiers");
-            }
         }
     }
 
+    // Finally create the function type and update the current type.
     QualifiedType new_type = type_create_function(&sc->ast->ast_allocator,
-            *type, types, num_paramaters, false, function->is_variadic);
-    *type = new_type;
+            current, params, num_paramaters, false, function->is_variadic);
+    return new_type;
 }
 
 QualifiedType semantic_checker_process_type(SemanticChecker* sc,
@@ -510,27 +803,33 @@ QualifiedType semantic_checker_process_type(SemanticChecker* sc,
 {
     // TODO: now that we have the declarator context we can acccept / decline
     // TODO: vmt and vla's
-    DeclaratorContext context = declarator->context;
 
-    // First start by getting the type from the declaration specifiers
+    DeclaratorContext context = declarator->context;
     QualifiedType type = qualified_type_from_declaration_specifiers(sc, 
             declarator->specifiers);
+
+    bool invalid = false;
     
+    // The go through all of our pieces until we reach the end of our piece
+    // stack. Keeping track of if we got an invalid declaration
     DeclaratorPiece* piece = declarator->piece_stack;
-    while (piece != NULL)
+    for (; piece != NULL; piece = piece->base.next)
     {
         switch (piece->base.type)
         {
             case DECLARATOR_PIECE_ARRAY:
-                semantic_checker_process_array(sc, &type, piece, context);
+                type = process_array_type(sc, declarator, type, piece, context,
+                        &invalid);
                 break;
 
             case DECLARATOR_PIECE_POINTER:
-                semantic_checker_process_pointer(sc, &type, piece, context);
+                type = process_pointer_type(sc, declarator, type, piece, context,
+                        &invalid);
                 break;
 
             case DECLARATOR_PIECE_FUNCTION:
-                semantic_checker_process_function(sc, &type, piece, context);
+                type = process_function_type(sc, declarator, type, piece, context,
+                        &invalid);
                 break;
 
             case DECLARATOR_PIECE_KNR_FUNCTION:
@@ -541,8 +840,13 @@ QualifiedType semantic_checker_process_type(SemanticChecker* sc,
                 panic("unexpected declarator piece type");
                 break;
         }
+    }
 
-        piece = piece->base.next;
+    // If we had something that makes this invalid we need to set the declarator
+    // so that the invalidation can be handled again further down the chain
+    if (invalid)
+    {
+        declarator_set_invalid(declarator);
     }
 
     // type_print(&type);
@@ -551,132 +855,16 @@ QualifiedType semantic_checker_process_type(SemanticChecker* sc,
     return type;
 }
 
-Declaration* semantic_checker_lookup_ordinairy(SemanticChecker* sc,
-        Identifier* identifier, bool recursive)
+static void semantic_checker_diagnose_inline(SemanticChecker* sc,
+        DeclarationSpecifiers* specifiers)
 {
-    if (identifier == NULL)
+    TypeFunctionSpecifier function = specifiers->function_spec;
+    if (function != TYPE_FUNCTION_SPECIFIER_NONE)
     {
-        return NULL;
+        diagnostic_error_at(sc->dm, specifiers->location,
+                "'%s' can only appear on functions",
+                function_specifier_to_name(function));
     }
-
-    return scope_lookup_ordinairy(sc->scope, identifier, recursive);
-}
-
-Declaration* semantic_checker_lookup_tag(SemanticChecker* sc,
-        Identifier* identifier, bool recursive)
-{
-    if (identifier == NULL)
-    {
-        return NULL;
-    }
-
-    return scope_lookup_tag(sc->scope, identifier, recursive);
-}
-
-Declaration* semantic_checker_lookup_member(SemanticChecker* sc,
-        Identifier* identifier)
-{
-    assert(scope_is(sc->scope, SCOPE_MEMBER) && "must be a member scope");
-
-    return scope_lookup_member(sc->scope, identifier);
-}
-
-void semantic_checker_add_function_parameters(SemanticChecker* sc,
-        Declaration* declaration)
-{
-    assert(declaration_is(declaration, DECLARATION_FUNCTION));
-    assert(scope_is(sc->scope, SCOPE_FUNCTION_BODY));
-
-    // Add all of the decalrations from the function scope into the new function
-    // body scope.
-    const DeclarationFunction* function = (DeclarationFunction*) declaration;
-    Declaration* all_decls = function->all_decls;
-    for (; all_decls != NULL; all_decls = declaration_get_next(all_decls))
-    {
-        // Any tag declarations get auto inserted
-        if (declaration_is_tag(all_decls))
-        {
-            scope_insert_tag(sc->scope, all_decls);
-            continue;
-        }
-
-        // Otherwise we should have a function parameter here.
-        QualifiedType type = declaration_get_type(all_decls);
-        QualifiedType real_type = qualified_type_get_canonical(&type);
-        if (declaration_has_identifier(all_decls))
-        {
-            // Now we need to check that the type is complete and not 'void'
-            if (qualified_type_is(&real_type, TYPE_VOID))
-            {
-                diagnostic_error_at(sc->dm, all_decls->base.location,
-                        "argument may not have 'void' type");
-                declaration_set_invalid(declaration);
-            }
-            else if (!qualified_type_is_complete(&real_type))
-            {
-                // NOTE: that structs are not fully implemented so don't have
-                // this error for now
-                // diagnostic_error_at(sc->dm, all_decls->base.location,
-                //         "variable '%s' has incomplete type",
-                //         all_decls->base.identifier->string.ptr);
-                // declaration_set_invalid(declaration);
-            }
-
-            // Insert it anyway since any semantic action with the declaration
-            // will fail with no error if we identified one earlier. Also noting
-            // that it will not produce any additional errors for us too.
-            scope_insert_ordinairy(sc->scope, all_decls);
-        }
-        else
-        {
-            // Here we should only error if it is not a void parameter. Since 
-            // then we can assume that void will be the only declaration if it
-            // appears.
-            if (!qualified_type_is(&real_type, TYPE_VOID))
-            {
-                diagnostic_error_at(sc->dm, all_decls->base.location,
-                        "paramater name must not be omitted in function "
-                        "definition");
-            }
-        }
-    }
-}
-
-void semantic_checker_insert_ordinairy(SemanticChecker* sc,
-        Declaration* declaration)
-{
-    scope_insert_ordinairy(sc->scope, declaration);
-}
-
-void semantic_checker_insert_tag(SemanticChecker* sc, Declaration* decl)
-{
-    // Any new tag declarations will not be visible outside of function scope
-    // so producte a warning about this.
-    if (scope_is(sc->scope, SCOPE_FUNCTION))
-    {
-        diagnostic_warning_at(sc->dm, decl->base.location,
-                "declaration of '%s %s' will not be visible outside of this "
-                "function", tag_kind_to_name(decl->base.declaration_type),
-                decl->base.identifier->string.ptr);
-    }
-
-    scope_insert_tag(sc->scope, decl);
-}
-
-void semantic_checker_insert_member(SemanticChecker* sc, Declaration* decl)
-{
-    assert(scope_is(sc->scope, SCOPE_MEMBER) && "must be a member scope");
-    assert(declaration_is(decl, DECLARATION_FIELD));
-
-    scope_insert_member(sc->scope, decl);
-}
-
-QualifiedType semantic_checker_process_typename(SemanticChecker* sc,
-        Declarator* declarator)
-{
-    assert(declarator->identifier == NULL);
-
-    return semantic_checker_process_type(sc, declarator);
 }
 
 Declaration* semantic_checker_process_specifiers(SemanticChecker* sc,
@@ -707,13 +895,8 @@ Declaration* semantic_checker_process_specifiers(SemanticChecker* sc,
                 "restrict requires a pointer");
     }
 
-    TypeFunctionSpecifier function = specifiers->function_spec;
-    if (function != TYPE_FUNCTION_SPECIFIER_NONE)
-    {
-        diagnostic_error_at(sc->dm, location,
-                "'%s' can only appear on functions",
-                function_specifier_to_name(function));
-    }
+    // Diagnose the use of the inline keyword
+    semantic_checker_diagnose_inline(sc, specifiers);
 
     // Now give some nice warnings about the storage if needed
     TypeStorageSpecifier storage = specifiers->storage_spec;
@@ -777,6 +960,16 @@ Declaration* semantic_checker_process_specifiers(SemanticChecker* sc,
     return to_return;
 }
 
+QualifiedType semantic_checker_process_typename(SemanticChecker* sc,
+        Declarator* declarator)
+{
+    assert(declarator->identifier == NULL);
+
+    // TODO: should probably do something about inline etc...
+
+    return semantic_checker_process_type(sc, declarator);
+}
+
 Declaration* semantic_checker_process_function_param(SemanticChecker* sc,
         Declarator* declarator)
 {
@@ -787,21 +980,20 @@ Declaration* semantic_checker_process_function_param(SemanticChecker* sc,
 
     // Check that we have no storage specifier other then register
     TypeStorageSpecifier storage = declarator->specifiers->storage_spec;
-    if (storage != TYPE_STORAGE_SPECIFIER_NONE && 
-            storage != TYPE_STORAGE_SPECIFIER_REGISTER)
+    if (storage != TYPE_STORAGE_SPECIFIER_NONE
+            && storage != TYPE_STORAGE_SPECIFIER_REGISTER)
     {
         diagnostic_error_at(sc->dm, declarator->specifiers->location,
                 "invalid storage class specifier in function declarator");
         storage = TYPE_STORAGE_SPECIFIER_NONE;
     }
 
-    // TODO: Also need to check that we don't have an incomplete type
-    // TODO: For above it seems we only need to check the above if we are in a
-    // TODO: function definition instead of a function declaration.
+    // Diagnose the use of inline
+    semantic_checker_diagnose_inline(sc, declarator_get_specifiers(declarator));
 
     // Create the declaration for the function parameter. And add it into the
     // scope if we got an identifier and it wasn't a duplicate parameter.
-    Identifier* identifier = declarator->identifier;
+    Identifier* identifier = declarator_get_identifier(declarator);
     Declaration* declaration =  declaration_create_variable(
             &sc->ast->ast_allocator, declarator->identifier_location,
             identifier, type, storage);
@@ -819,7 +1011,7 @@ Declaration* semantic_checker_process_function_param(SemanticChecker* sc,
     {
         semantic_checker_insert_ordinairy(sc, declaration);
     }
-        
+
     return declaration;
 }
 
@@ -831,16 +1023,30 @@ Declaration* semantic_checker_process_function_declaration(SemanticChecker* sc,
 
     bool invalid = false;
 
+    DeclarationSpecifiers* specifiers = declarator_get_specifiers(declarator);
     Identifier* identifier = declarator->identifier;
     Location location = declarator->identifier_location;
     assert(identifier != NULL);
 
-    DeclarationSpecifiers* specifiers = declarator->specifiers;
-    switch (specifiers->storage_spec)
+    // Chceck that the functions storage is valid based on the context we are in
+    DeclaratorContext ctx = declarator_get_context(declarator);
+    TypeStorageSpecifier storage = declaration_specifiers_storage(specifiers);
+    switch (storage)
     {
+        // These are allowed regardless of the scope
         case TYPE_STORAGE_SPECIFIER_NONE:
         case TYPE_STORAGE_SPECIFIER_EXTERN:
+            break;
+
+        // This is only allowed if we are not in block scope.
         case TYPE_STORAGE_SPECIFIER_STATIC:
+            if (ctx == DECLARATION_CONTEXT_BLOCK)
+            {
+                diagnostic_error_at(sc->dm, location, "function declared in "
+                        "block scope cannot have 'static' storage class");
+                invalid = true;
+                storage = TYPE_STORAGE_SPECIFIER_NONE;
+            }
             break;
 
         // The storages are not allowed at all for functions...
@@ -850,10 +1056,18 @@ Declaration* semantic_checker_process_function_declaration(SemanticChecker* sc,
                     "illegal storage class '%s' on function",
                     storage_specifier_to_name(specifiers->storage_spec));
             invalid = true;
+            storage = TYPE_STORAGE_SPECIFIER_NONE;
             break;
 
+        // If we got a 'typedef' function that means we should have known before
+        // that we are about to process a function definition. So here we catch
+        // that and error.
         case TYPE_STORAGE_SPECIFIER_TYPEDEF:
-            panic("typedef should be handled elsewhere");
+            assert(declarator_is_func_defn(declarator));
+            diagnostic_error_at(sc->dm, specifiers->location,
+                "function definition declared 'typedef'");
+            invalid = true;
+            storage = TYPE_STORAGE_SPECIFIER_NONE;
             break;
 
         default:
@@ -866,31 +1080,61 @@ Declaration* semantic_checker_process_function_declaration(SemanticChecker* sc,
     DeclaratorPiece* piece = declarator_get_function_piece(declarator);
     Declaration* decls = declarator_function_piece_get_decls(piece);
 
+    // Create our new function declaration.
     Declaration* declaration = declaration_create_function(
             &sc->ast->ast_allocator, location, identifier, type,
-            specifiers->storage_spec, specifiers->function_spec, decls);
+            storage, specifiers->function_spec, decls);
     
-    // TODO: first check that the types match before giving this error
-    Declaration* previous = semantic_checker_lookup_ordinairy(sc,
-            identifier, false);
-    if (previous != NULL)
-    {
-        diagnostic_error_at(sc->dm, declarator->identifier_location,
-                "redefinition of '%s'", identifier->string.ptr);
-        invalid = true;
-    }
-    else
+    // Now that we have all of our function types and a declaration for it
+    // we will want to check that it is compatible with all of our previous
+    // definitions if we have any.
+    Declaration* previous = semantic_checker_lookup_ordinairy(sc, identifier,
+            false);
+
+    // No previous entries. Nothing could possibly be wrong at this point in
+    // time so add it into the ordinairy scope and can simply return.
+    if (previous == NULL)
     {
         semantic_checker_insert_ordinairy(sc, declaration);
+        return declaration;
     }
 
-    if (invalid)
+    assert(previous != NULL);
+
+    // Otherwise we are sure we have something. So first check if the previous
+    // was a function or not. If not, produce and error, invalidate this and
+    // return this declaration.
+    if (!declaration_is(previous, DECLARATION_FUNCTION))
     {
+        diagnostic_error_at(sc->dm, location,
+                "redefinition of '%s' as a different kind of symbol",
+                identifier->string.ptr);
         declaration_set_invalid(declaration);
+        return declaration;
     }
 
+    // Okay. Here we know that both types should be function type. So we will
+    // need to check that both types are compatible.
+    QualifiedType previous_type = declaration_get_type(previous);
 
-    return declaration;
+    assert(qualified_type_is(&type, TYPE_FUNCTION));
+    assert(qualified_type_is(&previous_type, TYPE_FUNCTION));
+
+    bool compatible = false;
+
+    // If the types are not compatible, error, set it invalid and simply return
+    // the current function declaration. Since we will use the first function
+    // definition as the master function declaration always.
+    if (!compatible)
+    {
+        diagnostic_error_at(sc->dm, location, "conflicting types for '%s'",
+                identifier->string.ptr);
+        declaration_set_invalid(declaration);
+        return declaration;
+    }
+
+    panic("TODO: finish process_function_declaration");
+    return NULL;
 }
 
 Declaration* semantic_checker_process_variable(SemanticChecker* sc,
@@ -906,21 +1150,14 @@ Declaration* semantic_checker_process_variable(SemanticChecker* sc,
     assert(storage != TYPE_STORAGE_SPECIFIER_TYPEDEF);
     switch (declarator->context)
     {
-        // All of these three cases should be handled seperately
-        case DECLARATION_CONTEXT_STRUCT:
-        case DECLARATION_CONTEXT_FUNCTION_PARAM:
-        case DECLARATION_CONTEXT_TYPE_NAME:
-            panic("context type not support in sc_process_variable");
-            return NULL;
-
+        // This context does not have any restrictions on the storage class
         case DECLARATION_CONTEXT_BLOCK:
-            // TODO: figure out the constraints on this...
-            // panic("todo -> block context");
             break;
 
+        // File scoped declarations cannot have register or auto specified
         case DECLARATION_CONTEXT_FILE:
-            if (storage == TYPE_STORAGE_SPECIFIER_REGISTER ||
-                    storage == TYPE_STORAGE_SPECIFIER_AUTO)
+            if (storage == TYPE_STORAGE_SPECIFIER_REGISTER
+                    || storage == TYPE_STORAGE_SPECIFIER_AUTO)
             {
                 diagnostic_error_at(sc->dm, identifer_loc,
                         "illegal storage class '%s' on file scoped variable",
@@ -928,20 +1165,22 @@ Declaration* semantic_checker_process_variable(SemanticChecker* sc,
             }
             break;
 
+        // All of these three cases should be handled seperately
+        case DECLARATION_CONTEXT_STRUCT:
+        case DECLARATION_CONTEXT_FUNCTION_PARAM:
+        case DECLARATION_CONTEXT_TYPE_NAME:
+            panic("declaration context should not be handled here");
+            return NULL;
+
         default:
             panic("unexpected declaration context");
-            break;
+            return NULL;
     }
 
-    // Also check that no function specifiers were given
-    if (specifiers->function_spec != TYPE_FUNCTION_SPECIFIER_NONE)
-    {
-        diagnostic_error_at(sc->dm, identifer_loc,
-                "'%s' can only appear on functions",
-                function_specifier_to_name(specifiers->function_spec));
-    }
+    // Diagnose the use of the inline keyword
+    semantic_checker_diagnose_inline(sc, declarator_get_specifiers(declarator));
 
-    // TODO: chanke this to a semantic checker create variable eventually...
+    // Create the new deckaration that we use.
     Declaration* declaration = declaration_create_variable(
             &sc->ast->ast_allocator, identifer_loc, identifier, type, storage);
     
@@ -949,11 +1188,7 @@ Declaration* semantic_checker_process_variable(SemanticChecker* sc,
     // current scope if it doesn't already contain this identifier
     Declaration* previous = scope_lookup_ordinairy(sc->scope, identifier,
             false);
-    if (previous == NULL)
-    {
-        semantic_checker_insert_ordinairy(sc, declaration);
-    }
-    else
+    if (previous != NULL)
     {
         // Otherwise we need to check if they are the same type, and that we
         // have not already have some kind of initializer for it yet. But also
@@ -967,7 +1202,11 @@ Declaration* semantic_checker_process_variable(SemanticChecker* sc,
 
         diagnostic_error_at(sc->dm, identifer_loc, "redefinition of '%s'",
                 identifier->string.ptr);
+        return declaration;
     }
+
+    // Insert this into the scope 
+    semantic_checker_insert_ordinairy(sc, declaration);
 
     return declaration;
 }
@@ -975,38 +1214,30 @@ Declaration* semantic_checker_process_variable(SemanticChecker* sc,
 Declaration* semantic_checker_process_typedef(SemanticChecker* sc,
         Declarator* declarator, QualifiedType type)
 {
-    const DeclarationSpecifiers* specifiers = declarator->specifiers;
+    DeclarationSpecifiers* specifiers = declarator_get_specifiers(declarator);
     Identifier* identifier = declarator->identifier;
     Location identifer_loc = declarator->identifier_location;
 
-    if (specifiers->function_spec != TYPE_FUNCTION_SPECIFIER_NONE)
-    {
-        diagnostic_error_at(sc->dm, identifer_loc,
-                "'%s' can only appear on functions",
-                function_specifier_to_name(specifiers->function_spec));
-    }
+    // Diagnose the use of the inline keyword
+    semantic_checker_diagnose_inline(sc, specifiers);
 
     // Create the typedef and the new type setting up the declaration fully.
     Declaration* tdef = declaration_create_typedef(&sc->ast->ast_allocator,
             identifer_loc, identifier, type);
     Type* new_type = type_create_typedef(&sc->ast->ast_allocator, type, tdef);
-
     declaration_typedef_set_type(tdef, new_type);
     
-    // Check for other declarations already present.
+    // Check for other declarations already present
     Declaration* previous = semantic_checker_lookup_ordinairy(sc, identifier,
             false);
-    if (previous != NULL && declaration_is(previous, DECLARATION_TYPEDEF))
+    if (previous != NULL)
     {
-        // TODO: c11 extension allows typedefs to the same type.
-        diagnostic_error_at(sc->dm, declarator->identifier_location,
-                "redefinition of typedef '%s'",
-                identifier->string.ptr);
-    }
-    else if (previous != NULL)
-    {
-        diagnostic_error_at(sc->dm, declarator->identifier_location,
-                "redefinition of '%s' as a different kind of symbol",
+        // TODO: c11 allows for typedef redefinitions
+        bool previous_typedef = declaration_is(previous, DECLARATION_TYPEDEF);
+        const char* msg = previous_typedef
+                ? "redefinition of typedef '%s'"
+                : "redefinition of '%s' as different kind of symbol";
+        diagnostic_error_at(sc->dm, declarator->identifier_location, msg,
                 identifier->string.ptr);
     }
     else
@@ -1033,11 +1264,17 @@ Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
     QualifiedType real_type = qualified_type_get_canonical(&type);
     
     // The main different types of declarations we will have to handle are below
-    if (declarator->specifiers->storage_spec == TYPE_STORAGE_SPECIFIER_TYPEDEF)
+    DeclarationSpecifiers* spec = declarator_get_specifiers(declarator);
+    TypeStorageSpecifier storage = declaration_specifiers_storage(spec);
+
+    // Only process this as a typedef if it is not a function definition
+    if (storage == TYPE_STORAGE_SPECIFIER_TYPEDEF
+            && !declarator_is_func_defn(declarator))
     {
         return semantic_checker_process_typedef(sc, declarator, type);        
     }
     
+    // Catch function definitions here
     if (qualified_type_is(&real_type, TYPE_FUNCTION))
     {
         return semantic_checker_process_function_declaration(sc, declarator,
@@ -1048,7 +1285,7 @@ Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
 }
 
 Declaration* semantic_checker_process_struct_declarator(SemanticChecker* sc,
-        Declarator* declarator)
+        Declaration* struct_decl, Declarator* declarator)
 {
     // Regardless of what needs to be done next we must figure our the type
     // from the declarator.
@@ -1072,13 +1309,24 @@ Declaration* semantic_checker_process_struct_declarator(SemanticChecker* sc,
     // We must either have an identifer of a bitfield
     assert(identifier != NULL || colon_location != LOCATION_INVALID);
 
-    bool anonymous_bitfield = identifier == NULL;
+    // Track if we were given an invalid field so we can give nicer errors
+    bool invalid = false;
+
+    // Check that the type is complete.
+    if (!qualified_type_is_complete(&type))
+    {
+        diagnostic_error_at(sc->dm, identifier_loc,
+                "field has incomplete type");
+
+        // Remove possible bitfield expression
+        colon_location = LOCATION_INVALID;
+        expression = NULL;
+
+        invalid = true;
+    }
 
     // Here we only want to lookup if we got an identifier for this.
-    Declaration* previous = anonymous_bitfield
-            ? NULL
-            : semantic_checker_lookup_member(sc, identifier);
-
+    Declaration* previous = semantic_checker_lookup_member(sc, identifier);
     if (previous != NULL)
     {
         diagnostic_error_at(sc->dm, identifier_loc, "duplicate member '%s'",
@@ -1095,13 +1343,20 @@ Declaration* semantic_checker_process_struct_declarator(SemanticChecker* sc,
             diagnostic_error_at(sc->dm, identifier_loc,
                     "bit-field '%s' has not integral type",
                     identifier->string.ptr);
-            return NULL;
+            
+            // Skip the rest of the checks and make sure to construct it without
+            // a bitfield
+            colon_location = LOCATION_INVALID;
+            expression = NULL;
+
+            invalid = true;
+            goto make_decl;
         }
 
         // Then check that the bitfield expression itself has an integral type
         // Finally, check it has a valid width...
-
-        // diagnostic_error_at(sc->dm, identifier_loc, "bitfields not supported");
+        colon_location = LOCATION_INVALID;
+        expression = NULL;
         /*return NULL;*/
     }
 
@@ -1111,19 +1366,149 @@ Declaration* semantic_checker_process_struct_declarator(SemanticChecker* sc,
     {
         // Do not return NULL here since we will allow this for syntax purposes
         diagnostic_error_at(sc->dm, identifier_loc,
-                "field '%s' declarated as function", identifier->string.ptr);
+                "field '%s' declared as a function", identifier->string.ptr);
+        invalid = true;
     }
 
     // Create the declaration for the field of the struct
+make_decl:;
     Declaration* member_decl = declaration_create_field(&sc->ast->ast_allocator,
             identifier_loc, identifier, type, colon_location, expression);
-
-    if (!anonymous_bitfield)
+    if (invalid)
     {
-        semantic_checker_insert_member(sc, member_decl);
+        // Set both the member declaration and struct declaration to be invalid
+        // since this will speed up computing the struct fields if it is invalid
+        declaration_set_invalid(member_decl);
+        declaration_set_invalid(struct_decl);
     }
 
+    semantic_checker_insert_member(sc, member_decl);
+
     return member_decl;
+}
+
+// TODO: this should be moved to live with all of my function handling functions
+void semantic_checker_add_function_parameters(SemanticChecker* sc,
+        Declaration* declaration)
+{
+    assert(declaration_is(declaration, DECLARATION_FUNCTION));
+    assert(scope_is(sc->scope, SCOPE_FUNCTION_BODY));
+
+    // Add all of the decalrations from the function scope into the new function
+    // body scope.
+    Declaration* all_decls = declaration_function_get_paramaters(declaration);
+    for (; all_decls != NULL; all_decls = declaration_get_next(all_decls))
+    {
+        // Any tag declarations get auto inserted
+        if (declaration_is_tag(all_decls))
+        {
+            scope_insert_tag(sc->scope, all_decls);
+            continue;
+        }
+
+        // Otherwise we should have a function parameter here.
+        QualifiedType type = declaration_get_type(all_decls);
+        QualifiedType real_type = qualified_type_get_canonical(&type);
+        if (declaration_has_identifier(all_decls))
+        {
+            // Now we need to check that the type is complete and not 'void'
+            // if (qualified_type_is(&real_type, TYPE_VOID))
+            // {
+            //     diagnostic_error_at(sc->dm, all_decls->base.location,
+            //             "argument may not have 'void' type");
+            //     declaration_set_invalid(declaration);
+            // }
+            
+            if (!qualified_type_is_complete(&real_type))
+            {
+                // NOTE: that structs are not fully implemented so don't have
+                // this error for now
+                diagnostic_error_at(sc->dm, all_decls->base.location,
+                        "variable '%s' has incomplete type",
+                        all_decls->base.identifier->string.ptr);
+                declaration_set_invalid(declaration);
+            }
+
+            // Insert it anyway since any semantic action with the declaration
+            // will fail with no error if we identified one earlier. Also noting
+            // that it will not produce any additional errors for us too.
+            scope_insert_ordinairy(sc->scope, all_decls);
+        }
+        else
+        {
+            // Here we should only error if it is not a void parameter. Since 
+            // then we can assume that void will be the only declaration if it
+            // appears.
+            if (!qualified_type_is(&real_type, TYPE_VOID))
+            {
+                diagnostic_error_at(sc->dm, all_decls->base.location,
+                        "paramater name must not be omitted in a function "
+                        "definition");
+            }
+        }
+    }
+}
+
+void semantic_checker_handle_function_start(SemanticChecker* sc,
+        Declaration* function)
+{
+    // We have already have an invalid declaration then we just accept it
+    // without any more errors and just leave it at that.
+    if (!declaration_is_valid(function))
+    {
+    }
+
+    // Otherwise get the main declaration for the function and check whether
+    // that declaration has a function body or not. If it does not then we are
+    // good to go. Otherwise, if it does error about it and indicated that we
+    // should not use it as the main definition.
+    Identifier* identifier = declaration_get_identifier(function);
+    Declaration* previous = semantic_checker_lookup_ordinairy(sc, identifier,
+            false);
+    (assert(previous));
+
+    // Check that the function does not already have a body.
+    if (declaration_function_has_body(previous))
+    {
+        diagnostic_error_at(sc->dm, declaration_get_location(function),
+                "redefinition of '%s'",
+                declaration_get_identifier(function)->string.ptr);
+    }
+}
+
+void semantic_checker_set_function_body(SemanticChecker* sc,
+        Declaration* function, Statement* stmt)
+{
+    // Otherwise get the main declaration for the function
+    Identifier* identifier = declaration_get_identifier(function);
+    assert(identifier);
+    Declaration* boss_decl = semantic_checker_lookup_ordinairy(sc, identifier,
+            true);
+    assert(boss_decl);
+
+    // Check if the definition if the first reference of the function and set 
+    // both decl's as necessary
+    if (boss_decl == function)
+    {
+        declaration_function_set_body(function, stmt);
+        declaration_function_set_definition(boss_decl, function);
+        return;
+    }
+    else
+    {
+        // Otherwise set this declarations body, and also the boss decls body
+
+        // Set the functions body
+        declaration_function_set_body(function, stmt);
+
+        // And if it's not a redefinition set the main decls body and definition
+        // field.
+        // if (!redefinition)
+        // {
+        //     declaration_function_set_body(boss_decl, stmt);
+        //     declaration_function_set_definition(boss_decl, function);
+        // }
+    }
 }
 
 void semantic_checker_declaration_add_initializer(SemanticChecker* sc,
@@ -1141,49 +1526,67 @@ void semantic_checker_declaration_add_initializer(SemanticChecker* sc,
 
     // Otherwise add the initializer to the declaration
     declaration_variable_add_initializer(declaration, initializer);
+
+    // TODO: we also need to update our declarations type and check that this
+    // TODO: will work properly
 }
 
-void semantic_checker_push_scope(SemanticChecker* sc, Scope* scope)
+void semantic_checker_declaration_finish(SemanticChecker* sc,
+        Declaration* declaration)
 {
-    // Set the scopes parent
-    scope_set_parent(scope, sc->scope);
-
-    // Set the sematic checkers scope.
-    sc->scope = scope;
-}
-
-void semantic_checker_pop_scope(SemanticChecker* sc)
-{
-    sc->scope = scope_get_parent(sc->scope);
-}
-
-Scope* semantic_checker_current_scope(SemanticChecker* sc)
-{
-    return sc->scope;
-}
-
-Declaration* semantic_checker_create_enum(SemanticChecker* sc,
-        Location enum_location, Identifier* name, bool anonymous)
-{
-    // NOTE: if the enum is anonymous it is not inserted into the tag symbols
-
-    // Create the enum type and a declaration for the enum itself
-    QualifiedType type = type_create_enum(&sc->ast->ast_allocator,
-            sc->ast->base_types.type_signed_int);
-    Declaration* decl = declaration_create_enum(&sc->ast->ast_allocator, 
-            enum_location, name, type, anonymous);
-    type_enum_set_declaration(&type, decl);
-
-    // Only, insert it into the scope if it's not anonymous
-    if (!anonymous)
+    switch (declaration_get_kind(declaration))
     {
-        semantic_checker_insert_tag(sc, decl);
+        case DECLARATION_VARIABLE:
+        {
+            QualifiedType type = declaration_get_type(declaration);
+            if (!qualified_type_is_complete(&type))
+            {
+                diagnostic_error_at(sc->dm,
+                        declaration_get_location(declaration),
+                        "variable '%s' has incomplete type",
+                        declaration_get_identifier(declaration)->string.ptr);
+                declaration_set_invalid(declaration);
+            }
+            break;
+        }
+            
+        // Do nothing for the others but make it easier to add stuff later...
+        default:
+            break;
+    }
+}
+
+void semantic_checker_finish_struct_declaration(SemanticChecker* sc,
+        Declaration* struct_declaration)
+{
+    assert(declaration_is(struct_declaration, DECLARATION_STRUCT) ||
+            declaration_is(struct_declaration, DECLARATION_UNION));
+
+    // Start by setting the struct declaration to be considered complete so
+    // that even if errors occur when finishing the definition then we still
+    // leave with a complete struct.
+    declaration_struct_set_complete(struct_declaration);
+
+    // Then check if the struct declaration was invalid or not. If it was
+    // invalid then we can skip everything below and simply return.
+    bool valid = declaration_is_valid(struct_declaration);
+    if (!valid)
+    {
+        return;
     }
 
-    return decl;
+    bool is_struct = declaration_is(struct_declaration, DECLARATION_STRUCT);
 }
 
-Declaration* semantic_checker_create_enum_constant(SemanticChecker* sc,
+static Declaration* semantic_checker_create_enum_constant(SemanticChecker* sc,
+        Location location, Identifier* identifier, Location equals,
+        QualifiedType type, Expression* expression, int value)
+{
+    return declaration_create_enum_constant(&sc->ast->ast_allocator, location,
+            identifier, type, equals, expression, value);
+}
+
+Declaration* semantic_checker_handle_enum_constant(SemanticChecker* sc,
         Location location, Identifier* identifier, Location equals,
         Expression* expression, Declaration* last_decl)
 {
@@ -1249,20 +1652,36 @@ Declaration* semantic_checker_create_enum_constant(SemanticChecker* sc,
     }
     
     // Create and add the declaration into the ordinairy namespace
-    QualifiedType type = (QualifiedType)
-    {
-        TYPE_QUALIFIER_NONE, 
-        sc->ast->base_types.type_signed_int
-    };
-    Declaration* new_decl = declaration_create_enum_constant(
-            &sc->ast->ast_allocator, location, identifier, type, equals,
-            expression, value);
+    Declaration* new_decl = semantic_checker_create_enum_constant(sc, location,
+            identifier, equals, semantic_checker_get_int_type(sc), expression,
+            value);
     semantic_checker_insert_ordinairy(sc, new_decl);
 
     return new_decl;
 }
 
-Declaration* semantic_checker_create_struct(SemanticChecker* sc,
+static Declaration* semantic_checker_create_enum(SemanticChecker* sc,
+        Location enum_location, Identifier* name, bool anonymous)
+{
+    // NOTE: if the enum is anonymous it is not inserted into the tag symbols
+
+    // Create the enum type and a declaration for the enum itself
+    QualifiedType type = type_create_enum(&sc->ast->ast_allocator,
+            sc->ast->base_types.type_signed_int);
+    Declaration* decl = declaration_create_enum(&sc->ast->ast_allocator, 
+            enum_location, name, type, anonymous);
+    type_enum_set_declaration(&type, decl);
+
+    // Only, insert it into the scope if it's not anonymous
+    if (!anonymous)
+    {
+        semantic_checker_insert_tag(sc, decl);
+    }
+
+    return decl;
+}
+
+static Declaration* semantic_checker_create_struct(SemanticChecker* sc,
         Location enum_location, Identifier* name, bool anonymous)
 {
     QualifiedType type = (QualifiedType)
@@ -1282,7 +1701,7 @@ Declaration* semantic_checker_create_struct(SemanticChecker* sc,
     return decl;
 }
 
-Declaration* semantic_checker_create_union(SemanticChecker* sc,
+static Declaration* semantic_checker_create_union(SemanticChecker* sc,
         Location enum_location, Identifier* name, bool anonymous)
 {
     QualifiedType type = (QualifiedType)
@@ -1401,11 +1820,12 @@ Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
         }
         else
         {
-            // Otherwise create an error and create a completely new tag
+            // Otherwise we have a redefinition
             diagnostic_error_at(sc->dm, identifier_location,
                     "redefinition of %s '%s'", tag_kind_to_name(type),
                     identifier->string.ptr);
-
+            
+            // Make all of the current stuff blank so we can create a new tag
             identifier = NULL;
             identifier_location = LOCATION_INVALID;
             previous = NULL;
@@ -1424,7 +1844,14 @@ Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
     return declaration;
 }
 
-// All of our functions for handling function scopes
+// -----------------------------------------------------------------------------
+// End functions for handling declarations
+// -----------------------------------------------------------------------------
+// =============================================================================
+// -----------------------------------------------------------------------------
+// Start functions for handling labels
+// -----------------------------------------------------------------------------
+
 void sematic_checker_push_function_scope(SemanticChecker* sc,
         FunctionScope* function)
 {
@@ -1521,7 +1948,71 @@ void sematic_checker_act_on_end_of_function(SemanticChecker* sc)
     }
 }
 
+// -----------------------------------------------------------------------------
+// End functions for handling labels
+// -----------------------------------------------------------------------------
+// =============================================================================
+// -----------------------------------------------------------------------------
+// Start functions for expressions
+// -----------------------------------------------------------------------------
+
+
 // TODO: make some functions for lvalues and stuff
+
+// TODO: make functions for promoting integers, array to pointer conversion, and
+// TODO: anything else that we might need to use in order to properly handle
+// TODO: expression types.
+
+static Expression* semantic_checker_create_implicit_cast(SemanticChecker* sc,
+        Expression* expression, QualifiedType cast_to)
+{
+    return expression_create_implicit_cast(&sc->ast->ast_allocator, cast_to,
+            expression);
+}
+
+static Expression* semantic_checker_cast_to_void(SemanticChecker* sc,
+        Expression* expression)
+{
+    QualifiedType void_type = semantic_checker_get_void_type(sc);
+    return semantic_checker_create_implicit_cast(sc, expression, void_type);
+}
+
+static Expression* semantic_checker_promote_integer(SemanticChecker* sc,
+        Expression* expression)
+{
+    // Get the current type
+    QualifiedType current_type = expression_get_qualified_type(expression);
+    assert(qualified_type_is_integer(&current_type));
+
+    switch (qualified_type_get_kind(&current_type))
+    {
+        // These are all of the types that will need to be promoted if 
+        // arithmetic is performed on them.
+        case TYPE_BOOL:
+        case TYPE_CHAR:
+        case TYPE_S_CHAR:
+        case TYPE_U_CHAR:
+        case TYPE_S_SHORT:
+        case TYPE_U_SHORT:
+        {
+            // Create a case to the integer type. Since we know that all of the
+            // above types can be represented by a plain integer so WE will 
+            // never need to promote to unsigned integer.
+            // NOTE: this may not be true for other targets if we ever do that.
+            QualifiedType int_type = semantic_checker_get_int_type(sc);
+            return semantic_checker_create_implicit_cast(sc, expression,
+                    int_type);
+        }
+
+        // We have an integer type with no conversion to a larger type needed so
+        // we can just return the current expression to the user.
+        default:
+            return expression;
+    }
+
+    panic("uncreachable");
+    return NULL;
+}
 
 static bool type_is_subscriptable(const QualifiedType* type)
 {
@@ -1651,7 +2142,7 @@ static ExpressionValueKind expression_classify(SemanticChecker* sc,
 
         // the result of a member access through pointer -> operator 
         case EXPRESSION_MEMBER_POINTER_ACCESS:
-            panic("TODO: both member access cases");
+            // panic("TODO: both member access cases");
             kind = VALUE_KIND_LVALUE;
             break;
 
@@ -1933,6 +2424,139 @@ Expression* semantic_checker_handle_array_expression(SemanticChecker* sc,
             lbracket_loc, rbracket_loc, lhs, member, expr_type, lhs_is_array);
 }
 
+Expression* semantic_checker_handle_call_expression(SemanticChecker* sc,
+        Expression* lhs, Location lparen_location, Expression* expr_list,
+        Location rparen_location)
+{
+    QualifiedType call_type = expression_get_qualified_type(lhs);
+    QualifiedType real_type = qualified_type_get_canonical(&call_type);
+
+    // TODO: this...
+
+    return semantic_checker_handle_error_expression(sc, lparen_location);
+}
+
+static Declaration* find_member_declaration(QualifiedType* type,
+        Identifier* identifier)
+{
+    Declaration* struct_decl = qualified_type_struct_get_declaration(type);
+    DeclarationList decls = declaration_struct_get_members(struct_decl);
+
+    DeclarationListEntry* current = declaration_list_iter(&decls);
+    for (; current != NULL; current = declaration_list_next(current))
+    {
+        Declaration* member = declaration_list_entry_get(current);
+
+        // Skip unnamed fields (e.g. int : 3)
+        if (!declaration_has_identifier(member))
+        {
+            continue;
+        }
+
+        // Now we know that we have an identifier we must get it and compare it
+        // to the identifier we are looking for.
+        Identifier* member_name = declaration_get_identifier(member);
+        if (member_name == identifier)
+        {
+            return member;
+        }
+    }
+
+    return NULL;
+}
+
+Expression* semantic_checker_handle_member_expression(SemanticChecker* sc,
+        Expression* lhs, Location operator_loc, Identifier* identifier,
+        Location identifier_location, bool dot)
+{
+    if (expression_is_invalid(lhs))
+    {
+        return semantic_checker_handle_error_expression(sc, operator_loc);
+    }
+
+    QualifiedType type = expression_get_qualified_type(lhs);
+    QualifiedType real_type = qualified_type_get_canonical(&type);
+
+    // If we're using an arrow get the base type from the type we are pointing
+    // to. Otherwise, simple use the type as the base type.
+    QualifiedType base_type;
+    if (!dot)
+    {
+        if (!qualified_type_is(&real_type, TYPE_POINTER))
+        {
+            // Check if the base type is a compound type if so suggest the user
+            // use a dot instead to (potentially) make this valid.
+            bool is_base_compound = qualified_type_is_compound(&real_type);
+            diagnostic_error_at(sc->dm, operator_loc,
+                    "member reference type is not a pointer%s",
+                    !is_base_compound ? "" : "; did you mean to use '.'?");
+            if (is_base_compound)
+            {
+                base_type = type;
+            }
+            else 
+            {
+                return semantic_checker_handle_error_expression(sc,
+                        operator_loc);
+            }
+        }
+        else
+        {
+            base_type = type_pointer_get_pointee(&real_type);
+        }
+    }
+    else
+    {
+        // Pre-emptively set the base type to the current type and we will do a
+        // check to see if the user mistyped a '.' for a '->'
+        base_type = type;
+
+        // Check if we have a pointer to a compound type. Note if we have a
+        // pointer then the top path will always be wrong no matter what
+        if (qualified_type_is(&real_type, TYPE_POINTER))
+        {
+            QualifiedType pointee = type_pointer_get_pointee(&real_type);
+            if (qualified_type_is_compound(&pointee))
+            {
+                diagnostic_error_at(sc->dm, operator_loc, "member reference "
+                        "type is a pointer; did you mean to use '->'");
+                base_type = pointee;
+            }
+        }
+    }
+
+    // Now check that the base type is a valid compound type
+    if (!qualified_type_is_compound(&base_type))
+    {
+        diagnostic_error_at(sc->dm, operator_loc,
+                "member reference base type is not a structure or union");
+        return semantic_checker_handle_error_expression(sc, operator_loc);
+    }
+
+    // Attmpet to find the declaration for the member
+    Declaration* member = find_member_declaration(&base_type, identifier);
+    if (member == NULL)
+    {
+        // Here is the bad case where we didn't find the appropriate member in
+        // the structure or union so then we  need to error about it and return
+        // an error expression
+        Declaration* struct_decl = qualified_type_struct_get_declaration(
+                &base_type);
+        DeclarationType kind = declaration_get_kind(struct_decl);
+        diagnostic_error_at(sc->dm, identifier_location,
+                "no member named '%s' in '%s %s'", identifier->string.ptr,
+                tag_kind_to_name(kind),
+                declaration_get_identifier(struct_decl)->string.ptr);
+        return semantic_checker_handle_error_expression(sc, operator_loc);
+    }
+
+    // The type of the expresion we are about to create is the type of the 
+    // member that we are referencing.
+    QualifiedType expression_type = declaration_get_type(member); 
+    return expression_create_member_access(&sc->ast->ast_allocator,
+            operator_loc, lhs, member, expression_type, dot);
+}
+
 Expression* semantic_checker_handle_increment_expression(SemanticChecker* sc,
         ExpressionType type, Expression* expression, Location operator_loc)
 {
@@ -1969,6 +2593,25 @@ Expression* semantic_checker_handle_increment_expression(SemanticChecker* sc,
     // return expression_create_unary(&sc->ast->ast_allocator, type, operator_loc,
     //         expression, qual_type);
 }
+
+
+
+Expression* semantic_checker_handle_comma_expression(SemanticChecker* sc,
+        Expression* lhs, Location comma_location, Expression* rhs)
+{
+    // gg ez.
+    QualifiedType expr_type = expression_get_qualified_type(rhs);
+    return expression_create_binary(&sc->ast->ast_allocator, EXPRESSION_COMMA,
+            comma_location, lhs, rhs, expr_type);
+}
+
+// -----------------------------------------------------------------------------
+// End functions for expressions
+// -----------------------------------------------------------------------------
+// =============================================================================
+// -----------------------------------------------------------------------------
+// Start functions for statements
+// -----------------------------------------------------------------------------
 
 bool semantic_checker_check_case_allowed(SemanticChecker* sc,
         Location case_location)
@@ -2275,3 +2918,6 @@ Statement* semantic_checker_handle_error_statement(SemanticChecker* sc)
     return statement_create_error(&sc->ast->ast_allocator);
 }
 
+// -----------------------------------------------------------------------------
+// End functions for statements
+// -----------------------------------------------------------------------------

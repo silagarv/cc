@@ -5,8 +5,10 @@
 #include <assert.h>
 
 #include "files/location.h"
+
 #include "parse/ast_allocator.h"
 #include "parse/literal_parser.h"
+#include "parse/declaration.h"
 #include "parse/type.h"
 
 bool expression_is(const Expression* expr, ExpressionType type)
@@ -185,5 +187,48 @@ Expression* expression_create_binary(AstAllocator* allocator,
     expr->binary.op_loc = op_loc;
     expr->binary.rhs = rhs;
             
+    return expr;
+}
+
+Expression* expression_create_member_access(AstAllocator* allocator,
+        Location op_loc, Expression* lhs, Declaration* member,
+        QualifiedType expr_type, bool dot)
+{
+    ExpressionType type = dot
+            ? EXPRESSION_MEMBER_ACCESS
+            : EXPRESSION_MEMBER_POINTER_ACCESS;
+    Expression* expr = expression_create_base(allocator,
+            sizeof(ExpressionMemberAccess), type, expr_type);
+    expr->access.lhs = lhs;
+    expr->access.member = member;
+    expr->access.location_op = op_loc;
+    expr->access.is_arrow = !dot;
+
+    return expr;
+}
+
+Expression* expression_create_cast(AstAllocator* allocator, Location lparen_loc,
+        QualifiedType type, Location rparen_loc, Expression* rhs)
+{
+    Expression* expr = expression_create_base(allocator, sizeof(ExpressionCast),
+            EXPRESSION_CAST, type);
+    expr->cast.lparen_loc = lparen_loc;
+    expr->cast.rparen_loc = rparen_loc;
+    expr->cast.rhs = rhs;
+    expr->cast.implicit = false;
+
+    return expr;
+}
+
+Expression* expression_create_implicit_cast(AstAllocator* allocator,
+        QualifiedType cast_to, Expression* expression)
+{
+    Expression* expr = expression_create_base(allocator, sizeof(ExpressionCast),
+            EXPRESSION_CAST_IMPLICIT, cast_to);
+    expr->cast.lparen_loc = LOCATION_INVALID;
+    expr->cast.rparen_loc = LOCATION_INVALID;
+    expr->cast.rhs = expression;
+    expr->cast.implicit = true;
+
     return expr;
 }

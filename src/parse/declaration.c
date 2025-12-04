@@ -7,6 +7,7 @@
 #include <assert.h>
 
 #include "lex/preprocessor.h"
+#include "parse/ast.h"
 #include "util/vec.h"
 
 #include "files/location.h"
@@ -90,6 +91,41 @@ Declaration* declaration_specifiers_get_declaration(
     return decl_spec->declaration;
 }
 
+bool declaration_specifiers_allow_typename(const DeclarationSpecifiers* d)
+{
+    if (d->type_spec_sign != TYPE_SPECIFIER_SIGN_NONE)
+    {
+        return false;
+    }
+
+    if (d->type_spec_width != TYPE_SPECIFIER_WIDTH_NONE)
+    {
+        return false;
+    }
+
+    if (d->type_spec_complex != TYPE_SPECIFIER_COMPLEX_NONE)
+    {
+        return false;
+    }
+
+    if (d->type_spec_type != TYPE_SPECIFIER_TYPE_NONE)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+TypeStorageSpecifier declaration_specifiers_storage(DeclarationSpecifiers* d)
+{
+    return d->storage_spec;
+}
+
+void declaration_specifiers_remove_storage(DeclarationSpecifiers* d)
+{
+    d->storage_spec = TYPE_STORAGE_SPECIFIER_NONE;
+}
+
 Declarator declarator_create(DeclarationSpecifiers* specifiers,
         DeclaratorContext context, AstAllocator* allocator)
 {
@@ -101,10 +137,26 @@ Declarator declarator_create(DeclarationSpecifiers* specifiers,
         .identifier_location = LOCATION_INVALID,
         .piece_stack = NULL,
         .allocator = allocator,
+        .function_defn = false,
         .invalid = false
     };
 
     return declarator;
+}
+
+DeclarationSpecifiers* declarator_get_specifiers(const Declarator* declarator)
+{
+    return declarator->specifiers;
+}
+
+Identifier* declarator_get_identifier(const Declarator* declarator)
+{
+    return declarator->identifier;
+}
+
+Location declarator_get_location(const Declarator* declarator)
+{
+    return declarator->identifier_location;
 }
 
 DeclaratorContext declarator_get_context(const Declarator* declarator)
@@ -144,6 +196,16 @@ bool declarator_identifier_required(const Declarator* declarator)
     }
 
     panic("bad declarator context");
+}
+
+bool declarator_is_func_defn(const Declarator* declarator)
+{
+    return declarator->function_defn;
+}
+
+void declarator_set_func_defn(Declarator* declarator)
+{
+    declarator->function_defn = true;
 }
 
 bool declarator_has_identifier(const Declarator* declarator)
@@ -257,16 +319,9 @@ void declarator_push_array(Declarator* declarator, Location lbracket,
 }
 
 void declarator_push_function(Declarator* declarator, Location lparen_loc,
-        Location rparen_loc, DeclarationVector* params, Declaration* all_decls,
-        bool is_variadic)
+        Location rparen_loc, DeclarationList params, size_t num_params,
+        Declaration* all_decls, Location dots)
 {   
-    size_t num_params = declaration_vector_size(params);
-    Declaration** alloced = ast_allocator_alloc(declarator->allocator,
-            num_params * sizeof(Declaration*));
-    for (size_t i = 0; i < num_params; i++)
-    {
-        alloced[i] = declaration_vector_get(params, i);
-    }
 
     DeclaratorPiece* piece = ast_allocator_alloc(declarator->allocator,
             sizeof(DeclaratorPiece));
@@ -274,10 +329,11 @@ void declarator_push_function(Declarator* declarator, Location lparen_loc,
     piece->base.next = declarator->piece_stack;
     piece->function.lparen_loc = lparen_loc;
     piece->function.rparen_loc = rparen_loc;
-    piece->function.paramaters = alloced;
+    piece->function.dots = dots;
+    piece->function.paramaters = params;
     piece->function.num_paramaters = num_params;
     piece->function.all_decls = all_decls;
-    piece->function.is_variadic = is_variadic;
+    piece->function.is_variadic = dots != LOCATION_INVALID;
 
     declarator->piece_stack = piece;
 }
@@ -287,6 +343,57 @@ void declarator_add_bitfield(Declarator* declarator, Location colon_location,
 {
     declarator->colon_location = colon_location;
     declarator->bitfield_expression = expression;
+}
+
+DeclarationList declaration_list_create(AstAllocator* allocator)
+{
+    DeclarationList list = (DeclarationList)
+    {
+        .allocator = allocator,
+        .head = NULL,
+        .tail = NULL
+    };
+
+    return list;
+}
+
+void declaration_list_push(DeclarationList* list, Declaration* decl)
+{
+    // Create the entry
+    DeclarationListEntry* entry = ast_allocator_alloc(list->allocator,
+            sizeof(DeclarationListEntry));
+    entry->declaration = decl;
+    entry->next = NULL;
+
+    if (list->head == NULL)
+    {
+        list->head = entry;
+    }
+    else
+    {
+        *list->tail = entry;
+    }
+    list->tail = &entry->next;
+}
+
+Declaration* declaration_list_entry_get(const DeclarationListEntry* entry)
+{
+    return entry->declaration;
+}
+
+DeclarationListEntry* declaration_list_iter(const DeclarationList* list)
+{
+    return list->head;
+}
+
+DeclarationListEntry* declaration_list_next(const DeclarationListEntry* curr)
+{
+    return curr->next;
+}
+
+DeclarationType declaration_get_kind(const Declaration *decl)
+{
+    return decl->base.declaration_type;
 }
 
 bool declaration_is(const Declaration* decl, DeclarationType type)
@@ -316,6 +423,18 @@ bool declaration_has_identifier(const Declaration* decl)
     return decl->base.identifier != NULL;
 }
 
+Identifier* declaration_get_identifier(const Declaration* decl)
+{
+    assert(declaration_has_identifier(decl));
+
+    return decl->base.identifier;
+}
+
+bool declaration_is_external(const Declaration* decl)
+{
+    return decl->base.external;
+}
+
 bool declaration_is_valid(const Declaration* decl)
 {
     if (!decl)
@@ -334,6 +453,11 @@ void declaration_set_invalid(Declaration* decl)
     }
 
     decl->base.invalid = true;
+}
+
+void declaration_set_type(Declaration* decl, QualifiedType type)
+{
+    decl->base.qualified_type = type;
 }
 
 QualifiedType declaration_get_type(const Declaration* decl)
@@ -384,6 +508,7 @@ static Declaration* declaration_create_base(AstAllocator* allocator,
         .qualified_type = type,
         .storage_class = storage,
         .function_specifier = function,
+        .external = false, /*implicit=TODO: make sure this field is added*/
         .implicit = implicit,
         .invalid = false
     };
@@ -532,17 +657,24 @@ Declaration* declaration_create_struct(AstAllocator* allocator,
             sizeof(DeclarationCompound), DECLARATION_STRUCT, location,
             identifier, type, TYPE_STORAGE_SPECIFIER_NONE,
             TYPE_FUNCTION_SPECIFIER_NONE, false);
+    decl->compound.members = declaration_list_create(allocator);
 
     return decl;
 }
 
-void declaration_struct_add_members(Declaration* declaration,
-        Declaration** members, size_t num_members)
+void declaration_struct_add_member(Declaration* declaration,
+        Declaration* member)
 {
-    assert(declaration_is(declaration, DECLARATION_STRUCT));
+    assert(declaration_is(declaration, DECLARATION_STRUCT) ||
+            declaration_is(declaration, DECLARATION_UNION));
+    assert(member);
 
-    declaration->compound.members = members;
-    declaration->compound.num_members = num_members;
+    declaration_list_push(&declaration->compound.members, member);
+}
+
+DeclarationList declaration_struct_get_members(const Declaration* declaration)
+{
+    return declaration->compound.members;
 }
 
 bool declaration_struct_is_complete(const Declaration* declaration)
@@ -553,13 +685,19 @@ bool declaration_struct_is_complete(const Declaration* declaration)
     }
 
     DeclarationType decl_type = declaration->base.declaration_type;
-    if (decl_type != DECLARATION_STRUCT)
+    if (decl_type != DECLARATION_STRUCT && decl_type != DECLARATION_UNION)
     {
         return false;
     }
 
     QualifiedType type = declaration->compound.base.qualified_type;
     return type_struct_is_complete(type.type);
+}
+
+void declaration_struct_set_complete(Declaration* declaration)
+{
+    QualifiedType type = declaration->compound.base.qualified_type;
+    type.type->type_struct.base.is_complete = true;
 }
 
 Declaration* declaration_create_union(AstAllocator* allocator,
@@ -569,30 +707,35 @@ Declaration* declaration_create_union(AstAllocator* allocator,
             sizeof(DeclarationCompound), DECLARATION_UNION, location,
             identifier, type, TYPE_STORAGE_SPECIFIER_NONE,
             TYPE_FUNCTION_SPECIFIER_NONE, false);
+    decl->compound.members = declaration_list_create(allocator);
 
     return decl;
 }
 
 // TODO: below
-void declaration_union_add_members(Declaration* declaration,
-        Declaration** members, size_t num_members);
+void declaration_union_add_member(Declaration* declaration,
+        Declaration* members);
 bool declaration_union_is_complete(const Declaration* declaration);
 
 Declaration* declaration_create_function(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type,
         TypeStorageSpecifier storage, TypeFunctionSpecifier function_spec,
-        Declaration* all_decls)
+        Declaration* paramaters)
 {
     Declaration* declaration = declaration_create_base(allocator,
             sizeof(DeclarationFunction), DECLARATION_FUNCTION, location,
             identifier, type, storage, function_spec, false);
-    declaration->function.parameters = NULL;
-    declaration->function.num_parameters = 0;
+    declaration->function.all_decls = declaration_list_create(allocator);
+    declaration->function.definition = NULL;
     declaration->function.function_body = NULL;
-    declaration->function.prev = NULL;
-    declaration->function.all_decls = all_decls;
+    declaration->function.paramaters = paramaters;
 
     return declaration;
+}
+
+void declaration_function_add_decl(Declaration* function, Declaration* decl)
+{
+    declaration_list_push(&function->function.all_decls, decl);
 }
 
 bool declaration_function_has_body(const Declaration* declaration)
@@ -608,6 +751,17 @@ void declaration_function_set_body(Declaration* declaraiton,
     assert(!declaration_function_has_body(declaraiton));
 
     declaraiton->function.function_body = body;
+}
+
+void declaration_function_set_definition(Declaration* declaration,
+        Declaration* definition)
+{
+    declaration->function.definition = definition;
+}
+
+Declaration* declaration_function_get_paramaters(const Declaration* function)
+{
+    return function->function.paramaters;
 }
 
 Declaration* declaration_create_label(AstAllocator* allocator, 

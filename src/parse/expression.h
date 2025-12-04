@@ -32,6 +32,7 @@ typedef enum ExpressionType {
     EXPRESSION_SIZEOF_TYPE,
     EXPRESSION_SIZEOF_EXPRESSION,
     EXPRESSION_CAST,
+    EXPRESSION_CAST_IMPLICIT,
 
     EXPRESSION_UNARY_ADDRESS,
     EXPRESSION_UNARY_DEREFERENCE,
@@ -158,7 +159,7 @@ typedef struct ExpressionMemberAccess {
     ExpressionBase base;
     Location location_op;
     Expression* lhs;
-    Identifier* member;
+    union Declaration* member;
     bool is_arrow;
 } ExpressionMemberAccess;
 
@@ -191,7 +192,6 @@ typedef struct ExpressionCast {
     ExpressionBase base;
     Location lparen_loc;
     Location rparen_loc;
-    QualifiedType type;
     Expression* rhs;
     bool implicit;
 } ExpressionCast;
@@ -296,6 +296,15 @@ Expression* expression_create_unary(AstAllocator* allocator,
 Expression* expression_create_binary(AstAllocator* allocator, 
         ExpressionType type, Location op_loc, Expression* lhs, Expression* rhs,
         QualifiedType expr_type);
+
+Expression* expression_create_member_access(AstAllocator* allocator,
+        Location op_loc, Expression* lhs, union Declaration* member,
+        QualifiedType expr_type, bool dot);
+
+Expression* expression_create_cast(AstAllocator* allocator, Location lparen_loc,
+        QualifiedType type, Location rparen_loc, Expression* rhs);
+Expression* expression_create_implicit_cast(AstAllocator* allocator,
+        QualifiedType cast_to, Expression* expression);
 
 // TODO: somehow we will need to be able to fold expressions...
 // TODO: so we will need to set up some stuff here to do that. This will also

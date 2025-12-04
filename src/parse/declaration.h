@@ -18,6 +18,24 @@ union Statement;
 
 typedef union Declaration Declaration;
 
+// Structs for us to hold a declaration list to represent a list of declarations
+// that we might want to use. E.g. for a list of enums, struct members, etc...
+typedef struct DeclarationListEntry {
+    Declaration* declaration;
+    struct DeclarationListEntry* next;
+} DeclarationListEntry;
+
+typedef struct DeclarationList {
+    // The allocator for this declaration list
+    AstAllocator* allocator;
+
+    // The first entry in the list of declarations
+    DeclarationListEntry* head;
+
+    // The final entry in the list of declarations
+    DeclarationListEntry** tail;
+} DeclarationList;
+
 // A struct to hold all of our declaration specifiers.
 // TODO: eventually we will want to include locations for all of these so that
 // TODO: we are more able to accurately report errors here.
@@ -76,7 +94,8 @@ typedef struct DeclaratorPieceFunction {
     DeclaratorPieceBase base;
     Location lparen_loc;
     Location rparen_loc;
-    Declaration** paramaters;
+    Location dots;
+    DeclarationList paramaters;
     size_t num_paramaters;
     Declaration* all_decls;
     bool is_variadic;
@@ -132,6 +151,9 @@ typedef struct Declarator {
     Location colon_location;
     Expression* bitfield_expression;
 
+    // true if this is a function definition
+    bool function_defn;
+
     // true if this declarator was found to be invalid during parsing
     bool invalid;
 } Declarator;
@@ -173,6 +195,9 @@ typedef struct DeclarationBase {
 
     // The function specifier for this symbol if needed
     TypeFunctionSpecifier function_specifier;
+    
+    // Is this an external declaration (top level)
+    bool external;
 
     // Is this declaration implicit (not found in source).
     bool implicit;
@@ -201,18 +226,14 @@ typedef struct DeclarationFunction {
     // at all.
     DeclarationBase base;
 
-    // The previous function declaration for this function if relavent
-    struct DeclarationFunction* prev;
+    // All the declarations of this function
+    DeclarationList all_decls;
 
-    // in the normal namespace
-    // The paramaters of the function, should all be variable declarations.
-    Declaration** parameters;
-
-    // The number of parameters that we actually got.
-    size_t num_parameters;
+    // The declaration of this function that had the body (if present)
+    Declaration* definition;
 
     // All of the declarations present in the function paramater list (structs)
-    Declaration* all_decls;
+    Declaration* paramaters;
 
     // The body of this function or NULL if there are only declarations of this
     // function and no definitions.
@@ -248,11 +269,8 @@ typedef struct DeclarationCompound {
     DeclarationBase base;
 
     // The members of the structure.
-    Declaration** members;
-    size_t num_members;
+    DeclarationList members;
 } DeclarationCompound;
-
-// TODO: all our other declarations...
 
 typedef struct DeclarationEnumConstant {
     // The base declaration
@@ -292,17 +310,6 @@ typedef struct DeclarationLabel {
     bool used;
 } DeclarationLabel;
 
-typedef struct DeclarationList {
-    // The base declaration. The only field used here should be the type of
-    // declaration since eash individual declaration could be of different
-    // types
-    DeclarationBase base;
-
-    // The actual declarations that we have
-    Declaration** declarations;
-    size_t num_declaration;
-} DeclarationList;
-
 union Declaration {
     // The base declaration. Used by all of the specialised declatation like
     // structs as the first member so that we can do type punning and pointer
@@ -336,9 +343,6 @@ union Declaration {
     // label and could be implicitly constructed. However, this will be checked
     // for at some stage.
     DeclarationLabel label;
-
-    // A list of multiple declarations
-    DeclarationList list;
 };
 
 vector_of_decl(Declaration*, Declaration, declaration);
@@ -347,12 +351,21 @@ DeclarationSpecifiers declaration_specifiers_create(Location location);
 bool declaration_specifiers_has_declaration(const DeclarationSpecifiers* d);
 Declaration* declaration_specifiers_get_declaration(
         const DeclarationSpecifiers* decl_spec);
+bool declaration_specifiers_allow_typename(const DeclarationSpecifiers* d);
+
+TypeStorageSpecifier declaration_specifiers_storage(DeclarationSpecifiers* d);
+void declaration_specifiers_remove_storage(DeclarationSpecifiers* d);
 
 char* tag_kind_to_name(DeclarationType type);
 char* declarator_context_to_name(DeclaratorContext context);
 
 Declarator declarator_create(DeclarationSpecifiers* specifiers,
         DeclaratorContext context, AstAllocator* allocator);
+
+DeclarationSpecifiers* declarator_get_specifiers(const Declarator* declarator);
+
+Identifier* declarator_get_identifier(const Declarator* declarator);
+Location declarator_get_location(const Declarator* declarator);
 
 DeclaratorContext declarator_get_context(const Declarator* declarator);
 
@@ -362,6 +375,9 @@ bool declarator_identifier_required(const Declarator* declarator);
 bool declarator_has_identifier(const Declarator* declarator);
 void declarator_set_identifier(Declarator* declarator, Identifier* identifier,
         Location identifier_location);
+
+bool declarator_is_func_defn(const Declarator* declarator);
+void declarator_set_func_defn(Declarator* declarator);
 
 bool declarator_is_invalid(const Declarator* declarator);
 void declarator_set_invalid(Declarator* declarator);
@@ -379,8 +395,8 @@ void declarator_push_array(Declarator* declarator, Location lbracket,
         Location rbracket, Location static_location, TypeQualifiers qualifiers,
         Expression* expression, bool is_static, bool is_star);
 void declarator_push_function(Declarator* declarator, Location lparen_loc,
-        Location rparen_loc, DeclarationVector* params, Declaration* all_decls,
-        bool is_variadic);
+        Location rparen_loc, DeclarationList params, size_t num_params,
+        Declaration* all_decls, Location dots);
 void declarator_add_bitfield(Declarator* declarator, Location colon_location,
         Expression* expression);
 
@@ -388,14 +404,23 @@ void declarator_push_function_empty(Declarator* declarator, Location lparen_loc,
         Location rparen_loc);
 void declarator_push_function_knr(Declarator* declarator, ...);
 
+// Functions for our declaration list
+DeclarationList declaration_list_create(AstAllocator* allocator);
+void declaration_list_push(DeclarationList* list, Declaration* decl);
+Declaration* declaration_list_entry_get(const DeclarationListEntry* entry);
+DeclarationListEntry* declaration_list_iter(const DeclarationList* list);
+DeclarationListEntry* declaration_list_next(const DeclarationListEntry* curr);
 
-// TODO: redo this completely with our ast allocator
-
+// Functions for declarations
+DeclarationType declaration_get_kind(const Declaration *decl);
 bool declaration_is(const Declaration* decl, DeclarationType type);
 bool declaration_is_tag(const Declaration* decl);
 bool declaration_has_identifier(const Declaration* decl);
+Identifier* declaration_get_identifier(const Declaration* decl);
+bool declaration_is_external(const Declaration* decl);
 bool declaration_is_valid(const Declaration* decl);
 void declaration_set_invalid(Declaration* decl);
+void declaration_set_type(Declaration* decl, QualifiedType type);
 QualifiedType declaration_get_type(const Declaration* decl);
 TypeStorageSpecifier declaration_get_storage_class(const Declaration* decl);
 Location declaration_get_location(const Declaration* decl);
@@ -437,27 +462,36 @@ Declaration* declaration_create_field(AstAllocator* allocator,
 
 Declaration* declaration_create_struct(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type);
-void declaration_struct_add_members(Declaration* declaration,
-        Declaration** members, size_t num_members);
+void declaration_struct_add_member(Declaration* declaration,
+        Declaration* member);
+DeclarationList declaration_struct_get_members(const Declaration* declaration);
 bool declaration_struct_is_complete(const Declaration* declaration);
+void declaration_struct_set_complete(Declaration* declaration);
 
 Declaration* declaration_create_union(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type);
-void declaration_union_add_members(Declaration* declaration,
-        Declaration** members, size_t num_members);
+void declaration_union_add_member(Declaration* declaration,
+        Declaration* members);
 bool declaration_union_is_complete(const Declaration* declaration);
 
 Declaration* declaration_create_function(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type,
         TypeStorageSpecifier storage, TypeFunctionSpecifier function_spec,
         Declaration* all_decls);
+void declaration_function_add_decl(Declaration* function, Declaration* decl);
 bool declaration_function_has_body(const Declaration* declaration);
 void declaration_function_set_body(Declaration* declaraiton,
         union Statement* body);
+void declaration_function_set_definition(Declaration* declaration,
+        Declaration* definition);
+Declaration* declaration_function_get_paramaters(const Declaration* function);
 
 // Create a declaration of label identifier at the given location, and indicate
 // if this label was implictly constructed.
 Declaration* declaration_create_label(AstAllocator* allocator, 
         Identifier* identifier, Location location, bool implicit);
+
+// Functions for creating and managing a declaration list
+
 
 #endif /* DECLARATION_H */
