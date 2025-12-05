@@ -41,7 +41,7 @@ typedef struct DeclarationList {
 // TODO: we are more able to accurately report errors here.
 typedef struct DeclarationSpecifiers {
     Type* type;
-    TypeStorageSpecifier storage_spec;
+    StorageSpecifier storage_spec;
     TypeQualifiers qualifiers;
     TypeFunctionSpecifier function_spec;
     TypeSpecifierType type_spec_type;
@@ -117,11 +117,11 @@ typedef union DeclaratorPiece {
 
 // Where is this declaration trying to be definied
 typedef enum DeclaratorContext {
-    DECLARATION_CONTEXT_FILE,
-    DECLARATION_CONTEXT_STRUCT,
-    DECLARATION_CONTEXT_FUNCTION_PARAM,
-    DECLARATION_CONTEXT_BLOCK,
-    DECLARATION_CONTEXT_TYPE_NAME
+    DECL_CTX_FILE,
+    DECL_CTX_STRUCT,
+    DECL_CTX_PARAM,
+    DECL_CTX_BLOCK,
+    DECL_CTX_TYPE_NAME
 } DeclaratorContext;
 
 // Here is our declarator vector that we are going to use to help us parse
@@ -168,8 +168,7 @@ typedef enum DeclarationType {
     DECLARATION_UNION, /* of a union */
     DECLARATION_ENUM_CONSTANT, /* constants within an enum */
     DECLARATION_ENUM, /* an enum */
-    DECLARATION_LABEL, /* A label within the source e.g. `foo:` */
-    DECLARATION_LIST /* A list of declarations */
+    DECLARATION_LABEL /* A label within the source e.g. `foo:` */
 } DeclarationType;
 
 // A structure to hold all of the basics needed in a declaration. This helps us
@@ -191,7 +190,7 @@ typedef struct DeclarationBase {
     QualifiedType qualified_type;
 
     // The storage specifier for this symbol
-    TypeStorageSpecifier storage_class;
+    StorageSpecifier storage_class;
 
     // The function specifier for this symbol if needed
     TypeFunctionSpecifier function_specifier;
@@ -212,6 +211,12 @@ typedef struct DeclarationBase {
 typedef struct DeclarationVariable {
     // The base declaration of this object
     DeclarationBase base;
+
+    // Is this variable declared as external
+    bool external;
+
+    // Is this a tentative definition
+    bool tentative;
 
     // The initializer for this variable
     Initializer* initializer;
@@ -353,7 +358,7 @@ Declaration* declaration_specifiers_get_declaration(
         const DeclarationSpecifiers* decl_spec);
 bool declaration_specifiers_allow_typename(const DeclarationSpecifiers* d);
 
-TypeStorageSpecifier declaration_specifiers_storage(DeclarationSpecifiers* d);
+StorageSpecifier declaration_specifiers_storage(DeclarationSpecifiers* d);
 void declaration_specifiers_remove_storage(DeclarationSpecifiers* d);
 
 char* tag_kind_to_name(DeclarationType type);
@@ -422,7 +427,7 @@ bool declaration_is_valid(const Declaration* decl);
 void declaration_set_invalid(Declaration* decl);
 void declaration_set_type(Declaration* decl, QualifiedType type);
 QualifiedType declaration_get_type(const Declaration* decl);
-TypeStorageSpecifier declaration_get_storage_class(const Declaration* decl);
+StorageSpecifier declaration_get_storage_class(const Declaration* decl);
 Location declaration_get_location(const Declaration* decl);
 void declaration_set_next(Declaration* decl, Declaration* next);
 Declaration* declaration_get_next(Declaration* decl);
@@ -436,7 +441,7 @@ Declaration* declaration_create_error(AstAllocator* allocator,
 // variable that we can use within other places.
 Declaration* declaration_create_variable(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type, 
-        TypeStorageSpecifier storage);
+        StorageSpecifier storage);
 void declaration_variable_add_initializer(Declaration* declaration,
         Initializer* initializer);
 
@@ -476,7 +481,7 @@ bool declaration_union_is_complete(const Declaration* declaration);
 
 Declaration* declaration_create_function(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type,
-        TypeStorageSpecifier storage, TypeFunctionSpecifier function_spec,
+        StorageSpecifier storage, TypeFunctionSpecifier function_spec,
         Declaration* all_decls);
 void declaration_function_add_decl(Declaration* function, Declaration* decl);
 bool declaration_function_has_body(const Declaration* declaration);

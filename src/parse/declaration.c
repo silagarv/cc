@@ -44,19 +44,19 @@ char* declarator_context_to_name(DeclaratorContext context)
 {
     switch (context)
     {
-        case DECLARATION_CONTEXT_TYPE_NAME:
+        case DECL_CTX_TYPE_NAME:
             return "type id";
 
-        case DECLARATION_CONTEXT_FUNCTION_PARAM:
+        case DECL_CTX_PARAM:
             return "function parameter";
 
-        case DECLARATION_CONTEXT_BLOCK:
+        case DECL_CTX_BLOCK:
             return "block";
 
-        case DECLARATION_CONTEXT_FILE:
+        case DECL_CTX_FILE:
             return "file";
 
-        case DECLARATION_CONTEXT_STRUCT:
+        case DECL_CTX_STRUCT:
             return "struct";
     }
 }
@@ -66,13 +66,13 @@ DeclarationSpecifiers declaration_specifiers_create(Location location)
     DeclarationSpecifiers specifiers = (DeclarationSpecifiers)
     {
         .type = NULL,
-        .storage_spec = TYPE_STORAGE_SPECIFIER_NONE,
-        .qualifiers = TYPE_QUALIFIER_NONE,
-        .function_spec = TYPE_FUNCTION_SPECIFIER_NONE,
-        .type_spec_type = TYPE_SPECIFIER_TYPE_NONE,
-        .type_spec_width = TYPE_SPECIFIER_WIDTH_NONE,
-        .type_spec_sign = TYPE_SPECIFIER_SIGN_NONE,
-        .type_spec_complex = TYPE_SPECIFIER_COMPLEX_NONE,
+        .storage_spec = STORAGE_SPECIFIER_NONE,
+        .qualifiers = QUALIFIER_NONE,
+        .function_spec = FUNCTION_SPECIFIER_NONE,
+        .type_spec_type = TYPE_SPECIFIER_NONE,
+        .type_spec_width = WIDTH_SPECIFIER_NONE,
+        .type_spec_sign = SIGN_SPECIFIER_NONE,
+        .type_spec_complex = COMPLEX_SPECIFIER_NONE,
         .location = location,
         .declaration = NULL
     };
@@ -93,22 +93,22 @@ Declaration* declaration_specifiers_get_declaration(
 
 bool declaration_specifiers_allow_typename(const DeclarationSpecifiers* d)
 {
-    if (d->type_spec_sign != TYPE_SPECIFIER_SIGN_NONE)
+    if (d->type_spec_sign != SIGN_SPECIFIER_NONE)
     {
         return false;
     }
 
-    if (d->type_spec_width != TYPE_SPECIFIER_WIDTH_NONE)
+    if (d->type_spec_width != WIDTH_SPECIFIER_NONE)
     {
         return false;
     }
 
-    if (d->type_spec_complex != TYPE_SPECIFIER_COMPLEX_NONE)
+    if (d->type_spec_complex != COMPLEX_SPECIFIER_NONE)
     {
         return false;
     }
 
-    if (d->type_spec_type != TYPE_SPECIFIER_TYPE_NONE)
+    if (d->type_spec_type != TYPE_SPECIFIER_NONE)
     {
         return false;
     }
@@ -116,14 +116,14 @@ bool declaration_specifiers_allow_typename(const DeclarationSpecifiers* d)
     return true;
 }
 
-TypeStorageSpecifier declaration_specifiers_storage(DeclarationSpecifiers* d)
+StorageSpecifier declaration_specifiers_storage(DeclarationSpecifiers* d)
 {
     return d->storage_spec;
 }
 
 void declaration_specifiers_remove_storage(DeclarationSpecifiers* d)
 {
-    d->storage_spec = TYPE_STORAGE_SPECIFIER_NONE;
+    d->storage_spec = STORAGE_SPECIFIER_NONE;
 }
 
 Declarator declarator_create(DeclarationSpecifiers* specifiers,
@@ -168,13 +168,13 @@ bool declarator_identifier_allowed(const Declarator* declarator)
 {
     switch (declarator->context)
     {
-        case DECLARATION_CONTEXT_TYPE_NAME:
+        case DECL_CTX_TYPE_NAME:
             return false;
 
-        case DECLARATION_CONTEXT_FUNCTION_PARAM:
-        case DECLARATION_CONTEXT_BLOCK:
-        case DECLARATION_CONTEXT_FILE:
-        case DECLARATION_CONTEXT_STRUCT:
+        case DECL_CTX_PARAM:
+        case DECL_CTX_BLOCK:
+        case DECL_CTX_FILE:
+        case DECL_CTX_STRUCT:
             return true;
     }
 
@@ -185,13 +185,13 @@ bool declarator_identifier_required(const Declarator* declarator)
 {
     switch (declarator->context)
     {
-        case DECLARATION_CONTEXT_TYPE_NAME:
-        case DECLARATION_CONTEXT_FUNCTION_PARAM:
+        case DECL_CTX_TYPE_NAME:
+        case DECL_CTX_PARAM:
             return false;
 
-        case DECLARATION_CONTEXT_BLOCK:
-        case DECLARATION_CONTEXT_FILE:
-        case DECLARATION_CONTEXT_STRUCT:
+        case DECL_CTX_BLOCK:
+        case DECL_CTX_FILE:
+        case DECL_CTX_STRUCT:
             return true;
     }
 
@@ -235,7 +235,7 @@ bool declarator_is_invalid(const Declarator* declarator)
 
 bool declarator_allowed_bitfields(Declarator* declarator)
 {
-    return declarator->context == DECLARATION_CONTEXT_STRUCT;
+    return declarator->context == DECL_CTX_STRUCT;
 }
 
 Location declarator_get_colon_location(Declarator* declarator)
@@ -465,7 +465,7 @@ QualifiedType declaration_get_type(const Declaration* decl)
     return decl->base.qualified_type;
 }
 
-TypeStorageSpecifier declaration_get_storage_class(const Declaration* decl)
+StorageSpecifier declaration_get_storage_class(const Declaration* decl)
 {
     return decl->base.storage_class;
 }
@@ -496,7 +496,7 @@ Declaration** declaration_get_next_ptr(Declaration* decl)
 static Declaration* declaration_create_base(AstAllocator* allocator, 
         size_t size, DeclarationType decl_type, Location location, 
         Identifier* identifier, QualifiedType type, 
-        TypeStorageSpecifier storage, TypeFunctionSpecifier function,
+        StorageSpecifier storage, TypeFunctionSpecifier function,
         bool implicit)
 {
     Declaration* decl = ast_allocator_alloc(allocator, size);
@@ -521,16 +521,16 @@ Declaration* declaration_create_error(AstAllocator* allocator,
 {
     return declaration_create_base(allocator, sizeof(DeclarationBase),
             DECLARATION_ERROR, location, NULL, (QualifiedType) {0},
-            TYPE_STORAGE_SPECIFIER_NONE, TYPE_FUNCTION_SPECIFIER_NONE, false);
+            STORAGE_SPECIFIER_NONE, FUNCTION_SPECIFIER_NONE, false);
 }
 
 Declaration* declaration_create_variable(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type, 
-        TypeStorageSpecifier storage)
+        StorageSpecifier storage)
 {
     Declaration* decl = declaration_create_base(allocator,
             sizeof(DeclarationVariable), DECLARATION_VARIABLE, location, 
-            identifier, type, storage, TYPE_FUNCTION_SPECIFIER_NONE, false);
+            identifier, type, storage, FUNCTION_SPECIFIER_NONE, false);
     decl->variable.initializer = NULL;
 
     return decl;
@@ -548,8 +548,8 @@ Declaration* declaration_create_typedef(AstAllocator* allocator,
 {
     Declaration* decl = declaration_create_base(allocator,
             sizeof(DeclarationTypedef), DECLARATION_TYPEDEF, location,
-            identifier, type, TYPE_STORAGE_SPECIFIER_TYPEDEF,
-            TYPE_FUNCTION_SPECIFIER_NONE, false);
+            identifier, type, STORAGE_SPECIFIER_TYPEDEF,
+            FUNCTION_SPECIFIER_NONE, false);
     
     return decl;
 }
@@ -567,7 +567,7 @@ Declaration* declaration_create_enum(AstAllocator* allocator,
 
     Declaration* declaration = declaration_create_base(allocator,
             sizeof(DeclarationEnum), DECLARATION_ENUM, location, identifier,
-            type, TYPE_STORAGE_SPECIFIER_NONE, TYPE_FUNCTION_SPECIFIER_NONE,
+            type, STORAGE_SPECIFIER_NONE, FUNCTION_SPECIFIER_NONE,
             false);
 
     declaration->enumeration.entries = NULL;
@@ -614,8 +614,8 @@ Declaration* declaration_create_enum_constant(AstAllocator* allocator,
 {
     Declaration* decl = declaration_create_base(allocator,
             sizeof(DeclarationEnumConstant), DECLARATION_ENUM_CONSTANT,
-            location, identifier, type, TYPE_STORAGE_SPECIFIER_NONE,
-            TYPE_FUNCTION_SPECIFIER_NONE, false);
+            location, identifier, type, STORAGE_SPECIFIER_NONE,
+            FUNCTION_SPECIFIER_NONE, false);
     decl->enumeration_constant.equals_loc = equals;
     decl->enumeration_constant.expression = expression;
     decl->enumeration_constant.value = value;
@@ -641,7 +641,7 @@ Declaration* declaration_create_field(AstAllocator* allocator,
 {
     Declaration* decl = declaration_create_base(allocator,
             sizeof(DeclarationField), DECLARATION_FIELD, location, identifier,
-            type, TYPE_STORAGE_SPECIFIER_NONE, TYPE_FUNCTION_SPECIFIER_NONE,
+            type, STORAGE_SPECIFIER_NONE, FUNCTION_SPECIFIER_NONE,
             false);
     decl->field.colon_location = colon_location;
     decl->field.bitfield = expression;
@@ -655,8 +655,8 @@ Declaration* declaration_create_struct(AstAllocator* allocator,
 {
     Declaration* decl = declaration_create_base(allocator,
             sizeof(DeclarationCompound), DECLARATION_STRUCT, location,
-            identifier, type, TYPE_STORAGE_SPECIFIER_NONE,
-            TYPE_FUNCTION_SPECIFIER_NONE, false);
+            identifier, type, STORAGE_SPECIFIER_NONE,
+            FUNCTION_SPECIFIER_NONE, false);
     decl->compound.members = declaration_list_create(allocator);
 
     return decl;
@@ -705,8 +705,8 @@ Declaration* declaration_create_union(AstAllocator* allocator,
 {
     Declaration* decl = declaration_create_base(allocator,
             sizeof(DeclarationCompound), DECLARATION_UNION, location,
-            identifier, type, TYPE_STORAGE_SPECIFIER_NONE,
-            TYPE_FUNCTION_SPECIFIER_NONE, false);
+            identifier, type, STORAGE_SPECIFIER_NONE,
+            FUNCTION_SPECIFIER_NONE, false);
     decl->compound.members = declaration_list_create(allocator);
 
     return decl;
@@ -719,7 +719,7 @@ bool declaration_union_is_complete(const Declaration* declaration);
 
 Declaration* declaration_create_function(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type,
-        TypeStorageSpecifier storage, TypeFunctionSpecifier function_spec,
+        StorageSpecifier storage, TypeFunctionSpecifier function_spec,
         Declaration* paramaters)
 {
     Declaration* declaration = declaration_create_base(allocator,
@@ -770,8 +770,8 @@ Declaration* declaration_create_label(AstAllocator* allocator,
     // Note the label is a special case where we do not really have a type
     Declaration* decl = declaration_create_base(allocator, 
             sizeof(DeclarationLabel), DECLARATION_LABEL, location, identifier,
-            (QualifiedType) {0}, TYPE_STORAGE_SPECIFIER_NONE,
-            TYPE_FUNCTION_SPECIFIER_NONE, implicit);
+            (QualifiedType) {0}, STORAGE_SPECIFIER_NONE,
+            FUNCTION_SPECIFIER_NONE, implicit);
     decl->label.used = implicit; // if implicit then used...
 
     return decl;

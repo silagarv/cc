@@ -130,13 +130,13 @@ void semantic_checker_insert_member(SemanticChecker* sc, Declaration* decl)
 static QualifiedType semantic_checker_get_int_type(SemanticChecker* sc)
 {
     Type* int_type = sc->ast->base_types.type_signed_int;
-    return (QualifiedType) {TYPE_QUALIFIER_NONE, int_type};
+    return (QualifiedType) {QUALIFIER_NONE, int_type};
 }
 
 static QualifiedType semantic_checker_get_void_type(SemanticChecker* sc)
 {
     Type* void_type = sc->ast->base_types.type_void;
-    return (QualifiedType) {TYPE_QUALIFIER_NONE, void_type};
+    return (QualifiedType) {QUALIFIER_NONE, void_type};
 }
 
 static QualifiedType semantic_checker_decay_type(SemanticChecker* sc,
@@ -163,7 +163,7 @@ static QualifiedType semantic_checker_decay_type(SemanticChecker* sc,
         // Here we can use the original type and avoid desugaring since pointer
         // doesn't have to go one level lower.
         return type_create_pointer(&sc->ast->ast_allocator, type,
-                TYPE_QUALIFIER_NONE);
+                QUALIFIER_NONE);
     }
 
     // Decay array types.
@@ -182,7 +182,7 @@ static QualifiedType semantic_checker_decay_type(SemanticChecker* sc,
             element = type_array_get_element_type(&real_type);
         }
         return type_create_pointer(&sc->ast->ast_allocator, element,
-                    TYPE_QUALIFIER_NONE);
+                    QUALIFIER_NONE);
     }
 
     // We should never be here, but as fallback just return the original type
@@ -213,28 +213,28 @@ void declaration_specifiers_finish(SemanticChecker* sc,
     // be specified when the type is int.
     switch (specifiers->type_spec_sign)
     {
-        case TYPE_SPECIFIER_SIGN_NONE:
+        case SIGN_SPECIFIER_NONE:
             break;
 
-        case TYPE_SPECIFIER_SIGN_SIGNED:
-        case TYPE_SPECIFIER_SIGN_UNSIGNED:
+        case SIGN_SPECIFIER_SIGNED:
+        case SIGN_SPECIFIER_UNSIGNED:
             // If it isn't specified we set it to be int. Otherwise make sure
             // that we only have an int type. If we get signed or unsigned then
             // we disregard that in favour of the other
-            if (specifiers->type_spec_type == TYPE_SPECIFIER_TYPE_NONE)
+            if (specifiers->type_spec_type == TYPE_SPECIFIER_NONE)
             {
-                specifiers->type_spec_type = TYPE_SPECIFIER_TYPE_INT;
+                specifiers->type_spec_type = TYPE_SPECIFIER_INT;
             }
-            else if (specifiers->type_spec_type == TYPE_SPECIFIER_TYPE_CHAR)
+            else if (specifiers->type_spec_type == TYPE_SPECIFIER_CHAR)
             {
                 ; // char is also allowed to be signed or unsigned
             }
-            else if (specifiers->type_spec_type != TYPE_SPECIFIER_TYPE_INT)
+            else if (specifiers->type_spec_type != TYPE_SPECIFIER_INT)
             {
                 diagnostic_error_at(sc->dm, specifiers->location,
                         "'%s' cannot be signed or unsigned",
                         type_specifier_to_name(specifiers->type_spec_type));
-                specifiers->type_spec_sign = TYPE_SPECIFIER_SIGN_NONE;
+                specifiers->type_spec_sign = SIGN_SPECIFIER_NONE;
             }
             break;
     }
@@ -242,72 +242,72 @@ void declaration_specifiers_finish(SemanticChecker* sc,
     // Fix up some things with the width and type.
     switch (specifiers->type_spec_width)
     {
-        case TYPE_SPECIFIER_WIDTH_NONE:
+        case WIDTH_SPECIFIER_NONE:
             break;
 
         // Here we can only have 'short int' or 'long long int'
-        case TYPE_SPECIFIER_WIDTH_SHORT:
-        case TYPE_SPECIFIER_WIDTH_LONG_LONG:
+        case WIDTH_SPECIFIER_SHORT:
+        case WIDTH_SPECIFIER_LONG_LONG:
             // If 'int' was ommited set it, otherwise error about how it is
             // invalid. And set it to be int. 
-            if (specifiers->type_spec_type == TYPE_SPECIFIER_TYPE_NONE)
+            if (specifiers->type_spec_type == TYPE_SPECIFIER_NONE)
             {
-                specifiers->type_spec_type = TYPE_SPECIFIER_TYPE_INT;
+                specifiers->type_spec_type = TYPE_SPECIFIER_INT;
             }
-            else if (specifiers->type_spec_type != TYPE_SPECIFIER_TYPE_INT)
+            else if (specifiers->type_spec_type != TYPE_SPECIFIER_INT)
             {
                 diagnostic_error_at(sc->dm, specifiers->location, 
                         "'%s %s' is invalid",
                         width_specifier_to_name(specifiers->type_spec_width),
                         type_specifier_to_name(specifiers->type_spec_type));
-                specifiers->type_spec_type = TYPE_SPECIFIER_TYPE_INT;
+                specifiers->type_spec_type = TYPE_SPECIFIER_INT;
             }
             break;
 
         // Here we can have 'long int' or 'long double'
-        case TYPE_SPECIFIER_WIDTH_LONG:
+        case WIDTH_SPECIFIER_LONG:
             // If 'int' was ommited set it, otherwise error about how it is
             // invalid. And set it to be int. But only if its also not double
-            if (specifiers->type_spec_type == TYPE_SPECIFIER_TYPE_NONE)
+            if (specifiers->type_spec_type == TYPE_SPECIFIER_NONE)
             {
-                specifiers->type_spec_type = TYPE_SPECIFIER_TYPE_INT;
+                specifiers->type_spec_type = TYPE_SPECIFIER_INT;
             }
-            else if (specifiers->type_spec_type != TYPE_SPECIFIER_TYPE_INT &&
-                    specifiers->type_spec_type != TYPE_SPECIFIER_TYPE_DOUBLE)
+            else if (specifiers->type_spec_type != TYPE_SPECIFIER_INT &&
+                    specifiers->type_spec_type != TYPE_SPECIFIER_DOUBLE)
             {
                 diagnostic_error_at(sc->dm, specifiers->location, 
                         "'%s %s' is invalid",
                         width_specifier_to_name(specifiers->type_spec_width),
                         type_specifier_to_name(specifiers->type_spec_type));
-                specifiers->type_spec_type = TYPE_SPECIFIER_TYPE_INT;
+                specifiers->type_spec_type = TYPE_SPECIFIER_INT;
             }
             break;
     }
 
     switch (specifiers->type_spec_complex)
     {
-        case TYPE_SPECIFIER_COMPLEX_NONE:
+        case COMPLEX_SPECIFIER_NONE:
             break;
 
-        case TYPE_SPECIFIER_COMPLEX_COMPLEX:
-        case TYPE_SPECIFIER_COMPLEX_IMAGINAIRY:
-            if (specifiers->type_spec_type == TYPE_SPECIFIER_TYPE_NONE)
+        case COMPLEX_SPECIFIER_COMPLEX:
+        case COMPLEX_SPECIFIER_IMAGINAIRY:
+            if (specifiers->type_spec_type == TYPE_SPECIFIER_NONE)
             {
                 diagnostic_warning_at(sc->dm, specifiers->location,
                         "'%s' requires type specifier; assuming 'double'",
                         complex_specifier_to_name(
                         specifiers->type_spec_complex));
-                specifiers->type_spec_type = TYPE_SPECIFIER_TYPE_DOUBLE;
+                specifiers->type_spec_type = TYPE_SPECIFIER_DOUBLE;
             }
-            else if (specifiers->type_spec_type != TYPE_SPECIFIER_TYPE_FLOAT &&
-                    specifiers->type_spec_type != TYPE_SPECIFIER_TYPE_DOUBLE)
+            else if (specifiers->type_spec_type != TYPE_SPECIFIER_FLOAT &&
+                    specifiers->type_spec_type != TYPE_SPECIFIER_DOUBLE)
             {
                 diagnostic_error_at(sc->dm, specifiers->location,
                         "'%s %s' is invalid",
                         complex_specifier_to_name(
                         specifiers->type_spec_complex),
                         type_specifier_to_name(specifiers->type_spec_type));
-                specifiers->type_spec_complex = TYPE_SPECIFIER_COMPLEX_NONE;
+                specifiers->type_spec_complex = COMPLEX_SPECIFIER_NONE;
             }
             break;
     }
@@ -315,7 +315,7 @@ void declaration_specifiers_finish(SemanticChecker* sc,
     // Now check that we have actually recieved a type during parsing
     switch (specifiers->type_spec_type)
     {
-        case TYPE_SPECIFIER_TYPE_NONE:
+        case TYPE_SPECIFIER_NONE:
             // diagnostic_error_at(sc->dm, specifiers->location,
             //         "type specifier missing, defaults to 'int'");
             // specifiers->type_spec_type = TYPE_SPECIFIER_TYPE_INT;
@@ -342,7 +342,7 @@ static QualifiedType add_type_qualifiers(SemanticChecker* sc,
         if (!qualified_type_is(&real_type, TYPE_POINTER))
         {
             // Remove the restrict qualifier
-            qualifiers &= ~TYPE_QUALIFIER_RESTRICT;
+            qualifiers &= ~QUALIFIER_RESTRICT;
             diagnostic_error_at(sc->dm, specifiers->location,
                     "restrict requires a pointer");
         }
@@ -373,22 +373,22 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
 
     switch (specifiers->type_spec_type)
     {
-        case TYPE_SPECIFIER_TYPE_NONE:
+        case TYPE_SPECIFIER_NONE:
             diagnostic_error_at(sc->dm, specifiers->location,
                     "type specifier missing, defaults to 'int'");
             type = builtins->type_signed_int;
             break;
 
-        case TYPE_SPECIFIER_TYPE_VOID:
+        case TYPE_SPECIFIER_VOID:
             type = builtins->type_void;
             break;
 
-        case TYPE_SPECIFIER_TYPE_CHAR:
-            if (specifiers->type_spec_sign == TYPE_SPECIFIER_SIGN_NONE)
+        case TYPE_SPECIFIER_CHAR:
+            if (specifiers->type_spec_sign == SIGN_SPECIFIER_NONE)
             {
                 type = builtins->type_char;
             }
-            else if (specifiers->type_spec_sign == TYPE_SPECIFIER_SIGN_SIGNED)
+            else if (specifiers->type_spec_sign == SIGN_SPECIFIER_SIGNED)
             {
                 type = builtins->type_signed_char;
             }
@@ -398,25 +398,25 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
             }
             break;
 
-        case TYPE_SPECIFIER_TYPE_INT:
+        case TYPE_SPECIFIER_INT:
             // If were not unsigned then we always go to being signed.
-            if (specifiers->type_spec_sign != TYPE_SPECIFIER_SIGN_UNSIGNED)
+            if (specifiers->type_spec_sign != SIGN_SPECIFIER_UNSIGNED)
             {
                 switch (specifiers->type_spec_width)
                 {
-                    case TYPE_SPECIFIER_WIDTH_NONE:
+                    case WIDTH_SPECIFIER_NONE:
                         type = builtins->type_signed_int;
                         break;
 
-                    case TYPE_SPECIFIER_WIDTH_SHORT:
+                    case WIDTH_SPECIFIER_SHORT:
                         type = builtins->type_signed_short;
                         break;
 
-                    case TYPE_SPECIFIER_WIDTH_LONG:
+                    case WIDTH_SPECIFIER_LONG:
                         type = builtins->type_signed_long;
                         break;
 
-                    case TYPE_SPECIFIER_WIDTH_LONG_LONG:
+                    case WIDTH_SPECIFIER_LONG_LONG:
                         type = builtins->type_signed_long_long;
                         break;
                 }
@@ -425,31 +425,31 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
             {
                 switch (specifiers->type_spec_width)
                 {
-                    case TYPE_SPECIFIER_WIDTH_NONE:
+                    case WIDTH_SPECIFIER_NONE:
                         type = builtins->type_unsigned_int;
                         break;
 
-                    case TYPE_SPECIFIER_WIDTH_SHORT:
+                    case WIDTH_SPECIFIER_SHORT:
                         type = builtins->type_unsigned_short;
                         break;
 
-                    case TYPE_SPECIFIER_WIDTH_LONG:
+                    case WIDTH_SPECIFIER_LONG:
                         type = builtins->type_unsigned_long;
                         break;
 
-                    case TYPE_SPECIFIER_WIDTH_LONG_LONG:
+                    case WIDTH_SPECIFIER_LONG_LONG:
                         type = builtins->type_unsigned_long_long;
                         break;
                 }
             }
             break;
 
-        case TYPE_SPECIFIER_TYPE_FLOAT:
+        case TYPE_SPECIFIER_FLOAT:
             type = builtins->type_float;
             break;
 
-        case TYPE_SPECIFIER_TYPE_DOUBLE:
-            if (specifiers->type_spec_width == TYPE_SPECIFIER_WIDTH_LONG)
+        case TYPE_SPECIFIER_DOUBLE:
+            if (specifiers->type_spec_width == WIDTH_SPECIFIER_LONG)
             {
                 type = builtins->type_long_double;
             }
@@ -459,11 +459,11 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
             }
             break;
 
-        case TYPE_SPECIFIER_TYPE_BOOL:
+        case TYPE_SPECIFIER_BOOL:
             type = builtins->type_bool;
             break;
 
-        case TYPE_SPECIFIER_TYPE_ENUM:
+        case TYPE_SPECIFIER_ENUM:
         {
             Declaration* enum_decl = specifiers->declaration;
             assert(declaration_is(enum_decl, DECLARATION_ENUM));
@@ -473,7 +473,7 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
             break;
         }
 
-        case TYPE_SPECIFIER_TYPE_STRUCT:
+        case TYPE_SPECIFIER_STRUCT:
         {
             Declaration* struct_decl = specifiers->declaration;
             assert(declaration_is(struct_decl, DECLARATION_STRUCT));
@@ -482,7 +482,7 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
             break;
         }
 
-        case TYPE_SPECIFIER_TYPE_UNION:
+        case TYPE_SPECIFIER_UNION:
         {
             Declaration* union_decl = specifiers->declaration;
             assert(declaration_is(union_decl, DECLARATION_UNION));
@@ -491,7 +491,7 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
             break;
         }
 
-        case TYPE_SPECIFIER_TYPE_TYPENAME:
+        case TYPE_SPECIFIER_TYPENAME:
         {
             Declaration* typename = specifiers->declaration;
             type = typename->tdef.new_type;
@@ -537,14 +537,14 @@ static QualifiedType process_array_type(SemanticChecker* sc, Declarator* d,
     }
 
     // First check for star modifier.
-    if (is_star && ctx != DECLARATION_CONTEXT_FUNCTION_PARAM)
+    if (is_star && ctx != DECL_CTX_PARAM)
     {
         diagnostic_error_at(sc->dm, array->lbracket,
                 "star modifier used outside of function prototype");
     }
 
     // Then check for static
-    if (ctx != DECLARATION_CONTEXT_FUNCTION_PARAM)
+    if (ctx != DECL_CTX_PARAM)
     {
         if (is_static)
         {
@@ -552,14 +552,14 @@ static QualifiedType process_array_type(SemanticChecker* sc, Declarator* d,
                     "'static' used in array declarator outside of function "
                     "prototype");
             is_static = false;
-            qualifiers = TYPE_QUALIFIER_NONE;
+            qualifiers = QUALIFIER_NONE;
         }
-        else if (qualifiers != TYPE_QUALIFIER_NONE)
+        else if (qualifiers != QUALIFIER_NONE)
         {
             diagnostic_error_at(sc->dm, array->lbracket,
                     "type qualifier used in array declarator outside of "
                     "function prototype");
-            qualifiers = TYPE_QUALIFIER_NONE;
+            qualifiers = QUALIFIER_NONE;
         }
     }
 
@@ -859,7 +859,7 @@ static void semantic_checker_diagnose_inline(SemanticChecker* sc,
         DeclarationSpecifiers* specifiers)
 {
     TypeFunctionSpecifier function = specifiers->function_spec;
-    if (function != TYPE_FUNCTION_SPECIFIER_NONE)
+    if (function != FUNCTION_SPECIFIER_NONE)
     {
         diagnostic_error_at(sc->dm, specifiers->location,
                 "'%s' can only appear on functions",
@@ -877,9 +877,9 @@ Declaration* semantic_checker_process_specifiers(SemanticChecker* sc,
     Declaration* to_return = NULL;
     switch (specifiers->type_spec_type)
     {
-        case TYPE_SPECIFIER_TYPE_ENUM:
-        case TYPE_SPECIFIER_TYPE_STRUCT:
-        case TYPE_SPECIFIER_TYPE_UNION:
+        case TYPE_SPECIFIER_ENUM:
+        case TYPE_SPECIFIER_STRUCT:
+        case TYPE_SPECIFIER_UNION:
             to_return = specifiers->declaration;
             break;
 
@@ -899,10 +899,10 @@ Declaration* semantic_checker_process_specifiers(SemanticChecker* sc,
     semantic_checker_diagnose_inline(sc, specifiers);
 
     // Now give some nice warnings about the storage if needed
-    TypeStorageSpecifier storage = specifiers->storage_spec;
+    StorageSpecifier storage = specifiers->storage_spec;
     switch (storage)
     {
-        case TYPE_STORAGE_SPECIFIER_NONE:
+        case STORAGE_SPECIFIER_NONE:
             if (to_return == NULL)
             {
                 diagnostic_warning_at(sc->dm, location, 
@@ -914,10 +914,10 @@ Declaration* semantic_checker_process_specifiers(SemanticChecker* sc,
                 break;
             }
 
-        case TYPE_STORAGE_SPECIFIER_AUTO:
-        case TYPE_STORAGE_SPECIFIER_EXTERN:
-        case TYPE_STORAGE_SPECIFIER_REGISTER:
-        case TYPE_STORAGE_SPECIFIER_STATIC:
+        case STORAGE_SPECIFIER_AUTO:
+        case STORAGE_SPECIFIER_EXTERN:
+        case STORAGE_SPECIFIER_REGISTER:
+        case STORAGE_SPECIFIER_STATIC:
         {
             if (to_return != NULL)
             {
@@ -935,7 +935,7 @@ Declaration* semantic_checker_process_specifiers(SemanticChecker* sc,
         }
 
         // The guarantee above does not apply here...
-        case TYPE_STORAGE_SPECIFIER_TYPEDEF:
+        case STORAGE_SPECIFIER_TYPEDEF:
             diagnostic_warning_at(sc->dm, location, "typedef requires a name");
             break;
 
@@ -974,18 +974,18 @@ Declaration* semantic_checker_process_function_param(SemanticChecker* sc,
         Declarator* declarator)
 {
     assert(scope_is(sc->scope, SCOPE_FUNCTION));
-    assert(declarator->context == DECLARATION_CONTEXT_FUNCTION_PARAM);
+    assert(declarator->context == DECL_CTX_PARAM);
 
     QualifiedType type = semantic_checker_process_type(sc, declarator);
 
     // Check that we have no storage specifier other then register
-    TypeStorageSpecifier storage = declarator->specifiers->storage_spec;
-    if (storage != TYPE_STORAGE_SPECIFIER_NONE
-            && storage != TYPE_STORAGE_SPECIFIER_REGISTER)
+    StorageSpecifier storage = declarator->specifiers->storage_spec;
+    if (storage != STORAGE_SPECIFIER_NONE
+            && storage != STORAGE_SPECIFIER_REGISTER)
     {
         diagnostic_error_at(sc->dm, declarator->specifiers->location,
                 "invalid storage class specifier in function declarator");
-        storage = TYPE_STORAGE_SPECIFIER_NONE;
+        storage = STORAGE_SPECIFIER_NONE;
     }
 
     // Diagnose the use of inline
@@ -1030,44 +1030,44 @@ Declaration* semantic_checker_process_function_declaration(SemanticChecker* sc,
 
     // Chceck that the functions storage is valid based on the context we are in
     DeclaratorContext ctx = declarator_get_context(declarator);
-    TypeStorageSpecifier storage = declaration_specifiers_storage(specifiers);
+    StorageSpecifier storage = declaration_specifiers_storage(specifiers);
     switch (storage)
     {
         // These are allowed regardless of the scope
-        case TYPE_STORAGE_SPECIFIER_NONE:
-        case TYPE_STORAGE_SPECIFIER_EXTERN:
+        case STORAGE_SPECIFIER_NONE:
+        case STORAGE_SPECIFIER_EXTERN:
             break;
 
         // This is only allowed if we are not in block scope.
-        case TYPE_STORAGE_SPECIFIER_STATIC:
-            if (ctx == DECLARATION_CONTEXT_BLOCK)
+        case STORAGE_SPECIFIER_STATIC:
+            if (ctx == DECL_CTX_BLOCK)
             {
                 diagnostic_error_at(sc->dm, location, "function declared in "
                         "block scope cannot have 'static' storage class");
                 invalid = true;
-                storage = TYPE_STORAGE_SPECIFIER_NONE;
+                storage = STORAGE_SPECIFIER_NONE;
             }
             break;
 
         // The storages are not allowed at all for functions...
-        case TYPE_STORAGE_SPECIFIER_AUTO:
-        case TYPE_STORAGE_SPECIFIER_REGISTER:
+        case STORAGE_SPECIFIER_AUTO:
+        case STORAGE_SPECIFIER_REGISTER:
             diagnostic_error_at(sc->dm, location,
                     "illegal storage class '%s' on function",
                     storage_specifier_to_name(specifiers->storage_spec));
             invalid = true;
-            storage = TYPE_STORAGE_SPECIFIER_NONE;
+            storage = STORAGE_SPECIFIER_NONE;
             break;
 
         // If we got a 'typedef' function that means we should have known before
         // that we are about to process a function definition. So here we catch
         // that and error.
-        case TYPE_STORAGE_SPECIFIER_TYPEDEF:
+        case STORAGE_SPECIFIER_TYPEDEF:
             assert(declarator_is_func_defn(declarator));
             diagnostic_error_at(sc->dm, specifiers->location,
                 "function definition declared 'typedef'");
             invalid = true;
-            storage = TYPE_STORAGE_SPECIFIER_NONE;
+            storage = STORAGE_SPECIFIER_NONE;
             break;
 
         default:
@@ -1146,18 +1146,18 @@ Declaration* semantic_checker_process_variable(SemanticChecker* sc,
     Location identifer_loc = declarator->identifier_location;
 
     // Check the storage is valid
-    TypeStorageSpecifier storage = specifiers->storage_spec;
-    assert(storage != TYPE_STORAGE_SPECIFIER_TYPEDEF);
+    StorageSpecifier storage = specifiers->storage_spec;
+    assert(storage != STORAGE_SPECIFIER_TYPEDEF);
     switch (declarator->context)
     {
         // This context does not have any restrictions on the storage class
-        case DECLARATION_CONTEXT_BLOCK:
+        case DECL_CTX_BLOCK:
             break;
 
         // File scoped declarations cannot have register or auto specified
-        case DECLARATION_CONTEXT_FILE:
-            if (storage == TYPE_STORAGE_SPECIFIER_REGISTER
-                    || storage == TYPE_STORAGE_SPECIFIER_AUTO)
+        case DECL_CTX_FILE:
+            if (storage == STORAGE_SPECIFIER_REGISTER
+                    || storage == STORAGE_SPECIFIER_AUTO)
             {
                 diagnostic_error_at(sc->dm, identifer_loc,
                         "illegal storage class '%s' on file scoped variable",
@@ -1166,9 +1166,9 @@ Declaration* semantic_checker_process_variable(SemanticChecker* sc,
             break;
 
         // All of these three cases should be handled seperately
-        case DECLARATION_CONTEXT_STRUCT:
-        case DECLARATION_CONTEXT_FUNCTION_PARAM:
-        case DECLARATION_CONTEXT_TYPE_NAME:
+        case DECL_CTX_STRUCT:
+        case DECL_CTX_PARAM:
+        case DECL_CTX_TYPE_NAME:
             panic("declaration context should not be handled here");
             return NULL;
 
@@ -1265,10 +1265,10 @@ Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
     
     // The main different types of declarations we will have to handle are below
     DeclarationSpecifiers* spec = declarator_get_specifiers(declarator);
-    TypeStorageSpecifier storage = declaration_specifiers_storage(spec);
+    StorageSpecifier storage = declaration_specifiers_storage(spec);
 
     // Only process this as a typedef if it is not a function definition
-    if (storage == TYPE_STORAGE_SPECIFIER_TYPEDEF
+    if (storage == STORAGE_SPECIFIER_TYPEDEF
             && !declarator_is_func_defn(declarator))
     {
         return semantic_checker_process_typedef(sc, declarator, type);        
@@ -1299,7 +1299,7 @@ Declaration* semantic_checker_process_struct_declarator(SemanticChecker* sc,
     }
 
     // Ensure that the storage specifiers were removed already.
-    assert(declarator->specifiers->storage_spec == TYPE_STORAGE_SPECIFIER_NONE);
+    assert(declarator->specifiers->storage_spec == STORAGE_SPECIFIER_NONE);
 
     Identifier* identifier = declarator->identifier;
     Location identifier_loc = declarator->identifier_location;
@@ -1686,7 +1686,7 @@ static Declaration* semantic_checker_create_struct(SemanticChecker* sc,
 {
     QualifiedType type = (QualifiedType)
     {
-        TYPE_QUALIFIER_NONE,
+        QUALIFIER_NONE,
         type_create_struct(&sc->ast->ast_allocator)
     };
     Declaration* decl = declaration_create_struct(&sc->ast->ast_allocator,
@@ -1706,7 +1706,7 @@ static Declaration* semantic_checker_create_union(SemanticChecker* sc,
 {
     QualifiedType type = (QualifiedType)
     {
-        TYPE_QUALIFIER_NONE,
+        QUALIFIER_NONE,
         type_create_union(&sc->ast->ast_allocator)
     };
     Declaration* decl = declaration_create_union(&sc->ast->ast_allocator,
@@ -2305,7 +2305,7 @@ static Expression* semantic_checker_handle_integer_constant(SemanticChecker* sc,
             break;
     }
 
-    QualifiedType qual_type = {TYPE_QUALIFIER_NONE, type};
+    QualifiedType qual_type = {QUALIFIER_NONE, type};
     return expression_create_integer(&sc->ast->ast_allocator, integer_location,
             value, qual_type);
 }
@@ -2333,7 +2333,7 @@ static Expression* semantic_checker_handle_floating_constant(SemanticChecker* sc
             break;
     }
 
-    QualifiedType qual_type = {TYPE_QUALIFIER_NONE, type};
+    QualifiedType qual_type = {QUALIFIER_NONE, type};
     return expression_create_float(&sc->ast->ast_allocator, float_location,
             value, qual_type);
 }
@@ -2370,7 +2370,7 @@ Expression* semantic_checker_handle_char_expression(SemanticChecker* sc,
 
     // TODO: is this correct if the char is wide?
     Type* type = sc->ast->base_types.type_signed_int;
-    QualifiedType qual_type = {TYPE_QUALIFIER_NONE, type};
+    QualifiedType qual_type = {QUALIFIER_NONE, type};
     return expression_create_character(&sc->ast->ast_allocator, char_location,
             value, qual_type);
 }
@@ -2730,24 +2730,24 @@ Statement* semantic_checker_handle_for_statement(SemanticChecker* sc,
         if (declaration_is_valid(init_declaration))
         {
             // Make sure that the storage class is okay
-            TypeStorageSpecifier storage = declaration_get_storage_class(
+            StorageSpecifier storage = declaration_get_storage_class(
                     init_declaration);
             Location identifier = declaration_get_location(init_declaration);
             switch (storage)
             {
-                case TYPE_STORAGE_SPECIFIER_NONE:
-                case TYPE_STORAGE_SPECIFIER_REGISTER:
-                case TYPE_STORAGE_SPECIFIER_AUTO:
+                case STORAGE_SPECIFIER_NONE:
+                case STORAGE_SPECIFIER_REGISTER:
+                case STORAGE_SPECIFIER_AUTO:
                     break;
 
-                case TYPE_STORAGE_SPECIFIER_EXTERN:
-                case TYPE_STORAGE_SPECIFIER_STATIC:
+                case STORAGE_SPECIFIER_EXTERN:
+                case STORAGE_SPECIFIER_STATIC:
                     diagnostic_error_at(sc->dm, identifier,
                             "declaration of non-local variable in 'for' loop");
                     declaration_set_invalid(init_declaration);
                     break;
 
-                case TYPE_STORAGE_SPECIFIER_TYPEDEF:
+                case STORAGE_SPECIFIER_TYPEDEF:
                     diagnostic_error_at(sc->dm, identifier,
                             "non-variable declaration in 'for' loop");
                     declaration_set_invalid(init_declaration);

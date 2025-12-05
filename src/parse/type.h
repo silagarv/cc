@@ -39,57 +39,57 @@ typedef enum TypeKind {
 } TypeKind;
 
 typedef enum TypeQualifiers {
-    TYPE_QUALIFIER_NONE = 0,
-    TYPE_QUALIFIER_CONST = 1 << 0,
-    TYPE_QUALIFIER_RESTRICT = 1 << 1,
-    TYPE_QUALIFIER_VOLATILE = 1 << 2
+    QUALIFIER_NONE = 0,
+    QUALIFIER_CONST = 1 << 0,
+    QUALIFIER_RESTRICT = 1 << 1,
+    QUALIFIER_VOLATILE = 1 << 2
 } TypeQualifiers;
 
-typedef enum TypeStorageSpecifier {
-    TYPE_STORAGE_SPECIFIER_NONE,
-    TYPE_STORAGE_SPECIFIER_TYPEDEF,
-    TYPE_STORAGE_SPECIFIER_EXTERN,
-    TYPE_STORAGE_SPECIFIER_STATIC,
-    TYPE_STORAGE_SPECIFIER_AUTO,
-    TYPE_STORAGE_SPECIFIER_REGISTER
-} TypeStorageSpecifier;
+typedef enum StorageSpecifier {
+    STORAGE_SPECIFIER_NONE,
+    STORAGE_SPECIFIER_TYPEDEF,
+    STORAGE_SPECIFIER_EXTERN,
+    STORAGE_SPECIFIER_STATIC,
+    STORAGE_SPECIFIER_AUTO,
+    STORAGE_SPECIFIER_REGISTER
+} StorageSpecifier;
 
 typedef enum TypeFunctionSpecifier {
-    TYPE_FUNCTION_SPECIFIER_NONE = 0,
-    TYPE_FUNCTION_SPECIFIER_INLINE = 1 << 0
+    FUNCTION_SPECIFIER_NONE = 0,
+    FUNCTION_SPECIFIER_INLINE = 1 << 0
 } TypeFunctionSpecifier;
 
 typedef enum TypeSpecifierType {
-    TYPE_SPECIFIER_TYPE_NONE,
-    TYPE_SPECIFIER_TYPE_VOID,
-    TYPE_SPECIFIER_TYPE_CHAR,
-    TYPE_SPECIFIER_TYPE_INT,
-    TYPE_SPECIFIER_TYPE_FLOAT,
-    TYPE_SPECIFIER_TYPE_DOUBLE,
-    TYPE_SPECIFIER_TYPE_BOOL,
-    TYPE_SPECIFIER_TYPE_ENUM,
-    TYPE_SPECIFIER_TYPE_STRUCT,
-    TYPE_SPECIFIER_TYPE_UNION,
-    TYPE_SPECIFIER_TYPE_TYPENAME
+    TYPE_SPECIFIER_NONE,
+    TYPE_SPECIFIER_VOID,
+    TYPE_SPECIFIER_CHAR,
+    TYPE_SPECIFIER_INT,
+    TYPE_SPECIFIER_FLOAT,
+    TYPE_SPECIFIER_DOUBLE,
+    TYPE_SPECIFIER_BOOL,
+    TYPE_SPECIFIER_ENUM,
+    TYPE_SPECIFIER_STRUCT,
+    TYPE_SPECIFIER_UNION,
+    TYPE_SPECIFIER_TYPENAME
 } TypeSpecifierType;
 
 typedef enum TypeSpecifierWidth {
-    TYPE_SPECIFIER_WIDTH_NONE = 0,
-    TYPE_SPECIFIER_WIDTH_SHORT = 1 << 0,
-    TYPE_SPECIFIER_WIDTH_LONG = 1 << 1,
-    TYPE_SPECIFIER_WIDTH_LONG_LONG = 1 << 2
+    WIDTH_SPECIFIER_NONE = 0,
+    WIDTH_SPECIFIER_SHORT = 1 << 0,
+    WIDTH_SPECIFIER_LONG = 1 << 1,
+    WIDTH_SPECIFIER_LONG_LONG = 1 << 2
 } TypeSpecifierWidth;
 
 typedef enum TypeSpecifierSign {
-    TYPE_SPECIFIER_SIGN_NONE,
-    TYPE_SPECIFIER_SIGN_SIGNED,
-    TYPE_SPECIFIER_SIGN_UNSIGNED,
+    SIGN_SPECIFIER_NONE,
+    SIGN_SPECIFIER_SIGNED,
+    SIGN_SPECIFIER_UNSIGNED,
 } TypeSpecifierSign;
 
 typedef enum TypeSpecifierComplex {
-    TYPE_SPECIFIER_COMPLEX_NONE,
-    TYPE_SPECIFIER_COMPLEX_COMPLEX,
-    TYPE_SPECIFIER_COMPLEX_IMAGINAIRY
+    COMPLEX_SPECIFIER_NONE,
+    COMPLEX_SPECIFIER_COMPLEX,
+    COMPLEX_SPECIFIER_IMAGINAIRY
 } TypeSpecifierComplex;
 
 typedef union Type Type;
@@ -130,7 +130,6 @@ typedef struct TypeArray {
     QualifiedType element_type; // the individual element type
     size_t length; // Set if known otherwise 0
 
-    // TODO: what do I do about the absolute mess below
     bool is_static; // is it declared with [static a] for example
     bool is_star; // is it declared with [*] (why... so many options)
     bool is_vla; // is it a variable length array
@@ -231,7 +230,7 @@ typedef struct TypeBuiltins {
     Type* type_long_double;
 } TypeBuiltins;
 
-const char* storage_specifier_to_name(TypeStorageSpecifier specifier);
+const char* storage_specifier_to_name(StorageSpecifier specifier);
 const char* type_qualifier_to_name(TypeQualifiers qualifier);
 const char* function_specifier_to_name(TypeFunctionSpecifier function);
 const char* width_specifier_to_name(TypeSpecifierWidth width);
@@ -303,6 +302,9 @@ bool qualified_type_is_integer(const QualifiedType* type);
 bool qualified_type_is_compound(const QualifiedType* type);
 QualifiedType type_get_canonical(const Type* type);
 QualifiedType qualified_type_get_canonical(const QualifiedType* type);
+
+bool qualified_type_is_compatible(const QualifiedType* t1,
+        const QualifiedType* t2);
 
 bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2);
 bool qualifier_type_is_equal_canonical(const QualifiedType* t1, 

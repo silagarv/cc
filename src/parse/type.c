@@ -14,16 +14,16 @@
 #include "util/str.h"
 #include "util/xmalloc.h"
 
-const char* storage_specifier_to_name(TypeStorageSpecifier specifier)
+const char* storage_specifier_to_name(StorageSpecifier specifier)
 {
     switch (specifier)
     {
-        case TYPE_STORAGE_SPECIFIER_NONE: return "<internal-error>";
-        case TYPE_STORAGE_SPECIFIER_AUTO: return "auto";
-        case TYPE_STORAGE_SPECIFIER_EXTERN: return "extern";
-        case TYPE_STORAGE_SPECIFIER_REGISTER: return "register";
-        case TYPE_STORAGE_SPECIFIER_STATIC: return "static";
-        case TYPE_STORAGE_SPECIFIER_TYPEDEF: return "typedef";
+        case STORAGE_SPECIFIER_NONE: return "<internal-error>";
+        case STORAGE_SPECIFIER_AUTO: return "auto";
+        case STORAGE_SPECIFIER_EXTERN: return "extern";
+        case STORAGE_SPECIFIER_REGISTER: return "register";
+        case STORAGE_SPECIFIER_STATIC: return "static";
+        case STORAGE_SPECIFIER_TYPEDEF: return "typedef";
     }
 }
 
@@ -31,10 +31,10 @@ const char* type_qualifier_to_name(TypeQualifiers qualifier)
 {
     switch (qualifier)
     {
-        case TYPE_QUALIFIER_NONE: return "<internal-error>";
-        case TYPE_QUALIFIER_CONST: return "const";
-        case TYPE_QUALIFIER_RESTRICT: return "restrict";
-        case TYPE_QUALIFIER_VOLATILE: return "volatile";
+        case QUALIFIER_NONE: return "<internal-error>";
+        case QUALIFIER_CONST: return "const";
+        case QUALIFIER_RESTRICT: return "restrict";
+        case QUALIFIER_VOLATILE: return "volatile";
     }
 }
 
@@ -42,8 +42,8 @@ const char* function_specifier_to_name(TypeFunctionSpecifier function)
 {
     switch (function)
     {
-        case TYPE_FUNCTION_SPECIFIER_NONE: return "<internal-error>";
-        case TYPE_FUNCTION_SPECIFIER_INLINE: return "inline";
+        case FUNCTION_SPECIFIER_NONE: return "<internal-error>";
+        case FUNCTION_SPECIFIER_INLINE: return "inline";
     }
 }
 
@@ -51,10 +51,10 @@ const char* width_specifier_to_name(TypeSpecifierWidth width)
 {
     switch (width)
     {
-        case TYPE_SPECIFIER_WIDTH_NONE: return "<internal-error>";
-        case TYPE_SPECIFIER_WIDTH_SHORT: return "short";
-        case TYPE_SPECIFIER_WIDTH_LONG: return "long";
-        case TYPE_SPECIFIER_WIDTH_LONG_LONG: return "long long";
+        case WIDTH_SPECIFIER_NONE: return "<internal-error>";
+        case WIDTH_SPECIFIER_SHORT: return "short";
+        case WIDTH_SPECIFIER_LONG: return "long";
+        case WIDTH_SPECIFIER_LONG_LONG: return "long long";
     }
 }
 
@@ -62,9 +62,9 @@ const char* sign_specifier_to_name(TypeSpecifierSign sign)
 {
     switch (sign)
     {
-        case TYPE_SPECIFIER_SIGN_NONE: return "<internal-error>";
-        case TYPE_SPECIFIER_SIGN_SIGNED: return "signed";
-        case TYPE_SPECIFIER_SIGN_UNSIGNED: return "unsigned";
+        case SIGN_SPECIFIER_NONE: return "<internal-error>";
+        case SIGN_SPECIFIER_SIGNED: return "signed";
+        case SIGN_SPECIFIER_UNSIGNED: return "unsigned";
     }
 }
 
@@ -72,9 +72,9 @@ const char* complex_specifier_to_name(TypeSpecifierComplex complex)
 {
     switch (complex)
     {
-        case TYPE_SPECIFIER_COMPLEX_NONE: return "<internal-error>";
-        case TYPE_SPECIFIER_COMPLEX_COMPLEX: return "_Complex";
-        case TYPE_SPECIFIER_COMPLEX_IMAGINAIRY: return "_Imaginairy";
+        case COMPLEX_SPECIFIER_NONE: return "<internal-error>";
+        case COMPLEX_SPECIFIER_COMPLEX: return "_Complex";
+        case COMPLEX_SPECIFIER_IMAGINAIRY: return "_Imaginairy";
     }
 }
 
@@ -82,38 +82,38 @@ const char* type_specifier_to_name(TypeSpecifierType type)
 {
     switch (type)
     {
-        case TYPE_SPECIFIER_TYPE_NONE: return "<internal-error>";
-        case TYPE_SPECIFIER_TYPE_VOID: return "void";
-        case TYPE_SPECIFIER_TYPE_CHAR: return "char";
-        case TYPE_SPECIFIER_TYPE_INT: return "int";
-        case TYPE_SPECIFIER_TYPE_FLOAT: return "float";
-        case TYPE_SPECIFIER_TYPE_DOUBLE: return "double";
-        case TYPE_SPECIFIER_TYPE_BOOL: return "bool";
-        case TYPE_SPECIFIER_TYPE_ENUM: return "enum";
-        case TYPE_SPECIFIER_TYPE_STRUCT: return "struct";
-        case TYPE_SPECIFIER_TYPE_UNION: return "union";
-        case TYPE_SPECIFIER_TYPE_TYPENAME: return "type-name";
+        case TYPE_SPECIFIER_NONE: return "<internal-error>";
+        case TYPE_SPECIFIER_VOID: return "void";
+        case TYPE_SPECIFIER_CHAR: return "char";
+        case TYPE_SPECIFIER_INT: return "int";
+        case TYPE_SPECIFIER_FLOAT: return "float";
+        case TYPE_SPECIFIER_DOUBLE: return "double";
+        case TYPE_SPECIFIER_BOOL: return "bool";
+        case TYPE_SPECIFIER_ENUM: return "enum";
+        case TYPE_SPECIFIER_STRUCT: return "struct";
+        case TYPE_SPECIFIER_UNION: return "union";
+        case TYPE_SPECIFIER_TYPENAME: return "type-name";
     }
 }
 
 bool type_qualifier_has_any(TypeQualifiers qualifiers)
 {
-    return (qualifiers != TYPE_QUALIFIER_NONE);
+    return (qualifiers != QUALIFIER_NONE);
 }
 
 bool type_qualifier_is_const(TypeQualifiers qualifiers)
 {
-    return (qualifiers & TYPE_QUALIFIER_CONST) != 0;
+    return (qualifiers & QUALIFIER_CONST) != 0;
 }
 
 bool type_qualifier_is_restrict(TypeQualifiers qualifiers)
 {
-    return (qualifiers & TYPE_QUALIFIER_RESTRICT) != 0;
+    return (qualifiers & QUALIFIER_RESTRICT) != 0;
 }
 
 bool type_qualifier_is_volatile(TypeQualifiers qualifiers)
 {
-    return (qualifiers & TYPE_QUALIFIER_VOLATILE) != 0;
+    return (qualifiers & QUALIFIER_VOLATILE) != 0;
 }
 
 bool type_qualifier_already_has(TypeQualifiers qualifiers, TypeQualifiers has)
@@ -226,7 +226,7 @@ QualifiedType type_create_array(AstAllocator* allocator,
     type->type_array.is_vla = is_vla;
 
     // Cannot really add qualifiers to arrays
-    return (QualifiedType) {TYPE_QUALIFIER_NONE, type};
+    return (QualifiedType) {QUALIFIER_NONE, type};
 }
 
 QualifiedType type_array_get_element_type(const QualifiedType* type)
@@ -271,7 +271,7 @@ TypeQualifiers qualified_type_get_quals(const QualifiedType* type)
 
 QualifiedType qualified_type_remove_quals(const QualifiedType* type)
 {
-    return (QualifiedType) {TYPE_QUALIFIER_NONE, type->type};
+    return (QualifiedType) {QUALIFIER_NONE, type->type};
 }
 
 QualifiedType type_create_function(AstAllocator* allocator,
@@ -286,7 +286,7 @@ QualifiedType type_create_function(AstAllocator* allocator,
     type->type_function.unspecified_paramters = unspecified_paramters;
     type->type_function.is_variadic = variadic;
 
-    return (QualifiedType) {TYPE_QUALIFIER_NONE, type};
+    return (QualifiedType) {QUALIFIER_NONE, type};
 }
 
 QualifiedType type_create_enum(AstAllocator* allocator, Type* base)
@@ -298,7 +298,7 @@ QualifiedType type_create_enum(AstAllocator* allocator, Type* base)
             base_size, align_size, complete);
     type->type_enum.enum_decl = NULL;
 
-    return (QualifiedType) {TYPE_QUALIFIER_NONE, type};
+    return (QualifiedType) {QUALIFIER_NONE, type};
 }
 
 void type_enum_set_declaration(QualifiedType* enum_type,
@@ -525,7 +525,7 @@ QualifiedType type_get_canonical(const Type* type)
         return type->type_typedef.real_type;
     }
 
-    return (QualifiedType) {TYPE_QUALIFIER_NONE, (Type*) type};
+    return (QualifiedType) {QUALIFIER_NONE, (Type*) type};
 }
 
 QualifiedType qualified_type_get_canonical(const QualifiedType* type)
@@ -533,7 +533,7 @@ QualifiedType qualified_type_get_canonical(const QualifiedType* type)
     QualifiedType qual_type = type_get_canonical(type->type);
 
     // Get all of the possible type qualifiers
-    TypeQualifiers qualifiers = TYPE_QUALIFIER_NONE;
+    TypeQualifiers qualifiers = QUALIFIER_NONE;
     qualifiers |= type->qualifiers;
     qualifiers |= qual_type.qualifiers;
     
@@ -569,6 +569,12 @@ bool type_is_equal(const Type* t1, const Type* t2)
             break;
     }
 
+    return false;
+}
+
+bool qualified_type_is_compatible(const QualifiedType* t1,
+        const QualifiedType* t2)
+{
     return false;
 }
 
@@ -620,17 +626,17 @@ void type_print(const QualifiedType* t1)
         return;
     }
 
-    if (t1->qualifiers & TYPE_QUALIFIER_CONST)
+    if (t1->qualifiers & QUALIFIER_CONST)
     {
         printf("const ");
     }
 
-    if (t1->qualifiers & TYPE_QUALIFIER_VOLATILE)
+    if (t1->qualifiers & QUALIFIER_VOLATILE)
     {
         printf("volatile ");
     }
 
-    if (t1->qualifiers & TYPE_QUALIFIER_RESTRICT)
+    if (t1->qualifiers & QUALIFIER_RESTRICT)
     {
         printf("restrict ");
     }

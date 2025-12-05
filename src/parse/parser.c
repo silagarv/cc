@@ -421,7 +421,7 @@ static TypeQualifiers parse_type_qualifier(Parser* parser);
 // All of our declaration specifier parsing functions
 static bool has_declaration_specifier(Parser* parser, const Token* tok);
 static void declaration_specifiers_add_storage(Parser* parser,
-        DeclarationSpecifiers* specifiers, TypeStorageSpecifier storage);
+        DeclarationSpecifiers* specifiers, StorageSpecifier storage);
 static void declaration_specifiers_add_qualifier(Parser* parser,
         DeclarationSpecifiers* specifiers, TypeQualifiers qualifier);
 static void declaration_specifiers_add_function(Parser* parser,
@@ -1772,7 +1772,7 @@ static Statement* parse_for_statement(Parser* parser)
     Expression* init_expression = NULL;
     if (is_typename_start(parser, current_token(parser)))
     {   
-        init_declaration = parse_declaration(parser, DECLARATION_CONTEXT_BLOCK);
+        init_declaration = parse_declaration(parser, DECL_CTX_BLOCK);
     }
     else if (is_expression_start(parser, current_token(parser)))
     {
@@ -1902,7 +1902,7 @@ static Statement* parse_declaration_statement(Parser* parser)
 {
     // Choose block since we are known to be in one and can parse declarations
     // inside of it.
-    Declaration* decl = parse_declaration(parser, DECLARATION_CONTEXT_BLOCK);
+    Declaration* decl = parse_declaration(parser, DECL_CTX_BLOCK);
     Location semi_loc = parse_trailing_semi(parser, "declaration");
 
     return semantic_checker_handle_declaration_statement(&parser->sc,
@@ -2281,7 +2281,7 @@ static Declaration* parse_init_declarator_list(Parser* parser,
         // Now check we have a valid context for being able to parse a function
         // definition. Knowing that it should be allow and that we might want
         // to have one.
-        if (context == DECLARATION_CONTEXT_FILE)
+        if (context == DECL_CTX_FILE)
         {
             if (is_function_definition(parser, &declarator))
             {
@@ -2420,12 +2420,9 @@ static Declaration* parse_paramater_declaration(Parser* parser)
     DeclarationSpecifiers specifiers = parse_declaration_specifiers(parser);
 
     // Parse the function paramater declarator
-    Declarator declarator = parse_declarator(parser, &specifiers,
-            DECLARATION_CONTEXT_FUNCTION_PARAM);
-
-    // Finish processing the declaration
+    Declarator d = parse_declarator(parser, &specifiers, DECL_CTX_PARAM);
     Declaration* declaration = semantic_checker_process_function_param(
-            &parser->sc, &declarator);
+            &parser->sc, &d);
 
     return declaration;
 }
@@ -2664,7 +2661,7 @@ static void parse_direct_declarator(Parser* parser, Declarator* declarator)
     {
         // Give an appriopriate diagnostic based on the current context
         Location current = current_token_start_location(parser);
-        if (declarator_get_context(declarator) == DECLARATION_CONTEXT_STRUCT)
+        if (declarator_get_context(declarator) == DECL_CTX_STRUCT)
         {
             diagnostic_error_at(parser->dm, current,
                     "expected member name or ';' after declaration specifiers");
@@ -2698,15 +2695,15 @@ static TypeQualifiers parse_type_qualifier_list(Parser* parser)
     assert(has_match(parser, type_qualifier, type_qualifier_count));
 
     // Set up a declaration spec with no type qualifiers initially
-    DeclarationSpecifiers qualifiers = { .qualifiers = TYPE_QUALIFIER_NONE };
+    DeclarationSpecifiers qualifiers = { .qualifiers = QUALIFIER_NONE };
     do
     {
         TypeQualifiers qualifier;
         switch (current_token_type(parser))
         {
-            case TOKEN_CONST: qualifier = TYPE_QUALIFIER_CONST; break;
-            case TOKEN_RESTRICT: qualifier = TYPE_QUALIFIER_RESTRICT; break;
-            case TOKEN_VOLATILE: qualifier = TYPE_QUALIFIER_VOLATILE; break;
+            case TOKEN_CONST: qualifier = QUALIFIER_CONST; break;
+            case TOKEN_RESTRICT: qualifier = QUALIFIER_RESTRICT; break;
+            case TOKEN_VOLATILE: qualifier = QUALIFIER_VOLATILE; break;
         }
         
         // Note: the below will consume the token itself
@@ -2721,7 +2718,7 @@ static TypeQualifiers parse_type_qualifier_list_opt(Parser* parser)
 {
     if (!has_match(parser, type_qualifier, type_qualifier_count))
     {
-        return TYPE_QUALIFIER_NONE;
+        return QUALIFIER_NONE;
     }
 
     return parse_type_qualifier_list(parser);
@@ -2735,19 +2732,19 @@ static DeclarationSpecifiers parse_specifier_qualifier_list(Parser* parser)
     DeclarationSpecifiers specifiers = parse_declaration_specifiers(parser);
 
     // Make sure that we have no storage specifier for each of the members.
-    if (specifiers.storage_spec != TYPE_STORAGE_SPECIFIER_NONE)
+    if (specifiers.storage_spec != STORAGE_SPECIFIER_NONE)
     {
         diagnostic_error_at(parser->dm, specifiers.location, 
                 "type name does not allow storage class to be specified");
-        specifiers.storage_spec = TYPE_STORAGE_SPECIFIER_NONE;
+        specifiers.storage_spec = STORAGE_SPECIFIER_NONE;
     }
 
     // Also make sure we have no function specififers
-    if (specifiers.function_spec != TYPE_FUNCTION_SPECIFIER_NONE)
+    if (specifiers.function_spec != FUNCTION_SPECIFIER_NONE)
     {
         diagnostic_error_at(parser->dm, specifiers.location, 
                 "type name does not allow function specifier to be specified");
-        specifiers.function_spec = TYPE_FUNCTION_SPECIFIER_NONE;
+        specifiers.function_spec = FUNCTION_SPECIFIER_NONE;
     }
 
     return specifiers;
@@ -2774,10 +2771,9 @@ static void parse_struct_declaration(Parser* parser, Declaration* decl)
     // adding them into the structure if they are what we are looking for.
     do
     {
-        Declarator declarator = parse_declarator(parser, &specifiers,
-                DECLARATION_CONTEXT_STRUCT);
+        Declarator d = parse_declarator(parser, &specifiers, DECL_CTX_STRUCT);
         Declaration* member = semantic_checker_process_struct_declarator(
-                &parser->sc, decl, &declarator);
+                &parser->sc, decl, &d);
 
         if (member != NULL)
         {
@@ -3091,21 +3087,19 @@ static Declaration* parse_enum_specificier(Parser* parser)
 static QualifiedType parse_type_name(Parser* parser)
 {
     DeclarationSpecifiers specifiers = parse_specifier_qualifier_list(parser);
-    Declarator declarator = parse_declarator(parser, &specifiers,
-            DECLARATION_CONTEXT_TYPE_NAME);
-    QualifiedType type = semantic_checker_process_typename(&parser->sc,
-            &declarator);
+    Declarator d = parse_declarator(parser, &specifiers, DECL_CTX_TYPE_NAME);
+    QualifiedType type = semantic_checker_process_typename(&parser->sc, &d);
 
     return type;
 }
 
 static void declaration_specifiers_add_storage(Parser* parser,
-        DeclarationSpecifiers* specifiers, TypeStorageSpecifier storage)
+        DeclarationSpecifiers* specifiers, StorageSpecifier storage)
 {
     Location location = consume(parser);
 
     // If we haven't recieved a storage specifier we can add it and be done.
-    if (specifiers->storage_spec == TYPE_STORAGE_SPECIFIER_NONE)
+    if (specifiers->storage_spec == STORAGE_SPECIFIER_NONE)
     {
         specifiers->storage_spec = storage;
     }
@@ -3160,12 +3154,12 @@ static void declaration_specifiers_add_width(Parser* parser,
     Location location = consume(parser);
 
     // Here we differ from clang which allows duplicate short specifier
-    if (specifiers->type_spec_width == TYPE_SPECIFIER_WIDTH_NONE)
+    if (specifiers->type_spec_width == WIDTH_SPECIFIER_NONE)
     {
         specifiers->type_spec_width = width;
     }
-    else if (specifiers->type_spec_width == TYPE_SPECIFIER_WIDTH_LONG &&
-            width == TYPE_SPECIFIER_WIDTH_LONG_LONG)
+    else if (specifiers->type_spec_width == WIDTH_SPECIFIER_LONG
+            && width == WIDTH_SPECIFIER_LONG_LONG)
     {
         specifiers->type_spec_width = width;
     }
@@ -3183,7 +3177,7 @@ static void declaration_specifiers_add_sign(Parser* parser,
 {
     Location location = consume(parser);
 
-    if (specifiers->type_spec_sign == TYPE_SPECIFIER_SIGN_NONE)
+    if (specifiers->type_spec_sign == SIGN_SPECIFIER_NONE)
     {
         specifiers->type_spec_sign = sign;
     }
@@ -3207,7 +3201,7 @@ static void declaration_specifiers_add_complex(Parser* parser,
 {
     Location location = consume(parser);
 
-    if (specifiers->type_spec_complex == TYPE_SPECIFIER_COMPLEX_NONE)
+    if (specifiers->type_spec_complex == COMPLEX_SPECIFIER_NONE)
     {
         specifiers->type_spec_complex = complex;
     }
@@ -3233,9 +3227,9 @@ static void declaration_specifiers_add_type(Parser* parser,
     // functions for these require that we don't eat this and leave it to be
     // consumed later.
     Location location;
-    if (type == TYPE_SPECIFIER_TYPE_STRUCT || 
-            type == TYPE_SPECIFIER_TYPE_UNION || 
-            type == TYPE_SPECIFIER_TYPE_ENUM)
+    if (type == TYPE_SPECIFIER_STRUCT || 
+            type == TYPE_SPECIFIER_UNION || 
+            type == TYPE_SPECIFIER_ENUM)
     {
         location = current_token_start_location(parser);
     }
@@ -3244,7 +3238,7 @@ static void declaration_specifiers_add_type(Parser* parser,
         location = consume(parser);
     }
 
-    if (specifiers->type_spec_type == TYPE_SPECIFIER_TYPE_NONE)
+    if (specifiers->type_spec_type == TYPE_SPECIFIER_NONE)
     {
         specifiers->type_spec_type = type;
     }
@@ -3295,127 +3289,127 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser)
             // Storage specifiers
             case TOKEN_TYPEDEF:
                 declaration_specifiers_add_storage(parser, &specifiers,
-                        TYPE_STORAGE_SPECIFIER_TYPEDEF);
+                        STORAGE_SPECIFIER_TYPEDEF);
                 break;
 
             case TOKEN_EXTERN:
                 declaration_specifiers_add_storage(parser, &specifiers,
-                        TYPE_STORAGE_SPECIFIER_EXTERN);
+                        STORAGE_SPECIFIER_EXTERN);
                 break;
 
             case TOKEN_STATIC:
                declaration_specifiers_add_storage(parser, &specifiers,
-                        TYPE_STORAGE_SPECIFIER_STATIC);
+                        STORAGE_SPECIFIER_STATIC);
                 break;
 
             case TOKEN_AUTO:
                 declaration_specifiers_add_storage(parser, &specifiers,
-                        TYPE_STORAGE_SPECIFIER_AUTO);
+                        STORAGE_SPECIFIER_AUTO);
                 break;
 
             case TOKEN_REGISTER:
                 declaration_specifiers_add_storage(parser, &specifiers,
-                        TYPE_STORAGE_SPECIFIER_REGISTER);
+                        STORAGE_SPECIFIER_REGISTER);
                 break;
 
             // Qualifiers
             case TOKEN_CONST:
                 declaration_specifiers_add_qualifier(parser, &specifiers,
-                        TYPE_QUALIFIER_CONST);
+                        QUALIFIER_CONST);
                 break;
 
             case TOKEN_VOLATILE:
                 declaration_specifiers_add_qualifier(parser, &specifiers,
-                        TYPE_QUALIFIER_VOLATILE);
+                        QUALIFIER_VOLATILE);
                 break;
 
             case TOKEN_RESTRICT:
                 declaration_specifiers_add_qualifier(parser, &specifiers,
-                        TYPE_QUALIFIER_RESTRICT);
+                        QUALIFIER_RESTRICT);
                 break;
                 
             // Function specifier
             case TOKEN_INLINE:
                 declaration_specifiers_add_function(parser, &specifiers,
-                        TYPE_FUNCTION_SPECIFIER_INLINE);
+                        FUNCTION_SPECIFIER_INLINE);
                 break;
 
             // Width specifiers
             case TOKEN_SHORT:
                 declaration_specifiers_add_width(parser, &specifiers,
-                        TYPE_SPECIFIER_WIDTH_SHORT);
+                        WIDTH_SPECIFIER_SHORT);
                 break;
 
             case TOKEN_LONG:
-                if (specifiers.type_spec_width == TYPE_SPECIFIER_WIDTH_LONG)
+                if (specifiers.type_spec_width == WIDTH_SPECIFIER_LONG)
                 {
                     declaration_specifiers_add_width(parser, &specifiers,
-                        TYPE_SPECIFIER_WIDTH_LONG_LONG);
+                            WIDTH_SPECIFIER_LONG_LONG);
                 }
                 else
                 {
                     declaration_specifiers_add_width(parser, &specifiers,
-                        TYPE_SPECIFIER_WIDTH_LONG);
+                            WIDTH_SPECIFIER_LONG);
                 }
                 break;
 
             // Sign specifiers
             case TOKEN_SIGNED:
                 declaration_specifiers_add_sign(parser, &specifiers,
-                        TYPE_SPECIFIER_SIGN_SIGNED);
+                        SIGN_SPECIFIER_SIGNED);
                 break;
 
             case TOKEN_UNSIGNED:
                 declaration_specifiers_add_sign(parser, &specifiers,
-                        TYPE_SPECIFIER_SIGN_UNSIGNED);
+                        SIGN_SPECIFIER_UNSIGNED);
                 break;
 
             // Complex specifiers here
             case TOKEN__COMPLEX:
                 declaration_specifiers_add_complex(parser, &specifiers, 
-                        TYPE_SPECIFIER_COMPLEX_COMPLEX);
+                        COMPLEX_SPECIFIER_COMPLEX);
                 break;
 
             case TOKEN__IMAGINARY:
                 declaration_specifiers_add_complex(parser, &specifiers, 
-                        TYPE_SPECIFIER_COMPLEX_IMAGINAIRY);
+                        COMPLEX_SPECIFIER_IMAGINAIRY);
                 break;
 
             // normal specifiers are below
             case TOKEN_VOID:
                 declaration_specifiers_add_type(parser, &specifiers,
-                        TYPE_SPECIFIER_TYPE_VOID);
+                        TYPE_SPECIFIER_VOID);
                 break;
 
             case TOKEN_CHAR:
                 declaration_specifiers_add_type(parser, &specifiers,
-                        TYPE_SPECIFIER_TYPE_CHAR);
+                        TYPE_SPECIFIER_CHAR);
                 break;
 
             case TOKEN_INT:
                 declaration_specifiers_add_type(parser, &specifiers,
-                        TYPE_SPECIFIER_TYPE_INT);
+                        TYPE_SPECIFIER_INT);
                 break;
 
             case TOKEN_FLOAT:
                 declaration_specifiers_add_type(parser, &specifiers,
-                        TYPE_SPECIFIER_TYPE_FLOAT);
+                        TYPE_SPECIFIER_FLOAT);
                 break;
             
             case TOKEN_DOUBLE:
                 declaration_specifiers_add_type(parser, &specifiers,
-                        TYPE_SPECIFIER_TYPE_DOUBLE);
+                        TYPE_SPECIFIER_DOUBLE);
                 break;
 
             case TOKEN__BOOL:
                 declaration_specifiers_add_type(parser, &specifiers,
-                        TYPE_SPECIFIER_TYPE_BOOL);
+                        TYPE_SPECIFIER_BOOL);
                 break;
 
             case TOKEN_STRUCT:
             {
                 declaration_specifiers_add_type(parser, &specifiers,
-                        TYPE_SPECIFIER_TYPE_STRUCT);
+                        TYPE_SPECIFIER_STRUCT);
                 Declaration* struct_decl = 
                         parse_struct_or_union_specifier(parser);
                 declaration_specifiers_add_declaration(&specifiers,
@@ -3426,7 +3420,7 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser)
             case TOKEN_UNION:
             {
                 declaration_specifiers_add_type(parser, &specifiers,
-                        TYPE_SPECIFIER_TYPE_UNION);
+                        TYPE_SPECIFIER_UNION);
                 Declaration* union_decl = 
                         parse_struct_or_union_specifier(parser);
                 declaration_specifiers_add_declaration(&specifiers, union_decl);
@@ -3436,7 +3430,7 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser)
             case TOKEN_ENUM:
             {
                 declaration_specifiers_add_type(parser, &specifiers,
-                        TYPE_SPECIFIER_TYPE_ENUM);
+                        TYPE_SPECIFIER_ENUM);
                 Declaration* enum_decl = 
                         parse_enum_specificier(parser);
                 declaration_specifiers_add_declaration(&specifiers, enum_decl);
@@ -3458,7 +3452,7 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser)
                     declaration_specifiers_add_declaration(&specifiers,
                             typename);
                     declaration_specifiers_add_type(parser, &specifiers,
-                            TYPE_SPECIFIER_TYPE_TYPENAME);
+                            TYPE_SPECIFIER_TYPENAME);
                     break;
                 }
             }
@@ -3493,8 +3487,7 @@ static Declaration* parse_declaration(Parser* parser, DeclaratorContext context)
 
 static void parse_declaration_or_definition(Parser* parser)
 {
-    Declaration* declaration = parse_declaration(parser,
-            DECLARATION_CONTEXT_FILE);
+    Declaration* declaration = parse_declaration(parser, DECL_CTX_FILE);
     
     // If we had a function declaration with a body then we do not want to try
     // to parse a ';' afterwards and can simply return. Otherwise try to...

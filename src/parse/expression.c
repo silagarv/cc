@@ -77,7 +77,7 @@ Expression* expression_create_error(AstAllocator* allocator,
 {
     Expression* expr = expression_create_base(allocator, sizeof(ExpressionError),
             EXPRESSION_ERROR,
-            (QualifiedType) {TYPE_QUALIFIER_NONE, error_type});
+            (QualifiedType) {QUALIFIER_NONE, error_type});
     expr->base.poisoned = true;
 
     return expr;
