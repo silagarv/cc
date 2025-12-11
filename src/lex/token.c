@@ -186,7 +186,7 @@ const char* token_type_get_name(TokenType type)
     switch (type)
     {
         case TOKEN_UNKNOWN: return "<unknown-token>";
-        case TOKEN_EOF: return "<end-of-file>";
+        case TOKEN_EOF: return "end-of-file";
         case TOKEN_LBRACKET: return "[";
         case TOKEN_RBRACKET: return "]";
         case TOKEN_LPAREN: return "(";

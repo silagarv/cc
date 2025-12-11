@@ -4,6 +4,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "parse/ast_allocator.h"
 #include "util/ptr_set.h"
 
 #include "lex/identifier_table.h"
@@ -13,10 +14,33 @@
 
 bool scope_is(const Scope* scope, ScopeFlags flags)
 {
+    if (scope == NULL)
+    {
+        return false;
+    }
+
     return (scope->flags & flags) != 0;
 }
 
-Scope scope_new_file(void)
+Scope scope_new_extern(AstAllocator* allocator)
+{
+    // extern scope should only have the normal namespcae
+    Scope scope = (Scope)
+    {
+        .flags = SCOPE_EXTERN,
+        .ordinairy = symbol_table_create(),
+        .tag = {0},
+        .members = {0},
+        .has_ordinairy = true,
+        .has_tag = false,
+        .has_members = false,
+        .all_decls = declaration_list_create(allocator)
+    };
+
+    return scope;
+}
+
+Scope scope_new_file(AstAllocator* allocator)
 {
     // File scope should only have the normal namespcae and the tag namespace.
     Scope scope = (Scope)
@@ -28,19 +52,13 @@ Scope scope_new_file(void)
         .has_ordinairy = true,
         .has_tag = true,
         .has_members = false,
-        .first = NULL,
-        .next = NULL
+        .all_decls = declaration_list_create(allocator)
     };
 
     return scope;
 }
 
-// TODO: should scopes inherit the previous scopes flags. I think it might be
-// dependant on the type of scope that we have but definitely something to
-// think about. e.g. additional block scopes within functions should not
-// inherit the function flag for labels. But scopes should inherit for example
-// switch and that kind of thing.
-Scope scope_new_block(void)
+Scope scope_new_block(AstAllocator* allocator)
 {
     Scope scope = (Scope)
     {
@@ -52,14 +70,13 @@ Scope scope_new_block(void)
         .has_ordinairy = true,
         .has_tag = true,
         .has_members = false,
-        .first = NULL,
-        .next = NULL
+        .all_decls = declaration_list_create(allocator)
     };
 
     return scope;
 }
 
-Scope scope_new_function_prototype(void)
+Scope scope_new_function_prototype(AstAllocator* allocator)
 {
     Scope scope = (Scope)
     {
@@ -71,33 +88,13 @@ Scope scope_new_function_prototype(void)
         .has_ordinairy = true,
         .has_tag = true,
         .has_members = false,
-        .first = NULL,
-        .next = NULL
+        .all_decls = declaration_list_create(allocator)
     };
 
     return scope;
 }
 
-Scope scope_new_function_declaration(void)
-{
-    Scope scope = (Scope)
-    {
-        .flags = SCOPE_FUNCTION_BODY,
-        .parent = NULL,
-        .ordinairy = symbol_table_create(),
-        .tag = symbol_table_create(),
-        .members = {0},
-        .has_ordinairy = true,
-        .has_tag = true,
-        .has_members = false,
-        .first = NULL,
-        .next = NULL
-    };
-
-    return scope;
-}
-
-Scope scope_new_member(void)
+Scope scope_new_member(AstAllocator* allocator)
 {
     Scope scope = (Scope)
     {
@@ -109,16 +106,15 @@ Scope scope_new_member(void)
         .has_ordinairy = false,
         .has_tag = false,
         .has_members = true,
-        .first = NULL,
-        .next = NULL
+        .all_decls = declaration_list_create(allocator)
     };
 
     return scope;
 }
 
-Scope scope_new_for(void)
+Scope scope_new_for(AstAllocator* allocator)
 {
-     Scope scope = (Scope)
+    Scope scope = (Scope)
     {
         .flags = SCOPE_FOR,
         .parent = NULL,
@@ -128,8 +124,7 @@ Scope scope_new_for(void)
         .has_ordinairy = true,
         .has_tag = true,
         .has_members = false,
-        .first = NULL,
-        .next = NULL
+        .all_decls = declaration_list_create(allocator)
     };
 
     return scope;
@@ -146,9 +141,7 @@ Scope scope_new_while(void)
         .members = {0},
         .has_ordinairy = false,
         .has_tag = false,
-        .has_members = false,
-        .first = NULL,
-        .next = NULL
+        .has_members = false
     };
 
     return scope;
@@ -165,9 +158,7 @@ Scope scope_new_do_while(void)
         .members = {0},
         .has_ordinairy = false,
         .has_tag = false,
-        .has_members = false,
-        .first = NULL,
-        .next = NULL
+        .has_members = false
     };
 
     return scope;
@@ -184,9 +175,7 @@ Scope scope_new_switch(void)
         .members = {0},
         .has_ordinairy = false,
         .has_tag = false,
-        .has_members = false,
-        .first = NULL,
-        .next = NULL
+        .has_members = false
     };
 
     return scope;
@@ -212,6 +201,7 @@ void scope_delete(Scope* scope)
 
 void scope_set_parent(Scope* scope, Scope* parent)
 {
+    assert(!scope_is(parent, SCOPE_EXTERN)); // No pushing on extern scope!
     assert(scope->parent == NULL);
 
     scope->parent = parent;
@@ -238,10 +228,10 @@ static bool scope_allows_common(const Scope* scope, const ScopeFlags* flags,
 
 static bool scope_allows_declaration(const Scope* scope)
 {
-    static const ScopeFlags decl_scopes[] = {SCOPE_FILE, SCOPE_FUNCTION,
-            SCOPE_FUNCTION_BODY, SCOPE_BLOCK, SCOPE_FOR};
-    static const size_t num_scopes = sizeof(decl_scopes) / 
-            sizeof(decl_scopes[0]);
+    static const ScopeFlags decl_scopes[] = {SCOPE_EXTERN, SCOPE_FILE,
+            SCOPE_FUNCTION, SCOPE_BLOCK, SCOPE_FOR};
+    static const size_t num_scopes = 
+            sizeof(decl_scopes) / sizeof(decl_scopes[0]);
 
     return scope_allows_common(scope, decl_scopes, num_scopes);
 }
@@ -257,8 +247,8 @@ static bool scope_allows_break(const Scope* scope)
 {
     static const ScopeFlags break_scopes[] = {SCOPE_FOR, SCOPE_WHILE,
             SCOPE_DO_WHILE, SCOPE_SWITCH};
-    static const size_t num_scopes = sizeof(break_scopes) / 
-            sizeof(break_scopes[0]);
+    static const size_t num_scopes =
+            sizeof(break_scopes) / sizeof(break_scopes[0]);
 
     return scope_allows_common(scope, break_scopes, num_scopes);
 }
@@ -267,8 +257,8 @@ static bool scope_allows_continue(const Scope* scope)
 {
     static const ScopeFlags continue_scopes[] = {SCOPE_FOR, SCOPE_WHILE,
             SCOPE_DO_WHILE};
-    static const size_t num_scopes = sizeof(continue_scopes) / 
-            sizeof(continue_scopes[0]);
+    static const size_t num_scopes = 
+            sizeof(continue_scopes) / sizeof(continue_scopes[0]);
 
     return scope_allows_common(scope, continue_scopes, num_scopes);
 }
@@ -498,23 +488,14 @@ void scope_insert_member(Scope* scope, Declaration* declaration)
     scope_add_declaration(victim, declaration);
 }
 
-Declaration* scope_get_declarations(const Scope* scope)
+DeclarationList scope_get_declarations(const Scope* scope)
 {
-    return scope->first;
+    return scope->all_decls;
 }
 
 void scope_add_declaration(Scope* scope, Declaration* decl)
 {
-    if (scope->first == NULL)
-    {
-        scope->first = decl;
-        scope->next = declaration_get_next_ptr(decl);
-    }
-    else
-    {
-        *scope->next = decl;
-        scope->next = declaration_get_next_ptr(decl);
-    }
+    declaration_list_push(&scope->all_decls, decl);
 }
 
 // Function scope functions.

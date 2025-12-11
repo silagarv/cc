@@ -66,7 +66,7 @@ DeclarationSpecifiers declaration_specifiers_create(Location location)
     DeclarationSpecifiers specifiers = (DeclarationSpecifiers)
     {
         .type = NULL,
-        .storage_spec = STORAGE_SPECIFIER_NONE,
+        .storage_spec = STORAGE_NONE,
         .qualifiers = QUALIFIER_NONE,
         .function_spec = FUNCTION_SPECIFIER_NONE,
         .type_spec_type = TYPE_SPECIFIER_NONE,
@@ -123,7 +123,7 @@ StorageSpecifier declaration_specifiers_storage(DeclarationSpecifiers* d)
 
 void declaration_specifiers_remove_storage(DeclarationSpecifiers* d)
 {
-    d->storage_spec = STORAGE_SPECIFIER_NONE;
+    d->storage_spec = STORAGE_NONE;
 }
 
 Declarator declarator_create(DeclarationSpecifiers* specifiers,
@@ -216,11 +216,21 @@ bool declarator_has_identifier(const Declarator* declarator)
 void declarator_set_identifier(Declarator* declarator, Identifier* identifier,
         Location identifier_location)
 {
-    assert(declarator->identifier == NULL && 
-            declarator->identifier_location == LOCATION_INVALID);
+    assert(declarator->identifier == NULL
+            && declarator->identifier_location == LOCATION_INVALID);
 
     declarator->identifier = identifier;
     declarator->identifier_location = identifier_location;
+}
+
+bool declarator_has_initializer(const Declarator* declarator)
+{
+    return declarator->has_initializer;
+}
+
+void declarator_set_initializer(Declarator* declarator)
+{
+    declarator->has_initializer = true;
 }
 
 void declarator_set_invalid(Declarator* declarator)
@@ -276,7 +286,7 @@ DeclaratorPiece* declarator_get_function_piece(const Declarator* declarator)
     return lowest;
 }
 
-Declaration* declarator_function_piece_get_decls(const DeclaratorPiece* piece)
+DeclarationList declarator_function_piece_get_decls(const DeclaratorPiece* piece)
 {
     assert(piece->base.type == DECLARATOR_PIECE_FUNCTION);
 
@@ -320,7 +330,7 @@ void declarator_push_array(Declarator* declarator, Location lbracket,
 
 void declarator_push_function(Declarator* declarator, Location lparen_loc,
         Location rparen_loc, DeclarationList params, size_t num_params,
-        Declaration* all_decls, Location dots)
+        DeclarationList all_decls, Location dots)
 {   
 
     DeclaratorPiece* piece = ast_allocator_alloc(declarator->allocator,
@@ -508,9 +518,10 @@ static Declaration* declaration_create_base(AstAllocator* allocator,
         .qualified_type = type,
         .storage_class = storage,
         .function_specifier = function,
-        .external = false, /*implicit=TODO: make sure this field is added*/
         .implicit = implicit,
-        .invalid = false
+        .invalid = false,
+        .most_recent = decl, /*set most recent to this one */
+        .next = NULL
     };
 
     return decl;
@@ -521,17 +532,19 @@ Declaration* declaration_create_error(AstAllocator* allocator,
 {
     return declaration_create_base(allocator, sizeof(DeclarationBase),
             DECLARATION_ERROR, location, NULL, (QualifiedType) {0},
-            STORAGE_SPECIFIER_NONE, FUNCTION_SPECIFIER_NONE, false);
+            STORAGE_NONE, FUNCTION_SPECIFIER_NONE, false);
 }
 
 Declaration* declaration_create_variable(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type, 
-        StorageSpecifier storage)
+        StorageSpecifier storage, DeclarationLinkage linkage)
 {
     Declaration* decl = declaration_create_base(allocator,
             sizeof(DeclarationVariable), DECLARATION_VARIABLE, location, 
             identifier, type, storage, FUNCTION_SPECIFIER_NONE, false);
+    decl->variable.linkage = linkage;
     decl->variable.initializer = NULL;
+    decl->variable.tentative = false;
 
     return decl;
 }
@@ -543,12 +556,35 @@ void declaration_variable_add_initializer(Declaration* declaration,
     declaration->variable.initializer = initializer;
 }
 
+bool declaration_variable_has_initializer(const Declaration* declaration)
+{
+    assert(declaration_is(declaration, DECLARATION_VARIABLE));
+    return declaration->variable.initializer != NULL;
+}
+
+bool declaration_variable_has_linkage(const Declaration* declaration)
+{
+    assert(declaration_is(declaration, DECLARATION_VARIABLE));
+    return declaration->variable.linkage != DECLARATION_LINKAGE_NONE;
+}
+
+bool declaration_variable_is_extern(const Declaration* declaration)
+{
+    return declaration->variable.linkage == DECLARATION_LINKAGE_EXTERNAL;
+}
+
+DeclarationLinkage declaration_variable_get_linkage(const Declaration* decl)
+{
+    assert(declaration_is(decl, DECLARATION_VARIABLE));
+    return decl->variable.linkage;
+}
+
 Declaration* declaration_create_typedef(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type)
 {
     Declaration* decl = declaration_create_base(allocator,
             sizeof(DeclarationTypedef), DECLARATION_TYPEDEF, location,
-            identifier, type, STORAGE_SPECIFIER_TYPEDEF,
+            identifier, type, STORAGE_TYPEDEF,
             FUNCTION_SPECIFIER_NONE, false);
     
     return decl;
@@ -567,7 +603,7 @@ Declaration* declaration_create_enum(AstAllocator* allocator,
 
     Declaration* declaration = declaration_create_base(allocator,
             sizeof(DeclarationEnum), DECLARATION_ENUM, location, identifier,
-            type, STORAGE_SPECIFIER_NONE, FUNCTION_SPECIFIER_NONE,
+            type, STORAGE_NONE, FUNCTION_SPECIFIER_NONE,
             false);
 
     declaration->enumeration.entries = NULL;
@@ -614,7 +650,7 @@ Declaration* declaration_create_enum_constant(AstAllocator* allocator,
 {
     Declaration* decl = declaration_create_base(allocator,
             sizeof(DeclarationEnumConstant), DECLARATION_ENUM_CONSTANT,
-            location, identifier, type, STORAGE_SPECIFIER_NONE,
+            location, identifier, type, STORAGE_NONE,
             FUNCTION_SPECIFIER_NONE, false);
     decl->enumeration_constant.equals_loc = equals;
     decl->enumeration_constant.expression = expression;
@@ -641,7 +677,7 @@ Declaration* declaration_create_field(AstAllocator* allocator,
 {
     Declaration* decl = declaration_create_base(allocator,
             sizeof(DeclarationField), DECLARATION_FIELD, location, identifier,
-            type, STORAGE_SPECIFIER_NONE, FUNCTION_SPECIFIER_NONE,
+            type, STORAGE_NONE, FUNCTION_SPECIFIER_NONE,
             false);
     decl->field.colon_location = colon_location;
     decl->field.bitfield = expression;
@@ -655,7 +691,7 @@ Declaration* declaration_create_struct(AstAllocator* allocator,
 {
     Declaration* decl = declaration_create_base(allocator,
             sizeof(DeclarationCompound), DECLARATION_STRUCT, location,
-            identifier, type, STORAGE_SPECIFIER_NONE,
+            identifier, type, STORAGE_NONE,
             FUNCTION_SPECIFIER_NONE, false);
     decl->compound.members = declaration_list_create(allocator);
 
@@ -705,7 +741,7 @@ Declaration* declaration_create_union(AstAllocator* allocator,
 {
     Declaration* decl = declaration_create_base(allocator,
             sizeof(DeclarationCompound), DECLARATION_UNION, location,
-            identifier, type, STORAGE_SPECIFIER_NONE,
+            identifier, type, STORAGE_NONE,
             FUNCTION_SPECIFIER_NONE, false);
     decl->compound.members = declaration_list_create(allocator);
 
@@ -720,17 +756,25 @@ bool declaration_union_is_complete(const Declaration* declaration);
 Declaration* declaration_create_function(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type,
         StorageSpecifier storage, TypeFunctionSpecifier function_spec,
-        Declaration* paramaters)
+        DeclarationList paramaters, DeclarationLinkage linkage)
 {
+    assert(linkage != DECLARATION_LINKAGE_NONE);
+
     Declaration* declaration = declaration_create_base(allocator,
             sizeof(DeclarationFunction), DECLARATION_FUNCTION, location,
             identifier, type, storage, function_spec, false);
+    declaration->function.linkage = linkage;
     declaration->function.all_decls = declaration_list_create(allocator);
     declaration->function.definition = NULL;
     declaration->function.function_body = NULL;
     declaration->function.paramaters = paramaters;
 
     return declaration;
+}
+
+DeclarationLinkage declaration_function_get_linkage(const Declaration* func)
+{
+    return func->function.linkage;
 }
 
 void declaration_function_add_decl(Declaration* function, Declaration* decl)
@@ -759,7 +803,21 @@ void declaration_function_set_definition(Declaration* declaration,
     declaration->function.definition = definition;
 }
 
-Declaration* declaration_function_get_paramaters(const Declaration* function)
+Declaration* declaration_function_get_definition(Declaration* declaration)
+{
+    assert(declaration_is(declaration, DECLARATION_FUNCTION));
+
+    return declaration->function.definition;
+}
+
+bool declaration_function_has_definition(Declaration* declaration)
+{
+    assert(declaration_is(declaration, DECLARATION_FUNCTION));
+
+    return declaration->function.definition != NULL;
+}
+
+DeclarationList declaration_function_get_paramaters(const Declaration* function)
 {
     return function->function.paramaters;
 }
@@ -770,7 +828,7 @@ Declaration* declaration_create_label(AstAllocator* allocator,
     // Note the label is a special case where we do not really have a type
     Declaration* decl = declaration_create_base(allocator, 
             sizeof(DeclarationLabel), DECLARATION_LABEL, location, identifier,
-            (QualifiedType) {0}, STORAGE_SPECIFIER_NONE,
+            (QualifiedType) {0}, STORAGE_NONE,
             FUNCTION_SPECIFIER_NONE, implicit);
     decl->label.used = implicit; // if implicit then used...
 

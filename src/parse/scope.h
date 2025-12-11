@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "parse/ast_allocator.h"
 #include "util/hash_map.h"
 #include "util/ptr_set.h"
 #include "util/str.h"
@@ -15,10 +16,10 @@
 #include "parse/symbol.h"
 
 typedef enum ScopeFlags {
-    SCOPE_FILE = 1 << 0, // File scope?
-    SCOPE_BLOCK = 1 << 1, // Block scope
-    SCOPE_FUNCTION = 1 << 2, // Function declaration
-    SCOPE_FUNCTION_BODY = 1 << 3, // Function definitions
+    SCOPE_EXTERN = 1 << 0, // Scope for externel declarations and defns
+    SCOPE_FILE = 1 << 1, // File scope?
+    SCOPE_BLOCK = 1 << 2, // Block scope
+    SCOPE_FUNCTION = 1 << 3, // Function declaration
     SCOPE_MEMBER = 1 << 4, // structs / unions
     SCOPE_FOR = 1 << 5, // for loop statements (AND declarations)
     SCOPE_WHILE = 1 << 6, // while loop statments
@@ -52,11 +53,12 @@ typedef struct Scope {
     // order to recontruct the parameter lists and any other declarations that
     // are allowed in functions.
 
-    // The first declaration in this scope
-    Declaration* first;
-    
-    // A pointer to the current declarations base 'next' field
-    Declaration** next;
+    // TODO: lets change the below to a declaration list. So that we can then
+    // TODO: use the delcaration link on declarations for chaining declarations
+    // TODO: of the same type.
+
+    // A list of all of the declarations in this scope.
+    DeclarationList all_decls;
 } Scope;
 
 // The way we will keep track of labels within functions.
@@ -70,12 +72,12 @@ typedef struct FunctionScope {
 
 bool scope_is(const Scope* scope, ScopeFlags flags);
 
-Scope scope_new_file(void);
-Scope scope_new_block(void);
-Scope scope_new_function_prototype(void);
-Scope scope_new_function_declaration(void);
-Scope scope_new_member(void);
-Scope scope_new_for(void);
+Scope scope_new_extern(AstAllocator* allocator);
+Scope scope_new_file(AstAllocator* allocator);
+Scope scope_new_block(AstAllocator* allocator);
+Scope scope_new_function_prototype(AstAllocator* allocator);
+Scope scope_new_member(AstAllocator* allocator);
+Scope scope_new_for(AstAllocator* allocator);
 Scope scope_new_while(void);
 Scope scope_new_do_while(void);
 Scope scope_new_switch(void);
@@ -106,7 +108,7 @@ void scope_insert_tag(Scope* scope, Declaration* declaration);
 void scope_insert_member(Scope* scope, Declaration* declaration);
 
 // get the declaration list from a scope
-Declaration* scope_get_declarations(const Scope* scope);
+DeclarationList scope_get_declarations(const Scope* scope);
 void scope_add_declaration(Scope* scope, Declaration* decl);
 
 // Function scopes are specially for function labels

@@ -62,12 +62,13 @@ typedef union Statement Statement;
 
 struct StatementBase {
     StatementType type;
+    Statement* next;
 };
 
 // An error statement
 struct StatementError {
     StatementBase base;
-    // TODO: should we even contain anything in the erorr case
+    // TODO: I would eventlually like to at least add a location here
 };
 
 // Labelled statements
@@ -86,6 +87,8 @@ struct StatementCase {
     Expression* constant_expression;
     IntegerValue expression_value;
     Statement* statement;
+
+    Statement* next_case; // Since the next field in base is used
 };
 
 struct StatementDefault {
@@ -99,8 +102,7 @@ struct StatementCompound {
     StatementBase base;
     Location opening_curly;
     Location closing_curly;
-    Statement** statements;
-    size_t statement_count;
+    Statement* first;
 };
 
 struct StatementExpression {
@@ -127,7 +129,10 @@ struct StatementSwitch {
     Location left_paren;
     Location right_paren;
     Expression* expression;
-    Statement* body;
+
+    Statement* body; // The general body statement
+    Statement* cases; // The start of all of the case statements
+    Statement* default_stmt; // The default statement if present
 };
 
 // Iteration statement
@@ -245,6 +250,8 @@ vector_of_decl(Statement*, Statement, statement);
 // TODO: some of below needs to be redone since some of these statements need
 // to exist before we can make a body
 
+void statement_set_next(Statement* stmt, Statement* next);
+
 Statement* statement_create_error(AstAllocator* allocator);
 
 Statement* statement_create_label(AstAllocator* allocator, 
@@ -260,7 +267,7 @@ Statement* statement_create_default(AstAllocator* allocator,
         Statement* body);
 
 Statement* statement_create_compound(AstAllocator* allocator,
-        Location opening_curly, Location closing_curly, StatementVector* stmts);
+        Location opening_curly, Location closing_curly, Statement* first);
 
 Statement* statement_create_expression(AstAllocator* allocator, 
         Location semi_location, Expression* expression);
@@ -315,6 +322,6 @@ Statement* statement_create_empty(AstAllocator* allocator,
 Statement* statement_create_declaration(AstAllocator* allocator,
         Location semi_location, Declaration* declaration);
 
-bool statement_is_type(const Statement* stmt, StatementType type);
+bool statement_is(const Statement* stmt, StatementType type);
 
 #endif /* STATEMENT_H */

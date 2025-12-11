@@ -31,7 +31,6 @@ typedef enum TypeKind {
     TYPE_STRUCT,
     TYPE_UNION,
     TYPE_ENUM,
-    TYPE_FUNCTION_PARAMETER,
     TYPE_FUNCTION,
     TYPE_POINTER,
     TYPE_TYPEDEF,
@@ -46,12 +45,12 @@ typedef enum TypeQualifiers {
 } TypeQualifiers;
 
 typedef enum StorageSpecifier {
-    STORAGE_SPECIFIER_NONE,
-    STORAGE_SPECIFIER_TYPEDEF,
-    STORAGE_SPECIFIER_EXTERN,
-    STORAGE_SPECIFIER_STATIC,
-    STORAGE_SPECIFIER_AUTO,
-    STORAGE_SPECIFIER_REGISTER
+    STORAGE_NONE,
+    STORAGE_TYPEDEF,
+    STORAGE_EXTERN,
+    STORAGE_STATIC,
+    STORAGE_AUTO,
+    STORAGE_REGISTER
 } StorageSpecifier;
 
 typedef enum TypeFunctionSpecifier {

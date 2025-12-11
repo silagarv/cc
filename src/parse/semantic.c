@@ -17,7 +17,6 @@
 #include "parse/statement.h"
 #include "parse/type.h"
 #include "parse/declaration.h"
-#include "parse/ast_allocator.h"
 #include "parse/expression.h"
 #include "parse/initializer.h"
 #include "parse/literal_parser.h"
@@ -40,6 +39,16 @@ SemanticChecker sematic_checker_create(DiagnosticManager* dm,
 // -----------------------------------------------------------------------------
 // Start functions for handling scopes
 // -----------------------------------------------------------------------------
+
+void semantic_checker_push_externals(SemanticChecker* sc, Scope* scope)
+{
+    sc->externals = scope;
+}
+
+void semantic_checker_pop_externals(SemanticChecker* sc)
+{
+    sc->externals = NULL;
+}
 
 void semantic_checker_push_scope(SemanticChecker* sc, Scope* scope)
 {
@@ -119,6 +128,23 @@ void semantic_checker_insert_member(SemanticChecker* sc, Declaration* decl)
     scope_insert_member(sc->scope, decl);
 }
 
+Declaration* semantic_checker_lookup_external(SemanticChecker* sc,
+        Identifier* identifier)
+{
+    assert(sc->externals != NULL);
+
+    return scope_lookup_ordinairy(sc->externals, identifier, false);
+}
+
+void semantic_checker_insert_external(SemanticChecker* sc, Declaration* decl)
+{
+    assert(declaration_is(decl, DECLARATION_FUNCTION)
+            || declaration_is(decl, DECLARATION_VARIABLE));
+    assert(sc->externals != NULL);
+
+    scope_insert_ordinairy(sc->externals, decl);
+}
+
 // -----------------------------------------------------------------------------
 // End functions for handling scopes
 // -----------------------------------------------------------------------------
@@ -126,6 +152,24 @@ void semantic_checker_insert_member(SemanticChecker* sc, Declaration* decl)
 // -----------------------------------------------------------------------------
 // Start functions for handling declarations
 // -----------------------------------------------------------------------------
+
+static QualifiedType semantic_checker_get_long_double_type(SemanticChecker* sc)
+{
+    Type* long_double = sc->ast->base_types.type_long_double;
+    return (QualifiedType) {QUALIFIER_NONE, long_double};
+}
+
+static QualifiedType semantic_checker_get_double_type(SemanticChecker* sc)
+{
+    Type* dbl = sc->ast->base_types.type_double;
+    return (QualifiedType) {QUALIFIER_NONE, dbl};
+}
+
+static QualifiedType semantic_checker_get_float_type(SemanticChecker* sc)
+{
+    Type* flt = sc->ast->base_types.type_float;
+    return (QualifiedType) {QUALIFIER_NONE, flt};
+}
 
 static QualifiedType semantic_checker_get_int_type(SemanticChecker* sc)
 {
@@ -152,9 +196,6 @@ static QualifiedType semantic_checker_decay_type(SemanticChecker* sc,
 
     // Get the real type to see through typedefs.
     QualifiedType real_type = qualified_type_get_canonical(&type);
-
-    assert(qualified_type_is(&real_type, TYPE_ARRAY)
-            || qualified_type_is(&real_type, TYPE_FUNCTION));
 
     // Decay function types. To do this turn the function type into a pointer to
     // the said function type
@@ -186,8 +227,33 @@ static QualifiedType semantic_checker_decay_type(SemanticChecker* sc,
     }
 
     // We should never be here, but as fallback just return the original type
-    panic("failed to decay type");
     return type;
+}
+
+static QualifiedType semantic_checker_arithmetic_conversion(SemanticChecker* sc,
+        QualifiedType lhs, QualifiedType rhs)
+{
+    lhs = qualified_type_get_canonical(&lhs);
+    rhs = qualified_type_get_canonical(&rhs);
+
+    // First do conversions if one is long double double or float
+    if (qualified_type_is(&lhs, TYPE_LONG_DOUBLE)
+            || qualified_type_is(&rhs, TYPE_LONG_DOUBLE))
+    {
+        return semantic_checker_get_long_double_type(sc);
+    }
+    else if (qualified_type_is(&lhs, TYPE_DOUBLE)
+            || qualified_type_is(&rhs, TYPE_DOUBLE))
+    {
+        return semantic_checker_get_double_type(sc);
+    }
+    else if (qualified_type_is(&lhs, TYPE_FLOAT)
+            || qualified_type_is(&rhs, TYPE_FLOAT))
+    {
+        return semantic_checker_get_float_type(sc);
+    }
+
+    return (QualifiedType) {0};
 }
 
 bool semantic_checker_identifier_is_typename(SemanticChecker* sc,
@@ -789,6 +855,7 @@ static QualifiedType process_function_type(SemanticChecker* sc, Declarator* d,
         if (qualified_type_is(&real_type, TYPE_VOID))
         {
             num_paramaters = 0;
+            params = NULL;
         }
     }
 
@@ -902,7 +969,7 @@ Declaration* semantic_checker_process_specifiers(SemanticChecker* sc,
     StorageSpecifier storage = specifiers->storage_spec;
     switch (storage)
     {
-        case STORAGE_SPECIFIER_NONE:
+        case STORAGE_NONE:
             if (to_return == NULL)
             {
                 diagnostic_warning_at(sc->dm, location, 
@@ -914,10 +981,10 @@ Declaration* semantic_checker_process_specifiers(SemanticChecker* sc,
                 break;
             }
 
-        case STORAGE_SPECIFIER_AUTO:
-        case STORAGE_SPECIFIER_EXTERN:
-        case STORAGE_SPECIFIER_REGISTER:
-        case STORAGE_SPECIFIER_STATIC:
+        case STORAGE_AUTO:
+        case STORAGE_EXTERN:
+        case STORAGE_REGISTER:
+        case STORAGE_STATIC:
         {
             if (to_return != NULL)
             {
@@ -935,7 +1002,7 @@ Declaration* semantic_checker_process_specifiers(SemanticChecker* sc,
         }
 
         // The guarantee above does not apply here...
-        case STORAGE_SPECIFIER_TYPEDEF:
+        case STORAGE_TYPEDEF:
             diagnostic_warning_at(sc->dm, location, "typedef requires a name");
             break;
 
@@ -970,22 +1037,54 @@ QualifiedType semantic_checker_process_typename(SemanticChecker* sc,
     return semantic_checker_process_type(sc, declarator);
 }
 
+static Declaration* semantic_checker_lookup_previous(SemanticChecker* sc,
+        Identifier* identifier, bool check_linkage, bool* this_scope)
+{
+    // If we got a pointer then make sure it is default to false
+    assert(this_scope ? *this_scope == false : true);
+
+    // Lookup the previous but only in the current scope
+    Declaration* previous = semantic_checker_lookup_ordinairy(sc, identifier,
+            false);
+
+    // If we found a previous declaration in the initial scope set this scope
+    // to be true to note that we found it in this scope.
+    if (previous != NULL)
+    {
+        if (this_scope != NULL)
+        {
+            *this_scope = true;
+        }
+
+        return previous;
+    }
+
+    if (previous == NULL && check_linkage)
+    {
+        previous = semantic_checker_lookup_external(sc, identifier);
+    }
+
+    return previous;
+}
+
 Declaration* semantic_checker_process_function_param(SemanticChecker* sc,
         Declarator* declarator)
 {
     assert(scope_is(sc->scope, SCOPE_FUNCTION));
     assert(declarator->context == DECL_CTX_PARAM);
 
+    // Make sure to decay the type since it is a function parameter.
     QualifiedType type = semantic_checker_process_type(sc, declarator);
+    type = semantic_checker_decay_type(sc, type);
 
     // Check that we have no storage specifier other then register
     StorageSpecifier storage = declarator->specifiers->storage_spec;
-    if (storage != STORAGE_SPECIFIER_NONE
-            && storage != STORAGE_SPECIFIER_REGISTER)
+    if (storage != STORAGE_NONE && storage != STORAGE_REGISTER)
     {
         diagnostic_error_at(sc->dm, declarator->specifiers->location,
-                "invalid storage class specifier in function declarator");
-        storage = STORAGE_SPECIFIER_NONE;
+                "invalid storage class specifier '%s' in function declarator",
+                storage_specifier_to_name(storage));
+        storage = STORAGE_NONE;
     }
 
     // Diagnose the use of inline
@@ -993,17 +1092,18 @@ Declaration* semantic_checker_process_function_param(SemanticChecker* sc,
 
     // Create the declaration for the function parameter. And add it into the
     // scope if we got an identifier and it wasn't a duplicate parameter.
+    // NOTE: function parameters can NEVER have linkage
     Identifier* identifier = declarator_get_identifier(declarator);
     Declaration* declaration =  declaration_create_variable(
             &sc->ast->ast_allocator, declarator->identifier_location,
-            identifier, type, storage);
+            identifier, type, storage, DECLARATION_LINKAGE_NONE);
 
     // Check for previous declaration of function parameter.
-    Declaration* previous = semantic_checker_lookup_ordinairy(sc, identifier,
-            false);
+    Declaration* previous = semantic_checker_lookup_previous(sc, identifier,
+            false, NULL);
     if (previous != NULL)
     {
-        diagnostic_error_at(sc->dm, declarator->identifier_location,
+        diagnostic_error_at(sc->dm, declarator_get_location(declarator),
                 "redefinition of parameter '%s'", identifier->string.ptr);
         declaration_set_invalid(declaration);
     }
@@ -1013,6 +1113,91 @@ Declaration* semantic_checker_process_function_param(SemanticChecker* sc,
     }
 
     return declaration;
+}
+
+// Returns true if there we are errors int the function declaration and false
+// otherwise.
+static void semantic_checker_check_function_redeclaration(SemanticChecker* sc,
+        Declaration* function, Declaration* previous, bool is_defn)
+{
+    assert(declaration_is(function, DECLARATION_FUNCTION));
+
+    // Don't try hard for invalid declarations
+    if (!declaration_is_valid(function))
+    {
+        return;
+    }
+
+    // Don't do anything if there was no previous decl
+    if (previous == NULL)
+    {
+        return;
+    }
+
+    // First look up to see if we got a previous variable in the current scope
+    Identifier* identifier = declaration_get_identifier(function);
+    Location location =declaration_get_location(function);
+
+    if (!declaration_is(previous, DECLARATION_FUNCTION))
+    {
+        diagnostic_error_at(sc->dm, location,
+                "redefinition of '%s' as a different kind of symbol",
+                identifier->string.ptr);
+        declaration_set_invalid(function);
+        return;
+    }
+
+    // Otherwise we check if the types are compatible and error is they arent.
+    QualifiedType new_type = declaration_get_type(function);
+    QualifiedType old_type = declaration_get_type(previous);
+    if (!qualified_type_is_compatible(&new_type, &old_type))
+    {
+        diagnostic_error_at(sc->dm, location, "conflicting types for '%s'",
+                identifier->string.ptr);
+        declaration_set_invalid(function);
+        return;
+    }
+
+    // Now here we know we have functions which have the same type. So now we
+    // will only need to check the linkage on the functions
+    DeclarationLinkage new_linkage = declaration_function_get_linkage(function);
+    DeclarationLinkage old_linkage = declaration_function_get_linkage(previous);
+
+    // It is only a problem if we try to go from externel to internal...
+    if (old_linkage == DECLARATION_LINKAGE_EXTERNAL
+            && new_linkage == DECLARATION_LINKAGE_INTERNAL)
+    {
+        diagnostic_error_at(sc->dm, location,
+                "static declaration of '%s' follows non-static declaration",
+                identifier->string.ptr);
+        declaration_set_invalid(function);
+        return;
+    }
+
+    // Finally check for function redefinitions.
+    if (declaration_function_has_definition(previous) && is_defn)
+    {
+        diagnostic_error_at(sc->dm, location, "redefinition of '%s'",
+                identifier->string.ptr);
+        declaration_set_invalid(function);
+    }
+}
+
+static void semantic_checker_chain_function_declaration(SemanticChecker* sc,
+        Declaration* function, Declaration* previous)
+{
+    // Don't chain non valid declarations
+    if (!declaration_is_valid(function))
+    {
+        return;
+    }
+
+    // This should be true if variable is 'valid'
+    assert(declaration_is(function, DECLARATION_FUNCTION));
+    assert(declaration_is(previous, DECLARATION_FUNCTION));
+
+    // We want to add this function declaration to the previous
+    declaration_function_add_decl(previous, function);    
 }
 
 Declaration* semantic_checker_process_function_declaration(SemanticChecker* sc,
@@ -1034,40 +1219,40 @@ Declaration* semantic_checker_process_function_declaration(SemanticChecker* sc,
     switch (storage)
     {
         // These are allowed regardless of the scope
-        case STORAGE_SPECIFIER_NONE:
-        case STORAGE_SPECIFIER_EXTERN:
+        case STORAGE_NONE:
+        case STORAGE_EXTERN:
             break;
 
         // This is only allowed if we are not in block scope.
-        case STORAGE_SPECIFIER_STATIC:
+        case STORAGE_STATIC:
             if (ctx == DECL_CTX_BLOCK)
             {
                 diagnostic_error_at(sc->dm, location, "function declared in "
                         "block scope cannot have 'static' storage class");
                 invalid = true;
-                storage = STORAGE_SPECIFIER_NONE;
+                storage = STORAGE_NONE;
             }
             break;
 
         // The storages are not allowed at all for functions...
-        case STORAGE_SPECIFIER_AUTO:
-        case STORAGE_SPECIFIER_REGISTER:
+        case STORAGE_AUTO:
+        case STORAGE_REGISTER:
             diagnostic_error_at(sc->dm, location,
                     "illegal storage class '%s' on function",
                     storage_specifier_to_name(specifiers->storage_spec));
             invalid = true;
-            storage = STORAGE_SPECIFIER_NONE;
+            storage = STORAGE_NONE;
             break;
 
         // If we got a 'typedef' function that means we should have known before
         // that we are about to process a function definition. So here we catch
         // that and error.
-        case STORAGE_SPECIFIER_TYPEDEF:
+        case STORAGE_TYPEDEF:
             assert(declarator_is_func_defn(declarator));
             diagnostic_error_at(sc->dm, specifiers->location,
-                "function definition declared 'typedef'");
+                    "function definition declared 'typedef'");
             invalid = true;
-            storage = STORAGE_SPECIFIER_NONE;
+            storage = STORAGE_NONE;
             break;
 
         default:
@@ -1078,145 +1263,332 @@ Declaration* semantic_checker_process_function_declaration(SemanticChecker* sc,
     // We must get all of the declarations in the function piece before creating
     // the function declaration itself so that we can access them later.
     DeclaratorPiece* piece = declarator_get_function_piece(declarator);
-    Declaration* decls = declarator_function_piece_get_decls(piece);
+    DeclarationList decls = declarator_function_piece_get_decls(piece);
+
+    // Compute the function linkage here
+    DeclarationLinkage linkage = storage == STORAGE_STATIC
+            ? DECLARATION_LINKAGE_INTERNAL
+            : DECLARATION_LINKAGE_EXTERNAL;
 
     // Create our new function declaration.
     Declaration* declaration = declaration_create_function(
             &sc->ast->ast_allocator, location, identifier, type,
-            storage, specifiers->function_spec, decls);
-    
-    // Now that we have all of our function types and a declaration for it
-    // we will want to check that it is compatible with all of our previous
-    // definitions if we have any.
-    Declaration* previous = semantic_checker_lookup_ordinairy(sc, identifier,
-            false);
+            storage, specifiers->function_spec, decls, linkage);
 
-    // No previous entries. Nothing could possibly be wrong at this point in
-    // time so add it into the ordinairy scope and can simply return.
-    if (previous == NULL)
+    // Also get whether we were expecting this function to have a definiton
+    bool is_defn = declarator_is_func_defn(declarator);
+
+    // Lookup the previous declaration in this scope.
+    bool this_scope = false;
+    Declaration* previous = semantic_checker_lookup_previous(sc, identifier,
+            true, &this_scope);
+
+    // Now check for function redeclarations
+    semantic_checker_check_function_redeclaration(sc, declaration, previous,
+            is_defn);
+
+    // If we didn't find anything previously in any scope we should add to the
+    // lexical scope. Or, if we found something but it wasn't in this scope we
+    // should add it to this scope.
+    if (previous == NULL || (previous != NULL && this_scope == false))
     {
         semantic_checker_insert_ordinairy(sc, declaration);
-        return declaration;
     }
 
-    assert(previous != NULL);
+    // Now we want to merge the function declarations since all function 
+    // declarations have linkage. But if it's null we can simply just insert it
+    // into the externals scope.
+    if (previous == NULL)
+    {
+        semantic_checker_insert_external(sc, declaration);
+    }
+    else
+    {
+        semantic_checker_chain_function_declaration(sc, declaration, previous);
+    }
 
-    // Otherwise we are sure we have something. So first check if the previous
-    // was a function or not. If not, produce and error, invalidate this and
-    // return this declaration.
-    if (!declaration_is(previous, DECLARATION_FUNCTION))
+    // Again like variable decl's will need to set it invalid after
+    if (invalid)
+    {
+        declaration_set_invalid(declaration);
+    }
+
+    return declaration;
+}
+
+// Returns true if some error occured with variable redeclaration
+static void semantic_checker_check_variable_redeclaration(SemanticChecker* sc,
+        Declaration* variable, Declaration* old_decl)
+{
+    // Give up if we're already invalid
+    if (!declaration_is_valid(variable))
+    {
+        return;
+    }
+
+    // Can't check decalration if we don't have an old declaration
+    if (old_decl == NULL)
+    {
+        return;
+    }
+
+    Identifier* identifier = declaration_get_identifier(variable);
+    Location location = declaration_get_location(variable);
+
+    // If it wasn't a variable we get different kind of symbol warning
+    if (!declaration_is(old_decl, DECLARATION_VARIABLE))
     {
         diagnostic_error_at(sc->dm, location,
                 "redefinition of '%s' as a different kind of symbol",
                 identifier->string.ptr);
-        declaration_set_invalid(declaration);
-        return declaration;
+        declaration_set_invalid(variable);
+        return;
     }
 
-    // Okay. Here we know that both types should be function type. So we will
-    // need to check that both types are compatible.
-    QualifiedType previous_type = declaration_get_type(previous);
-
-    assert(qualified_type_is(&type, TYPE_FUNCTION));
-    assert(qualified_type_is(&previous_type, TYPE_FUNCTION));
-
-    bool compatible = false;
-
-    // If the types are not compatible, error, set it invalid and simply return
-    // the current function declaration. Since we will use the first function
-    // definition as the master function declaration always.
-    if (!compatible)
+    // Otherwise we check if the types are compatible and error is they arent.
+    QualifiedType new_type = declaration_get_type(variable);
+    QualifiedType old_type = declaration_get_type(old_decl);
+    if (!qualified_type_is_compatible(&new_type, &old_type))
     {
-        diagnostic_error_at(sc->dm, location, "conflicting types for '%s'",
+        diagnostic_error_at(sc->dm, location,
+                "redefinition of '%s' with a different type",
                 identifier->string.ptr);
-        declaration_set_invalid(declaration);
-        return declaration;
+        declaration_set_invalid(variable);
+        return;
     }
 
-    panic("TODO: finish process_function_declaration");
-    return NULL;
+    // Below we catch some possible errors to do with variable linkage and the
+    // definitions of them.
+    if (declaration_variable_has_linkage(variable)
+            && declaration_variable_is_extern(variable)
+            && declaration_variable_has_linkage(old_decl))
+    {
+        // This is actually fine. since extern declarations can follow static
+        // ones if the static ones had linkage.
+        // ```static int foo; extern int foo;``` is fine
+    }
+    else if (declaration_variable_has_linkage(variable)
+            && declaration_variable_is_extern(variable)
+            && declaration_get_storage_class(old_decl) == STORAGE_STATIC)
+    {
+        // Here we are catching function local static's being redeclared as
+        // extern.
+        assert(!declaration_variable_has_linkage(old_decl));
+        diagnostic_error_at(sc->dm, location,
+                "non-static declaration of '%s' follows static declaration",
+                identifier->string.ptr);
+        declaration_set_invalid(variable);
+        return;
+    }
+
+    if (declaration_get_storage_class(variable) == STORAGE_STATIC
+            && declaration_variable_has_linkage(old_decl)
+            && declaration_variable_is_extern(old_decl))
+    {
+        diagnostic_error_at(sc->dm, location,
+                "static declaration of '%s' follows non-static declaration",
+                identifier->string.ptr);
+        declaration_set_invalid(variable);
+        return;
+    }
+
+    if (declaration_variable_has_linkage(old_decl)
+            && declaration_variable_is_extern(old_decl)
+            && !declaration_variable_has_linkage(variable))
+    {
+        diagnostic_error_at(sc->dm, location,
+                "non-extern declaration of '%s' follows extern declaration",
+                identifier->string.ptr);
+        declaration_set_invalid(variable);
+        return;
+    }
+
+    if (declaration_variable_has_linkage(variable)
+            && declaration_variable_is_extern(variable)
+            && !declaration_variable_has_linkage(old_decl))
+    {
+        diagnostic_error_at(sc->dm, location,
+                "extern declaration of '%s' follows non-extern declaration",
+                identifier->string.ptr);
+        declaration_set_invalid(variable);
+        return;
+    }
+
+    // Get if we have linkage and error accordingly
+    bool has_linkage = declaration_variable_has_linkage(variable);
+
+    // Finally here, we want to give a redefinition error if we can determine
+    // one has been found.
+    if (has_linkage && declaration_variable_has_linkage(old_decl))
+    {
+        // Nothing to do here. We have linkage and the old one does too and we
+        // have found that the declarations are constent with each other. So
+        // since we are allowed to have multiple of the same externel
+        // definitons we can just do nothing.
+    }
+    else if (has_linkage && !declaration_variable_has_linkage(old_decl))
+    {
+        panic("unreachable");
+
+        // If we are here this means we have an extern function local but the
+        // previous declaration was non-extern (or static). Note, that this is
+        // already caught by the above code.
+    }
+    else if (!has_linkage && declaration_variable_has_linkage(old_decl))
+    {
+        panic("unreachable");
+
+        // Here the new variable doesn't have linkage (must be a function local)
+        // but the old one does. Meaning that we old one was declared in a
+        // function for us to have been able to find it (otherwise we wouldn't
+        // have looked in the externs table) But note that we have already dealt
+        // with this case. non-extern extern.
+    }
+    else if (!has_linkage && !declaration_variable_has_linkage(old_decl))
+    {
+        // Redefinition of function locals. e.g. ``` int foo; int foo;```
+        diagnostic_error_at(sc->dm, declaration_get_location(variable),
+                "redefinition of '%s'", identifier->string.ptr);
+        declaration_set_invalid(variable);
+    }
+}
+
+static void semantic_checker_chain_variable_declaration(SemanticChecker* sc,
+        Declaration* variable, Declaration* previous)
+{
+    // Don't chain invalid declarations
+    if (!declaration_is_valid(variable))
+    {
+        return;
+    }
+
+    // This should be true if variable is 'valid'
+    assert(declaration_is(variable, DECLARATION_VARIABLE));
+    assert(declaration_is(previous, DECLARATION_VARIABLE));
+    
+    // if (previous->base.next == NULL)
+    // {
+    //     previous->base.next = variable;
+    // }
+    // else
+    // {
+    //     previous->base.most_recent->base.next = variable;
+    // }
+    // previous->base.most_recent = variable;
 }
 
 Declaration* semantic_checker_process_variable(SemanticChecker* sc,
         Declarator* declarator, QualifiedType type)
 {
-    // Extract important things from the declarator
-    const DeclarationSpecifiers* specifiers = declarator->specifiers;
-    Identifier* identifier = declarator->identifier;
-    Location identifer_loc = declarator->identifier_location;
+    // True if the declaration should be set to invalid
+    bool invalid = false;
 
-    // Check the storage is valid
-    StorageSpecifier storage = specifiers->storage_spec;
-    assert(storage != STORAGE_SPECIFIER_TYPEDEF);
-    switch (declarator->context)
+    // Get our identifier and it's location
+    Identifier* identifier = declarator_get_identifier(declarator);
+    Location identifer_loc = declarator_get_location(declarator);
+    assert(identifier != NULL && identifer_loc != LOCATION_INVALID);
+
+    // Get the context of the declarator
+    DeclaratorContext ctx = declarator_get_context(declarator);
+    assert(ctx == DECL_CTX_BLOCK || ctx == DECL_CTX_FILE);
+
+    // Now get the storage of the declarator
+    DeclarationSpecifiers* spec = declarator_get_specifiers(declarator);
+    StorageSpecifier storage = declaration_specifiers_storage(spec);
+    assert(storage != STORAGE_TYPEDEF);
+
+    if (ctx == DECL_CTX_FILE
+            && (storage == STORAGE_AUTO || storage == STORAGE_REGISTER))
     {
-        // This context does not have any restrictions on the storage class
-        case DECL_CTX_BLOCK:
-            break;
-
-        // File scoped declarations cannot have register or auto specified
-        case DECL_CTX_FILE:
-            if (storage == STORAGE_SPECIFIER_REGISTER
-                    || storage == STORAGE_SPECIFIER_AUTO)
-            {
-                diagnostic_error_at(sc->dm, identifer_loc,
-                        "illegal storage class '%s' on file scoped variable",
-                        storage_specifier_to_name(storage));
-            }
-            break;
-
-        // All of these three cases should be handled seperately
-        case DECL_CTX_STRUCT:
-        case DECL_CTX_PARAM:
-        case DECL_CTX_TYPE_NAME:
-            panic("declaration context should not be handled here");
-            return NULL;
-
-        default:
-            panic("unexpected declaration context");
-            return NULL;
+        diagnostic_error_at(sc->dm, identifer_loc,
+                "illegal storage class '%s' on file-scoped variable",
+                storage_specifier_to_name(storage));
+        invalid = true;
     }
 
-    // Diagnose the use of the inline keyword
-    semantic_checker_diagnose_inline(sc, declarator_get_specifiers(declarator));
+    // Diagnose the use of the inline keyword on any variable declaration
+    semantic_checker_diagnose_inline(sc, spec);
+
+    // Now determine the type of linkage that this variable has.
+    // Ignoring any errors with auto or register file scoped variables have
+    // external linkage automatically. So <none>, and 'extern' will have 
+    // external linkage. Whereas static will have interal linkage.
+    // Block context is different. Here if the storage is none, register, or
+    // auto then linkage stays as none. static is a special case here where,
+    // it does not affect the linage if it is at block scope. Otherwise, if
+    //  it is extern, only then does it have external linkage.
+    DeclarationLinkage linkage = DECLARATION_LINKAGE_NONE;
+    if (storage == STORAGE_EXTERN)
+    {
+        linkage = DECLARATION_LINKAGE_EXTERNAL;
+    }
+    else if (ctx == DECL_CTX_FILE)
+    {
+        if (storage == STORAGE_STATIC)
+        {
+            linkage = DECLARATION_LINKAGE_INTERNAL;
+        }
+        else
+        {
+            linkage = DECLARATION_LINKAGE_EXTERNAL;
+        }
+    }
 
     // Create the new deckaration that we use.
-    Declaration* declaration = declaration_create_variable(
-            &sc->ast->ast_allocator, identifer_loc, identifier, type, storage);
+    Declaration* new_var = declaration_create_variable(&sc->ast->ast_allocator,
+            identifer_loc, identifier, type, storage, linkage);
     
-    // Okay now we have create our variable we can add the declaration into the
-    // current scope if it doesn't already contain this identifier
-    Declaration* previous = scope_lookup_ordinairy(sc->scope, identifier,
-            false);
-    if (previous != NULL)
+    // Set invalid if needed. example of why this is after checking
+    // redeclaration ```register int foo;``` (at file scope). We still want to
+    // add to the sybol table
+    if (invalid)
     {
-        // Otherwise we need to check if they are the same type, and that we
-        // have not already have some kind of initializer for it yet. But also
-        // checking if we've had it yet or not is for some reason different if
-        // we are at file scope :(
-
-        // TODO: for file scope only it is okay if:
-        // TODO:    same type
-        // TODO:    only 1 initializer
-        // TODO:    no extern initializer
-
-        diagnostic_error_at(sc->dm, identifer_loc, "redefinition of '%s'",
-                identifier->string.ptr);
-        return declaration;
+        declaration_set_invalid(new_var);
     }
 
-    // Insert this into the scope 
-    semantic_checker_insert_ordinairy(sc, declaration);
+    // Lookup the previous declaration to see if we need to chain them or not
+    bool has_linkage = linkage != DECLARATION_LINKAGE_NONE;
+    bool this_scope = false;
+    Declaration* previous = semantic_checker_lookup_previous(sc, identifier,
+            has_linkage, &this_scope);
 
-    return declaration;
+    // Now we want to check for variable redeclaration
+    semantic_checker_check_variable_redeclaration(sc, new_var, previous);
+
+    // Below we figure out what scope(s) to add the declaration too. Considering
+    // the case of the ordinairy and external's seperately
+
+    // If we didn't find anything previously in any scope we should add to the
+    // lexical scope. Or, if we found something but it wasn't in this scope we
+    // should add it to this scope.
+    if (previous == NULL || (previous != NULL && this_scope == false))
+    {
+        semantic_checker_insert_ordinairy(sc, new_var);
+    }
+
+    // If we didn't find anything and had linkage then we should add it to the 
+    // external scope as well.
+    if (has_linkage)
+    {
+        if (previous == NULL)
+        {
+            semantic_checker_insert_external(sc, new_var);
+        }
+        else
+        {
+            semantic_checker_chain_variable_declaration(sc, new_var, previous);
+        }
+    }
+
+    return new_var;
 }
 
 Declaration* semantic_checker_process_typedef(SemanticChecker* sc,
         Declarator* declarator, QualifiedType type)
 {
     DeclarationSpecifiers* specifiers = declarator_get_specifiers(declarator);
-    Identifier* identifier = declarator->identifier;
-    Location identifer_loc = declarator->identifier_location;
+    Identifier* identifier = declarator_get_identifier(declarator);
+    Location identifer_loc = declarator_get_location(declarator);
 
     // Diagnose the use of the inline keyword
     semantic_checker_diagnose_inline(sc, specifiers);
@@ -1268,7 +1640,7 @@ Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
     StorageSpecifier storage = declaration_specifiers_storage(spec);
 
     // Only process this as a typedef if it is not a function definition
-    if (storage == STORAGE_SPECIFIER_TYPEDEF
+    if (storage == STORAGE_TYPEDEF
             && !declarator_is_func_defn(declarator))
     {
         return semantic_checker_process_typedef(sc, declarator, type);        
@@ -1299,7 +1671,7 @@ Declaration* semantic_checker_process_struct_declarator(SemanticChecker* sc,
     }
 
     // Ensure that the storage specifiers were removed already.
-    assert(declarator->specifiers->storage_spec == STORAGE_SPECIFIER_NONE);
+    assert(declarator->specifiers->storage_spec == STORAGE_NONE);
 
     Identifier* identifier = declarator->identifier;
     Location identifier_loc = declarator->identifier_location;
@@ -1392,59 +1764,51 @@ void semantic_checker_add_function_parameters(SemanticChecker* sc,
         Declaration* declaration)
 {
     assert(declaration_is(declaration, DECLARATION_FUNCTION));
-    assert(scope_is(sc->scope, SCOPE_FUNCTION_BODY));
 
     // Add all of the decalrations from the function scope into the new function
-    // body scope.
-    Declaration* all_decls = declaration_function_get_paramaters(declaration);
-    for (; all_decls != NULL; all_decls = declaration_get_next(all_decls))
+    DeclarationList decls = declaration_function_get_paramaters(declaration);
+    DeclarationListEntry* iter = declaration_list_iter(&decls);
+    for (; iter != NULL; iter = declaration_list_next(iter))
     {
+        Declaration* decl = declaration_list_entry_get(iter);
+
         // Any tag declarations get auto inserted
-        if (declaration_is_tag(all_decls))
+        if (declaration_is_tag(decl))
         {
-            scope_insert_tag(sc->scope, all_decls);
+            semantic_checker_insert_tag(sc, decl);
             continue;
         }
 
         // Otherwise we should have a function parameter here.
-        QualifiedType type = declaration_get_type(all_decls);
+        QualifiedType type = declaration_get_type(decl);
         QualifiedType real_type = qualified_type_get_canonical(&type);
-        if (declaration_has_identifier(all_decls))
-        {
-            // Now we need to check that the type is complete and not 'void'
-            // if (qualified_type_is(&real_type, TYPE_VOID))
-            // {
-            //     diagnostic_error_at(sc->dm, all_decls->base.location,
-            //             "argument may not have 'void' type");
-            //     declaration_set_invalid(declaration);
-            // }
-            
-            if (!qualified_type_is_complete(&real_type))
-            {
-                // NOTE: that structs are not fully implemented so don't have
-                // this error for now
-                diagnostic_error_at(sc->dm, all_decls->base.location,
-                        "variable '%s' has incomplete type",
-                        all_decls->base.identifier->string.ptr);
-                declaration_set_invalid(declaration);
-            }
 
-            // Insert it anyway since any semantic action with the declaration
-            // will fail with no error if we identified one earlier. Also noting
-            // that it will not produce any additional errors for us too.
-            scope_insert_ordinairy(sc->scope, all_decls);
+        // HACK: to skip adding void 'parameter' if present I want to fix this
+        // up properly to only add the parameter definitions and have the
+        // other definitions seperate.
+        if (qualified_type_is(&real_type, TYPE_VOID))
+        {
+            continue;
+        }
+
+        // Make sure we have a complete type even if it doesn't have a name
+        if (!qualified_type_is_complete(&real_type))
+        {
+            diagnostic_error_at(sc->dm, decl->base.location,
+                    "variable has incomplete type");
+            declaration_set_invalid(declaration);
+        }
+
+        // Insert into the symbol table if we have an identifier
+        if (declaration_has_identifier(decl))
+        {            
+            semantic_checker_insert_ordinairy(sc, decl);
         }
         else
         {
-            // Here we should only error if it is not a void parameter. Since 
-            // then we can assume that void will be the only declaration if it
-            // appears.
-            if (!qualified_type_is(&real_type, TYPE_VOID))
-            {
-                diagnostic_error_at(sc->dm, all_decls->base.location,
-                        "paramater name must not be omitted in a function "
-                        "definition");
-            }
+            diagnostic_error_at(sc->dm, decl->base.location,
+                    "paramater name must not be omitted in a function "
+                    "definition");
         }
     }
 }
@@ -1456,79 +1820,86 @@ void semantic_checker_handle_function_start(SemanticChecker* sc,
     // without any more errors and just leave it at that.
     if (!declaration_is_valid(function))
     {
-    }
-
-    // Otherwise get the main declaration for the function and check whether
-    // that declaration has a function body or not. If it does not then we are
-    // good to go. Otherwise, if it does error about it and indicated that we
-    // should not use it as the main definition.
-    Identifier* identifier = declaration_get_identifier(function);
-    Declaration* previous = semantic_checker_lookup_ordinairy(sc, identifier,
-            false);
-    (assert(previous));
-
-    // Check that the function does not already have a body.
-    if (declaration_function_has_body(previous))
-    {
-        diagnostic_error_at(sc->dm, declaration_get_location(function),
-                "redefinition of '%s'",
-                declaration_get_identifier(function)->string.ptr);
-    }
-}
-
-void semantic_checker_set_function_body(SemanticChecker* sc,
-        Declaration* function, Statement* stmt)
-{
-    // Otherwise get the main declaration for the function
-    Identifier* identifier = declaration_get_identifier(function);
-    assert(identifier);
-    Declaration* boss_decl = semantic_checker_lookup_ordinairy(sc, identifier,
-            true);
-    assert(boss_decl);
-
-    // Check if the definition if the first reference of the function and set 
-    // both decl's as necessary
-    if (boss_decl == function)
-    {
-        declaration_function_set_body(function, stmt);
-        declaration_function_set_definition(boss_decl, function);
         return;
     }
-    else
-    {
-        // Otherwise set this declarations body, and also the boss decls body
 
-        // Set the functions body
-        declaration_function_set_body(function, stmt);
+    // // Otherwise get the main declaration for the function and check whether
+    // // that declaration has a function body or not. If it does not then we are
+    // // good to go. Otherwise, if it does error about it and indicated that we
+    // // should not use it as the main definition.
+    // Identifier* identifier = declaration_get_identifier(function);
+    // Declaration* previous = semantic_checker_lookup_ordinairy(sc, identifier,
+    //         false);
+    // assert(previous != NULL);
 
-        // And if it's not a redefinition set the main decls body and definition
-        // field.
-        // if (!redefinition)
-        // {
-        //     declaration_function_set_body(boss_decl, stmt);
-        //     declaration_function_set_definition(boss_decl, function);
-        // }
-    }
+    // // Check that the function does not already have a body.
+    // if (declaration_function_has_body(previous))
+    // {
+    //     diagnostic_error_at(sc->dm, declaration_get_location(function),
+    //             "redefinition of '%s'",
+    //             declaration_get_identifier(function)->string.ptr);
+    // }
 }
 
-void semantic_checker_declaration_add_initializer(SemanticChecker* sc,
-        Declaration* declaration, Location equals, Initializer* initializer)
+void semantic_checker_handle_function_end(SemanticChecker* sc,
+        Declaration* function, Statement* body)
+{
+    // First set the body of this function.
+    assert(declaration_is(function, DECLARATION_FUNCTION));
+    declaration_function_set_body(function, body);
+
+    // Then if we want to get the previous declaration for this function and set
+    // the body of the main declaration.
+    Identifier* identifier = declaration_get_identifier(function);
+    Declaration* previous = semantic_checker_lookup_external(sc, identifier);
+
+    // This was the first declaration of the function.
+    if (previous == function)
+    {
+        return;
+    }
+
+    // Otherwise we want to set the body of the function definition to be this
+    declaration_function_set_definition(previous, function);
+}
+
+bool semantic_checker_check_initializer_allowed(SemanticChecker* sc,
+        Declaration* declaration, DeclaratorContext context)
 {
     // First we must check that the declaration is allowed to have an 
     // initializer. If not error about it.
     if (!declaration_is(declaration, DECLARATION_VARIABLE))
     {
-        diagnostic_error_at(sc->dm, equals,
+        diagnostic_error_at(sc->dm, declaration_get_location(declaration),
                 "illegal initializer (only variables can be initialized)");
         declaration_set_invalid(declaration);
-        return;
+        return false;
     }
 
-    // Otherwise add the initializer to the declaration
-    declaration_variable_add_initializer(declaration, initializer);
+    // Now check the variable isn't a block scope extern. Since those cannot
+    // have identifiers under any circumstances.
+    if (declaration_is_valid(declaration) && context == DECL_CTX_BLOCK
+            && declaration_variable_has_linkage(declaration)
+            && declaration_variable_is_extern(declaration))
+    {
+        diagnostic_error_at(sc->dm, declaration_get_location(declaration),
+                "declaration of block scope identifier with linkage cannot "
+                "have an initializer");
+        declaration_set_invalid(declaration);
+        return false;
+    }
 
-    // TODO: we also need to update our declarations type and check that this
-    // TODO: will work properly
+    return true;
+}
+
+void semantic_checker_declaration_add_initializer(SemanticChecker* sc,
+        Declaration* declaration, Location equals, Initializer* initializer)
+{
+    // Otherwise add the initializer to the declaration
+    if (declaration_is_valid(declaration))
+    {
+        declaration_variable_add_initializer(declaration, initializer);
+    }
 }
 
 void semantic_checker_declaration_finish(SemanticChecker* sc,
@@ -1963,6 +2334,9 @@ void sematic_checker_act_on_end_of_function(SemanticChecker* sc)
 // TODO: anything else that we might need to use in order to properly handle
 // TODO: expression types.
 
+// TODO: need to have some lvalue to rvalue conversion taking place. and also
+// TODO: need to have integer conversion to appropriate types taking place
+
 static Expression* semantic_checker_create_implicit_cast(SemanticChecker* sc,
         Expression* expression, QualifiedType cast_to)
 {
@@ -2006,8 +2380,7 @@ static Expression* semantic_checker_promote_integer(SemanticChecker* sc,
 
         // We have an integer type with no conversion to a larger type needed so
         // we can just return the current expression to the user.
-        default:
-            return expression;
+        default: return expression;
     }
 
     panic("uncreachable");
@@ -2266,8 +2639,17 @@ Expression* semantic_checker_handle_reference_expression(SemanticChecker* sc,
     }
 
     QualifiedType type = declaration_get_type(declaration);
-    return expression_create_reference(&sc->ast->ast_allocator, identifier,
-            identifier_location, declaration, type);
+    Expression* reference = expression_create_reference(&sc->ast->ast_allocator,
+            identifier, identifier_location, declaration, type);
+    
+    // If the declaration was not valid then set the expression to be invalid as
+    // well to help cascading errors.
+    if (!declaration_is_valid(declaration))
+    {
+        expression_set_invalid(reference);
+    }
+
+    return reference;
 }
 
 static Expression* semantic_checker_handle_integer_constant(SemanticChecker* sc,
@@ -2387,11 +2769,14 @@ Expression* semantic_checker_handle_array_expression(SemanticChecker* sc,
     }
 
     QualifiedType type_lhs = expression_get_qualified_type(lhs);
+    QualifiedType decayed_lhs = semantic_checker_decay_type(sc, type_lhs);
+
     QualifiedType type_member = expression_get_qualified_type(member);
+    QualifiedType decayed_rhs = semantic_checker_decay_type(sc, type_member);
 
-    bool lhs_is_array = type_is_subscriptable(&type_lhs);
-    bool rhs_is_array = type_is_subscriptable(&type_member);
-
+    // Make sure that one of our types is an array or pointer
+    bool lhs_is_array = type_is_subscriptable(&decayed_lhs);
+    bool rhs_is_array = type_is_subscriptable(&decayed_rhs);
     if (!lhs_is_array && !rhs_is_array)
     {
         diagnostic_error_at(sc->dm, lbracket_loc,
@@ -2402,7 +2787,7 @@ Expression* semantic_checker_handle_array_expression(SemanticChecker* sc,
     // If we have determined the lhs is the 'array' side then we want to check
     // that the rhs is an integer, otherwise check the lhs is an integer
     Expression* check_integer = lhs_is_array ? member : lhs;
-    QualifiedType subscript_type = expression_get_qualified_type(check_integer);
+    QualifiedType subscript_type = lhs_is_array ? decayed_rhs : decayed_lhs;
 
     if (!qualified_type_is_integer(&subscript_type))
     {
@@ -2414,9 +2799,7 @@ Expression* semantic_checker_handle_array_expression(SemanticChecker* sc,
     // Okay we have an expression we know is an array and an expression that
     // we know is a pointer. We just need to get the inner type of the once that
     // is an array.
-    QualifiedType array_type = lhs_is_array
-            ? expression_get_qualified_type(lhs)
-            : expression_get_qualified_type(member);
+    QualifiedType array_type = lhs_is_array ? decayed_lhs : decayed_rhs;
     QualifiedType expr_type = get_inner_type(&array_type);
 
     // Create the array expression remembering which side is the array side
@@ -2596,6 +2979,24 @@ Expression* semantic_checker_handle_increment_expression(SemanticChecker* sc,
 
 
 
+Expression* semantic_checker_handle_arithmetic_expression(SemanticChecker* sc,
+        ExpressionType type, Expression* lhs, Location operator_loc,
+        Expression* rhs)
+{
+    // Ignore invalid expressions
+    if (expression_is_invalid(lhs) || expression_is_invalid(rhs))
+    {
+        return semantic_checker_handle_error_expression(sc, operator_loc);
+    }
+
+    Expression* converted_lhs = NULL;
+    Expression* converted_rhs = NULL;
+
+    // TODO: integer conversions need to be implemented.
+
+    return NULL;
+}
+
 Expression* semantic_checker_handle_comma_expression(SemanticChecker* sc,
         Expression* lhs, Location comma_location, Expression* rhs)
 {
@@ -2612,6 +3013,13 @@ Expression* semantic_checker_handle_comma_expression(SemanticChecker* sc,
 // -----------------------------------------------------------------------------
 // Start functions for statements
 // -----------------------------------------------------------------------------
+
+Statement* semantic_checker_handle_compound_statement(SemanticChecker* sc,
+        Location lcurly, Statement* first, Location rcurly)
+{
+    return statement_create_compound(&sc->ast->ast_allocator, lcurly, rcurly,
+            first);
+}
 
 bool semantic_checker_check_case_allowed(SemanticChecker* sc,
         Location case_location)
@@ -2717,6 +3125,13 @@ Statement* semantic_checker_handle_for_statement(SemanticChecker* sc,
         Expression* condition, Expression* increment, Location rparen_location,
         Statement* body)
 {
+    // Do nothing if we got an error statment (no body)
+    if (statement_is(body, STATEMENT_ERROR))
+    {
+        return semantic_checker_handle_error_statement(sc);
+    }
+
+    // Otherwise we will need to gather our initialisation statment.
     Statement* init_statement;
     if (init_declaration != NULL)
     {
@@ -2726,43 +3141,25 @@ Statement* semantic_checker_handle_for_statement(SemanticChecker* sc,
         init_statement = semantic_checker_handle_declaration_statement(sc,
                 init_declaration, LOCATION_INVALID);
         
-        // Only check any of the below if we still think it is valid
-        if (declaration_is_valid(init_declaration))
+        // Make sure we have a variable declaration here
+        Identifier* identifier = declaration_get_identifier(init_declaration);
+        Location location = declaration_get_location(init_declaration);
+        if (!declaration_is(init_declaration, DECLARATION_VARIABLE))
+        {
+            diagnostic_error_at(sc->dm, location,
+                    "non-variable declaration in 'for' loop");
+            declaration_set_invalid(init_declaration);
+        }
+        else if (declaration_is_valid(init_declaration))
         {
             // Make sure that the storage class is okay
             StorageSpecifier storage = declaration_get_storage_class(
                     init_declaration);
-            Location identifier = declaration_get_location(init_declaration);
-            switch (storage)
+            if (storage == STORAGE_EXTERN || storage == STORAGE_STATIC)
             {
-                case STORAGE_SPECIFIER_NONE:
-                case STORAGE_SPECIFIER_REGISTER:
-                case STORAGE_SPECIFIER_AUTO:
-                    break;
-
-                case STORAGE_SPECIFIER_EXTERN:
-                case STORAGE_SPECIFIER_STATIC:
-                    diagnostic_error_at(sc->dm, identifier,
-                            "declaration of non-local variable in 'for' loop");
-                    declaration_set_invalid(init_declaration);
-                    break;
-
-                case STORAGE_SPECIFIER_TYPEDEF:
-                    diagnostic_error_at(sc->dm, identifier,
-                            "non-variable declaration in 'for' loop");
-                    declaration_set_invalid(init_declaration);
-                    break;
-
-                default:
-                    panic("unexpected storage specifier");
-                    break;
-            }
-
-            // Also check that it is not a function
-            if (declaration_is(init_declaration, DECLARATION_FUNCTION))
-            {
-                diagnostic_error_at(sc->dm, identifier,
-                            "non-variable declaration in 'for' loop");
+                diagnostic_error_at(sc->dm, location,
+                        "declaration of non-local variable in 'for' loop");
+                declaration_set_invalid(init_declaration);
             }
         }
     }
@@ -2774,6 +3171,7 @@ Statement* semantic_checker_handle_for_statement(SemanticChecker* sc,
     }
     else
     {
+        // TODO: is this correct?
         init_statement = semantic_checker_handle_error_statement(sc);
     }
 

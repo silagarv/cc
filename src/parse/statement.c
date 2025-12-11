@@ -11,6 +11,11 @@
 
 vector_of_impl(Statement*, Statement, statement)
 
+void statement_set_next(Statement* stmt, Statement* next)
+{
+    stmt->base.next = next;
+}
+
 static Statement* statement_create_base(AstAllocator* allocator,
         size_t size, StatementType type)
 {
@@ -72,25 +77,13 @@ Statement* statement_create_default(AstAllocator* allocator,
 // TODO: figure out how to create an array of statements or at least do some
 // linked list style thing for them...
 Statement* statement_create_compound(AstAllocator* allocator,
-        Location opening_curly, Location closing_curly, StatementVector* stmts)
+        Location opening_curly, Location closing_curly, Statement* first)
 {
     Statement* stmt = statement_create_base(allocator, sizeof(StatementCompound),
             STATEMENT_COMPOUND);
     stmt->compound_stmt.opening_curly = opening_curly;
     stmt->compound_stmt.closing_curly = closing_curly;
-
-    size_t num_statements = statement_vector_size(stmts);
-    Statement** statements = ast_allocator_alloc(allocator, 
-            sizeof(Statement*) * num_statements);
-    for (size_t i = 0; i < num_statements; i++)
-    {
-        statements[i] = statement_vector_get(stmts, i);
-    }
-
-    statement_vector_free(stmts, NULL);
-
-    stmt->compound_stmt.statements = statements;
-    stmt->compound_stmt.statement_count = num_statements;
+    stmt->compound_stmt.first = first;
 
     return stmt;
 }
@@ -286,7 +279,7 @@ Statement* statement_create_declaration(AstAllocator* allocator,
     return stmt;
 }
 
-bool statement_is_type(const Statement* stmt, StatementType type)
+bool statement_is(const Statement* stmt, StatementType type)
 {
     assert(stmt);
 

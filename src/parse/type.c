@@ -18,12 +18,12 @@ const char* storage_specifier_to_name(StorageSpecifier specifier)
 {
     switch (specifier)
     {
-        case STORAGE_SPECIFIER_NONE: return "<internal-error>";
-        case STORAGE_SPECIFIER_AUTO: return "auto";
-        case STORAGE_SPECIFIER_EXTERN: return "extern";
-        case STORAGE_SPECIFIER_REGISTER: return "register";
-        case STORAGE_SPECIFIER_STATIC: return "static";
-        case STORAGE_SPECIFIER_TYPEDEF: return "typedef";
+        case STORAGE_NONE: return "<internal-error>";
+        case STORAGE_AUTO: return "auto";
+        case STORAGE_EXTERN: return "extern";
+        case STORAGE_REGISTER: return "register";
+        case STORAGE_STATIC: return "static";
+        case STORAGE_TYPEDEF: return "typedef";
     }
 }
 
@@ -575,7 +575,141 @@ bool type_is_equal(const Type* t1, const Type* t2)
 bool qualified_type_is_compatible(const QualifiedType* t1,
         const QualifiedType* t2)
 {
-    return false;
+    QualifiedType real_t1 = qualified_type_get_canonical(t1);
+    QualifiedType real_t2 = qualified_type_get_canonical(t2);
+
+    // If the qualifiers aren't compatible then the types arent
+    if (real_t1.qualifiers != real_t2.qualifiers)
+    {
+        return false;
+    }
+
+    TypeKind kind_t1 = real_t1.type->type_base.type;
+    TypeKind kind_t2 = real_t2.type->type_base.type;
+    if (kind_t1 != kind_t2)
+    {
+        return false;
+    }
+
+    switch (kind_t1)
+    {
+        case TYPE_VOID:
+        case TYPE_BOOL:
+        case TYPE_CHAR:
+        case TYPE_S_CHAR:
+        case TYPE_U_CHAR:
+        case TYPE_S_SHORT:
+        case TYPE_U_SHORT:
+        case TYPE_S_INT:
+        case TYPE_U_INT:
+        case TYPE_S_LONG:
+        case TYPE_U_LONG:
+        case TYPE_S_LONG_LONG:
+        case TYPE_U_LONG_LONG:
+        case TYPE_FLOAT:
+        case TYPE_DOUBLE:
+        case TYPE_LONG_DOUBLE:
+            return true;
+
+        case TYPE_IMAGINARY:
+        case TYPE_COMPLEX:
+            panic("unimplemented");
+            return false;
+
+        case TYPE_ARRAY:
+        {
+            TypeArray arr1 = real_t1.type->type_array;
+            TypeArray arr2 = real_t2.type->type_array;
+
+            // If the element types of the arrays aren't compatible then they
+            // cannot be compatible
+            if (!qualified_type_is_compatible(&arr1.element_type,
+                    &arr2.element_type))
+            {
+                return false;
+            }
+
+            if (arr1.length != arr2.length)
+            {
+                return false;
+            }
+
+            // TODO: finish this properly
+
+            return true;
+        }
+
+        // struct, union, and enum types are only compatible when they come from
+        // the exact same defn.
+        case TYPE_STRUCT:
+        case TYPE_UNION:
+        case TYPE_ENUM:
+            return real_t1.type == real_t2.type;
+
+        case TYPE_FUNCTION:
+        {
+            TypeFunction f_t1 = real_t1.type->type_function;
+            TypeFunction f_t2 = real_t2.type->type_function;
+
+            // Check for variadic
+            if (f_t1.is_variadic != f_t2.is_variadic)
+            {
+                return false;
+            }
+
+            // Check for unspecified parameters
+            if (f_t1.unspecified_paramters != f_t2.unspecified_paramters)
+            {
+                return false;
+            }
+
+            // Check for num parameters
+            if (f_t1.num_paramaters != f_t2.num_paramaters)
+            {
+                return false;
+            }
+            
+            // Check return types are compatible
+            if (!qualified_type_is_compatible(&f_t1.return_type,
+                    &f_t2.return_type))
+            {
+                return false;
+            }
+
+            TypeFunctionParameter* p1 = f_t1.paramaters;
+            TypeFunctionParameter* p2 = f_t2.paramaters;
+
+            while (p1 != NULL)
+            {
+                if (!qualified_type_is_compatible(&p1->type, &p2->type))
+                {
+                    return false;
+                }
+
+                p1 = p1->next;
+                p2 = p2->next;
+            }
+
+            return true;            
+        }
+
+        case TYPE_POINTER:
+        {
+            QualifiedType p_t1 = real_t1.type->type_pointer.underlying_type;
+            QualifiedType p_t2 = real_t2.type->type_pointer.underlying_type;
+
+            return qualified_type_is_compatible(&p_t1, &p_t2);
+        }
+
+        case TYPE_TYPEDEF:
+            panic("typedef should have been resolved");
+            return false;
+
+        case TYPE_ERROR:
+            return false;
+    }
+
+    return true;
 }
 
 bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2)

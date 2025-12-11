@@ -97,7 +97,7 @@ typedef struct DeclaratorPieceFunction {
     Location dots;
     DeclarationList paramaters;
     size_t num_paramaters;
-    Declaration* all_decls;
+    DeclarationList all_decls;
     bool is_variadic;
 } DeclaratorPieceFunction;
 
@@ -154,9 +154,20 @@ typedef struct Declarator {
     // true if this is a function definition
     bool function_defn;
 
+    // true if this declarator has an initializer
+    bool has_initializer;
+
     // true if this declarator was found to be invalid during parsing
     bool invalid;
 } Declarator;
+
+// The linkage of the declaration. This is only relavent for variables and 
+// functions.
+typedef enum DeclarationLinkage {
+    DECLARATION_LINKAGE_NONE,
+    DECLARATION_LINKAGE_INTERNAL,
+    DECLARATION_LINKAGE_EXTERNAL
+} DeclarationLinkage;
 
 typedef enum DeclarationType {
     DECLARATION_ERROR = -1, /* an error in a declaration */
@@ -194,6 +205,9 @@ typedef struct DeclarationBase {
 
     // The function specifier for this symbol if needed
     TypeFunctionSpecifier function_specifier;
+
+    // The context in which this declaration was created
+    DeclaratorContext ctx;
     
     // Is this an external declaration (top level)
     bool external;
@@ -204,6 +218,9 @@ typedef struct DeclarationBase {
     // Is this declaration invalid.
     bool invalid;
 
+    // The most recent declaration for this identifier
+    union Declaration* most_recent;
+
     // A pointer to the next declaration in this scope
     union Declaration* next;
 } DeclarationBase;
@@ -212,14 +229,14 @@ typedef struct DeclarationVariable {
     // The base declaration of this object
     DeclarationBase base;
 
-    // Is this variable declared as external
-    bool external;
-
-    // Is this a tentative definition
-    bool tentative;
+    // The linkage of this variable if any
+    DeclarationLinkage linkage;
 
     // The initializer for this variable
     Initializer* initializer;
+
+    // Is this a tentative definition
+    bool tentative;
 } DeclarationVariable;
 
 // A declaration of a function.
@@ -231,14 +248,17 @@ typedef struct DeclarationFunction {
     // at all.
     DeclarationBase base;
 
+    // The linkage of this function
+    DeclarationLinkage linkage;
+
     // All the declarations of this function
     DeclarationList all_decls;
 
+    // All of the declarations present in the function paramater list (structs)
+    DeclarationList paramaters;
+
     // The declaration of this function that had the body (if present)
     Declaration* definition;
-
-    // All of the declarations present in the function paramater list (structs)
-    Declaration* paramaters;
 
     // The body of this function or NULL if there are only declarations of this
     // function and no definitions.
@@ -381,6 +401,9 @@ bool declarator_has_identifier(const Declarator* declarator);
 void declarator_set_identifier(Declarator* declarator, Identifier* identifier,
         Location identifier_location);
 
+bool declarator_has_initializer(const Declarator* declarator);
+void declarator_set_initializer(Declarator* declarator);
+
 bool declarator_is_func_defn(const Declarator* declarator);
 void declarator_set_func_defn(Declarator* declarator);
 
@@ -392,7 +415,7 @@ Location declarator_get_colon_location(Declarator* declarator);
 Expression* declarator_get_bitfield_expression(Declarator* declarator);
 
 DeclaratorPiece* declarator_get_function_piece(const Declarator* declarator);
-Declaration* declarator_function_piece_get_decls(const DeclaratorPiece* piece);
+DeclarationList declarator_function_piece_get_decls(const DeclaratorPiece* piece);
 bool declarator_has_function(const Declarator* declarator);
 
 void declarator_push_pointer(Declarator* declarator, TypeQualifiers qualifiers);
@@ -401,7 +424,7 @@ void declarator_push_array(Declarator* declarator, Location lbracket,
         Expression* expression, bool is_static, bool is_star);
 void declarator_push_function(Declarator* declarator, Location lparen_loc,
         Location rparen_loc, DeclarationList params, size_t num_params,
-        Declaration* all_decls, Location dots);
+        DeclarationList all_decls, Location dots);
 void declarator_add_bitfield(Declarator* declarator, Location colon_location,
         Expression* expression);
 
@@ -441,9 +464,13 @@ Declaration* declaration_create_error(AstAllocator* allocator,
 // variable that we can use within other places.
 Declaration* declaration_create_variable(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type, 
-        StorageSpecifier storage);
+        StorageSpecifier storage, DeclarationLinkage linkage);
 void declaration_variable_add_initializer(Declaration* declaration,
         Initializer* initializer);
+bool declaration_variable_has_initializer(const Declaration* declaration);
+bool declaration_variable_has_linkage(const Declaration* declaration);
+bool declaration_variable_is_extern(const Declaration* declaration);
+DeclarationLinkage declaration_variable_get_linkage(const Declaration* decl);
 
 Declaration* declaration_create_typedef(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type);
@@ -482,14 +509,17 @@ bool declaration_union_is_complete(const Declaration* declaration);
 Declaration* declaration_create_function(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type,
         StorageSpecifier storage, TypeFunctionSpecifier function_spec,
-        Declaration* all_decls);
+        DeclarationList all_decls, DeclarationLinkage linkage);
+DeclarationLinkage declaration_function_get_linkage(const Declaration* func);
 void declaration_function_add_decl(Declaration* function, Declaration* decl);
 bool declaration_function_has_body(const Declaration* declaration);
 void declaration_function_set_body(Declaration* declaraiton,
         union Statement* body);
 void declaration_function_set_definition(Declaration* declaration,
         Declaration* definition);
-Declaration* declaration_function_get_paramaters(const Declaration* function);
+Declaration* declaration_function_get_definition(Declaration* declaration);
+bool declaration_function_has_definition(Declaration* declaration);
+DeclarationList declaration_function_get_paramaters(const Declaration* func);
 
 // Create a declaration of label identifier at the given location, and indicate
 // if this label was implictly constructed.

@@ -25,6 +25,9 @@ typedef struct SemanticChecker {
     // The ast so that we can get the builtin types and all of the current types
     Ast* ast;
 
+    // The current external scope.
+    Scope* externals;
+
     // The current scope in the semantic checker. This is not allocated at all
     // but needs popping after each time it is used.
     Scope* scope;
@@ -43,15 +46,11 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
 
 // These are our functions for handling the scopes that the semantic checker
 // can see.
+void semantic_checker_push_externals(SemanticChecker* sc, Scope* scope);
+void semantic_checker_pop_externals(SemanticChecker* sc);
 void semantic_checker_push_scope(SemanticChecker* sc, Scope* scope);
 void semantic_checker_pop_scope(SemanticChecker* sc);
 Scope* semantic_checker_current_scope(SemanticChecker* sc);
-// Declaration* semantic_checker_lookup_ordinairy(SemanticChecker* sc,
-//         Identifier* identifier, bool recursive);
-// Declaration* semantic_checker_lookup_tag(SemanticChecker* sc,
-//         Identifier* identifier, bool recursive);
-// Declaration* semantic_checker_lookup_member(SemanticChecker* sc,
-//         Identifier* identifier);
 
 // A very important helper functions for handling if an identifier token should
 // be treated as a typename or not. Returns 'true' if it should and 'false' 
@@ -92,11 +91,13 @@ Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
 // For post declarator shenanigans
 void semantic_checker_handle_function_start(SemanticChecker* sc,
         Declaration* function);
+void semantic_checker_handle_function_end(SemanticChecker* sc,
+        Declaration* function, Statement* body);
 void semantic_checker_add_function_parameters(SemanticChecker* sc,
         Declaration* declaration);
-void semantic_checker_set_function_body(SemanticChecker* sc,
-        Declaration* function, Statement* stmt);
 
+bool semantic_checker_check_initializer_allowed(SemanticChecker* sc,
+        Declaration* declaration, DeclaratorContext context);
 void semantic_checker_declaration_add_initializer(SemanticChecker* sc,
         Declaration* declaration, Location equals, Initializer* initializer);
 void semantic_checker_declaration_finish(SemanticChecker* sc,
@@ -147,6 +148,9 @@ Expression* semantic_checker_handle_member_expression(SemanticChecker* sc,
 Expression* semantic_checker_handle_increment_expression(SemanticChecker* sc,
         ExpressionType type, Expression* expression, Location operator_loc);
 
+Expression* semantic_checker_handle_arithmetic_expression(SemanticChecker* sc,
+        ExpressionType type, Expression* lhs, Location operator_loc,
+        Expression* rhs);
 
 Expression* semantic_checker_handle_comma_expression(SemanticChecker* sc,
         Expression* lhs, Location comma_location, Expression* rhs);
@@ -155,8 +159,8 @@ Expression* semantic_checker_handle_comma_expression(SemanticChecker* sc,
 // in C. These are for the most part very simple functions which do a few basic
 // checks but will just create a nice statement for us...
 
-// TODO
-Statement* semantic_checker_handle_compound_statement(SemanticChecker* sc);
+Statement* semantic_checker_handle_compound_statement(SemanticChecker* sc,
+        Location lcurly, Statement* first, Location rcurly);
 bool semantic_checker_check_case_allowed(SemanticChecker* sc,
         Location case_location);
 Statement* semantic_checker_handle_case_statement(SemanticChecker* sc,
