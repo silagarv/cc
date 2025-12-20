@@ -153,10 +153,10 @@ void semantic_checker_insert_external(SemanticChecker* sc, Declaration* decl)
 // Start functions for handling declarations
 // -----------------------------------------------------------------------------
 
-static QualifiedType semantic_checker_get_long_double_type(SemanticChecker* sc)
+static QualifiedType semantic_checker_get_float_type(SemanticChecker* sc)
 {
-    Type* long_double = sc->ast->base_types.type_long_double;
-    return (QualifiedType) {QUALIFIER_NONE, long_double};
+    Type* flt = sc->ast->base_types.type_float;
+    return (QualifiedType) {QUALIFIER_NONE, flt};
 }
 
 static QualifiedType semantic_checker_get_double_type(SemanticChecker* sc)
@@ -165,10 +165,10 @@ static QualifiedType semantic_checker_get_double_type(SemanticChecker* sc)
     return (QualifiedType) {QUALIFIER_NONE, dbl};
 }
 
-static QualifiedType semantic_checker_get_float_type(SemanticChecker* sc)
+static QualifiedType semantic_checker_get_long_double_type(SemanticChecker* sc)
 {
-    Type* flt = sc->ast->base_types.type_float;
-    return (QualifiedType) {QUALIFIER_NONE, flt};
+    Type* long_double = sc->ast->base_types.type_long_double;
+    return (QualifiedType) {QUALIFIER_NONE, long_double};
 }
 
 static QualifiedType semantic_checker_get_int_type(SemanticChecker* sc)
@@ -177,14 +177,59 @@ static QualifiedType semantic_checker_get_int_type(SemanticChecker* sc)
     return (QualifiedType) {QUALIFIER_NONE, int_type};
 }
 
+static QualifiedType semantic_checker_get_uint_type(SemanticChecker* sc)
+{
+    Type* uint_type = sc->ast->base_types.type_unsigned_int;
+    return (QualifiedType) {QUALIFIER_NONE, uint_type};
+}
+
+static QualifiedType semantic_checker_get_ulong_type(SemanticChecker* sc)
+{
+    Type* ulong_type = sc->ast->base_types.type_unsigned_long;
+    return (QualifiedType) {QUALIFIER_NONE, ulong_type};
+}
+
+static QualifiedType semantic_checker_get_ulong_long_type(SemanticChecker* sc)
+{
+    Type* ulong_long_type = sc->ast->base_types.type_unsigned_long_long;
+    return (QualifiedType) {QUALIFIER_NONE, ulong_long_type};
+}
+
 static QualifiedType semantic_checker_get_void_type(SemanticChecker* sc)
 {
     Type* void_type = sc->ast->base_types.type_void;
     return (QualifiedType) {QUALIFIER_NONE, void_type};
 }
 
+static QualifiedType semantic_checker_get_size_type(SemanticChecker* sc)
+{
+    return sc->ast->size_type;
+}
+
+static QualifiedType semantic_checker_create_array(SemanticChecker* sc,
+        QualifiedType element_type, size_t length, bool is_static, bool is_star,
+        bool is_vla)
+{
+    return type_create_array(&sc->ast->ast_allocator, element_type, length,
+            is_static, is_star, is_vla);
+}
+
+static QualifiedType semantic_checker_create_pointer(SemanticChecker* sc,
+        QualifiedType pointee, TypeQualifiers qualifiers)
+{
+    return type_create_pointer(&sc->ast->ast_allocator, pointee, qualifiers);
+}
+
+static QualifiedType semantic_checker_create_function(SemanticChecker* sc,
+        QualifiedType return_type, TypeFunctionParameter* params,
+        size_t num_params, bool unspecified_params, bool is_variadic)
+{
+    return type_create_function(&sc->ast->ast_allocator, return_type, params,
+            num_params, false, is_variadic);
+}
+
 static QualifiedType semantic_checker_decay_type(SemanticChecker* sc,
-        QualifiedType type)
+        QualifiedType type, bool* decayed)
 {
     // TODO: instead of us going in and manually decaying the types. I would
     // TODO: like to create a decayed type type. Which stores both the new type
@@ -193,6 +238,12 @@ static QualifiedType semantic_checker_decay_type(SemanticChecker* sc,
     // TODO:                    int arr[10] vs int arr[2]
     // TODO: occuring in different function prototypes is fine, but we might 
     // TODO: want to warn when that does occur.
+
+    // Start by setting the fact that we haven't decayed the type
+    if (decayed)
+    {
+        *decayed = false;
+    }
 
     // Get the real type to see through typedefs.
     QualifiedType real_type = qualified_type_get_canonical(&type);
@@ -203,8 +254,12 @@ static QualifiedType semantic_checker_decay_type(SemanticChecker* sc,
     {
         // Here we can use the original type and avoid desugaring since pointer
         // doesn't have to go one level lower.
-        return type_create_pointer(&sc->ast->ast_allocator, type,
-                QUALIFIER_NONE);
+        if (decayed)
+        {
+            *decayed = true;
+        }
+
+        return semantic_checker_create_pointer(sc, type, QUALIFIER_NONE);
     }
 
     // Decay array types.
@@ -222,19 +277,58 @@ static QualifiedType semantic_checker_decay_type(SemanticChecker* sc,
         {
             element = type_array_get_element_type(&real_type);
         }
-        return type_create_pointer(&sc->ast->ast_allocator, element,
-                    QUALIFIER_NONE);
+
+        // Set that we have decayed the array type since we are using it
+        if (decayed)
+        {
+            *decayed = true;
+        }
+        return semantic_checker_create_pointer(sc, element, QUALIFIER_NONE);
     }
 
-    // We should never be here, but as fallback just return the original type
+    // If we haven't needed to decay the type at all just return the original
+    // type to the user. Since this function should primarily be used in the
+    // handling of expressions and such.
     return type;
+}
+
+static QualifiedType semantic_checker_promote_integer_type(SemanticChecker* sc,
+        QualifiedType* type)
+{
+    assert(qualified_type_is_integer(type));
+    
+    QualifiedType real_type = qualified_type_get_canonical(type);
+    switch (qualified_type_get_kind(&real_type))
+    {
+        case TYPE_BOOL:
+        case TYPE_CHAR:
+        case TYPE_S_CHAR:
+        case TYPE_U_CHAR:
+        case TYPE_S_SHORT:
+        case TYPE_U_SHORT:
+            return semantic_checker_get_int_type(sc);
+
+        default: return real_type;
+    }
+
+    panic("unreachable");
+    return (QualifiedType) {0};
 }
 
 static QualifiedType semantic_checker_arithmetic_conversion(SemanticChecker* sc,
         QualifiedType lhs, QualifiedType rhs)
 {
+    assert(qualified_type_is_arithmetic(&lhs));
+    assert(qualified_type_is_arithmetic(&rhs));
+
+    // Note: here the only reason we can safely discard the qualifiers is since
+    // arithmetic conversions also nescessitates an lvalue to rvalue conversion
+    // so we would have removed qualifiers anyways
     lhs = qualified_type_get_canonical(&lhs);
+    lhs = qualified_type_remove_quals(&lhs);
+
     rhs = qualified_type_get_canonical(&rhs);
+    rhs = qualified_type_remove_quals(&rhs);
 
     // First do conversions if one is long double double or float
     if (qualified_type_is(&lhs, TYPE_LONG_DOUBLE)
@@ -251,6 +345,89 @@ static QualifiedType semantic_checker_arithmetic_conversion(SemanticChecker* sc,
             || qualified_type_is(&rhs, TYPE_FLOAT))
     {
         return semantic_checker_get_float_type(sc);
+    }
+
+    // If we're arithmetic but not a floating type well then we must be integral
+    assert(qualified_type_is_integer(&lhs));
+    assert(qualified_type_is_integer(&rhs));
+
+    // First promote our integer types.
+    lhs = semantic_checker_promote_integer_type(sc, &lhs);
+    rhs = semantic_checker_promote_integer_type(sc, &rhs);
+
+    // We want to make sure any qualifiers are removed from it for us to do our
+    // lvalue to rvalue conversion.
+    assert(qualified_type_get_quals(&lhs) == QUALIFIER_NONE);
+    assert(qualified_type_get_quals(&rhs) == QUALIFIER_NONE);
+
+    // If the promoted types are equal than that is our type to use
+    if (qualified_type_builtin_equal(&lhs, &rhs))
+    {
+        return lhs;
+    }
+
+    // Get both the signedness and the rank of the integers.
+    bool lhs_signed = qualified_type_is_signed(&lhs);
+    bool rhs_signed = qualified_type_is_signed(&rhs);
+    size_t lhs_rank = qualified_type_get_rank(&lhs);
+    size_t rhs_rank = qualified_type_get_rank(&rhs);
+
+    // If they have the same signedness choose based on rank
+    if (lhs_signed == rhs_signed)
+    {
+        return lhs_rank > rhs_rank ? lhs : rhs;
+    }
+
+    // Otherwise if they differ in signedness
+
+    // If rhs is unsigned and its rank is bigger than lhs, convert lhs to rhs
+    size_t signed_rank;
+    size_t unsigned_rank;
+    QualifiedType signed_type;
+    QualifiedType unsigned_type;
+    if (lhs_signed)
+    {
+        signed_rank = lhs_rank;
+        signed_type = lhs;
+        unsigned_rank = rhs_rank;
+        unsigned_type = rhs;
+    }
+    else
+    {
+        signed_rank = rhs_rank;
+        signed_type = rhs;
+        unsigned_rank = lhs_rank;
+        unsigned_type = rhs;
+    }
+
+    if (unsigned_rank >= signed_rank)
+    {
+        return unsigned_type;
+    }
+
+    // If the signed can fit all of the values of the unsigned size.
+    size_t signed_size = qualified_type_get_size(&signed_type);
+    size_t unsigned_size = qualified_type_get_size(&unsigned_type);
+    if (signed_size > unsigned_size)
+    {
+        return signed_type;
+    }
+    
+    // Else, both operands undergo implicit conversion to the unsigned type
+    // counterpart of the signed operand's type. Note: here we must be at least
+    // int type
+    switch (qualified_type_get_kind(&signed_type))
+    {
+        case TYPE_S_INT:
+            return semantic_checker_get_uint_type(sc);
+
+        case TYPE_S_LONG:
+            return semantic_checker_get_ulong_type(sc);
+
+        case TYPE_S_LONG_LONG:
+            return semantic_checker_get_ulong_long_type(sc);
+        
+        default: panic("unreachable"); break;
     }
 
     return (QualifiedType) {0};
@@ -663,9 +840,8 @@ static QualifiedType process_array_type(SemanticChecker* sc, Declarator* d,
     }
 
     // Finally create and return the new type
-    QualifiedType new_type = type_create_array(&sc->ast->ast_allocator, current,
-            length, is_static, is_star, is_vla);
-    return new_type;
+    return semantic_checker_create_array(sc, current, length, is_static,
+            is_star, is_vla);
 }
 
 static QualifiedType process_pointer_type(SemanticChecker* sc, Declarator* d,
@@ -676,9 +852,7 @@ static QualifiedType process_pointer_type(SemanticChecker* sc, Declarator* d,
 
     DeclaratorPiecePointer* pointer = (DeclaratorPiecePointer*) piece;
 
-    QualifiedType new_type = type_create_pointer(&sc->ast->ast_allocator,
-            current, pointer->qualifiers);
-    return new_type;
+    return semantic_checker_create_pointer(sc, current, pointer->qualifiers);
 }
 
 QualifiedType check_parameter_type(SemanticChecker* sc, Declaration* parameter,
@@ -690,13 +864,13 @@ QualifiedType check_parameter_type(SemanticChecker* sc, Declaration* parameter,
     // Function types should be decayed to pointers to function
     if (qualified_type_is(&real_type, TYPE_FUNCTION))
     {
-        return semantic_checker_decay_type(sc, type);
+        return semantic_checker_decay_type(sc, type, NULL);
     }
     
     // Array types should be decayed to pointer to element type
     if (qualified_type_is(&real_type, TYPE_ARRAY))
     {
-        return semantic_checker_decay_type(sc, type);
+        return semantic_checker_decay_type(sc, type, NULL);
     }
 
     // If we aren't a void paramater we are good to go. Incomplete types are
@@ -860,9 +1034,8 @@ static QualifiedType process_function_type(SemanticChecker* sc, Declarator* d,
     }
 
     // Finally create the function type and update the current type.
-    QualifiedType new_type = type_create_function(&sc->ast->ast_allocator,
-            current, params, num_paramaters, false, function->is_variadic);
-    return new_type;
+    return semantic_checker_create_function(sc, current, params, num_paramaters,
+            false, function->is_variadic);
 }
 
 QualifiedType semantic_checker_process_type(SemanticChecker* sc,
@@ -890,13 +1063,13 @@ QualifiedType semantic_checker_process_type(SemanticChecker* sc,
                 break;
 
             case DECLARATOR_PIECE_POINTER:
-                type = process_pointer_type(sc, declarator, type, piece, context,
-                        &invalid);
+                type = process_pointer_type(sc, declarator, type, piece,
+                        context, &invalid);
                 break;
 
             case DECLARATOR_PIECE_FUNCTION:
-                type = process_function_type(sc, declarator, type, piece, context,
-                        &invalid);
+                type = process_function_type(sc, declarator, type, piece,
+                        context, &invalid);
                 break;
 
             case DECLARATOR_PIECE_KNR_FUNCTION:
@@ -1075,7 +1248,7 @@ Declaration* semantic_checker_process_function_param(SemanticChecker* sc,
 
     // Make sure to decay the type since it is a function parameter.
     QualifiedType type = semantic_checker_process_type(sc, declarator);
-    type = semantic_checker_decay_type(sc, type);
+    type = semantic_checker_decay_type(sc, type, NULL);
 
     // Check that we have no storage specifier other then register
     StorageSpecifier storage = declarator->specifiers->storage_spec;
@@ -1465,16 +1638,16 @@ static void semantic_checker_chain_variable_declaration(SemanticChecker* sc,
     // This should be true if variable is 'valid'
     assert(declaration_is(variable, DECLARATION_VARIABLE));
     assert(declaration_is(previous, DECLARATION_VARIABLE));
+
+    // Note that we should only chain variables if they have linkage. Otherwise
+    // we are doing something quite wrong.
+    assert(declaration_variable_has_linkage(variable));
+    assert(declaration_variable_has_linkage(previous));
     
-    // if (previous->base.next == NULL)
-    // {
-    //     previous->base.next = variable;
-    // }
-    // else
-    // {
-    //     previous->base.most_recent->base.next = variable;
-    // }
-    // previous->base.most_recent = variable;
+    // declaration_variable_add_decl(previous, variable);
+
+    // Note: that we will also have to do some calculations for it the variable
+    // is tentative or not.
 }
 
 Declaration* semantic_checker_process_variable(SemanticChecker* sc,
@@ -1708,7 +1881,7 @@ Declaration* semantic_checker_process_struct_declarator(SemanticChecker* sc,
 
     // TODO: change to expression part only once we fully have them
     if (colon_location != LOCATION_INVALID /*expression != NULL*/)
-    {
+    {        
         // check the bitfield is of an integral type...
         if (!qualified_type_is_integer(&type))
         {
@@ -1727,9 +1900,22 @@ Declaration* semantic_checker_process_struct_declarator(SemanticChecker* sc,
 
         // Then check that the bitfield expression itself has an integral type
         // Finally, check it has a valid width...
-        colon_location = LOCATION_INVALID;
-        expression = NULL;
-        /*return NULL;*/
+        if (expression_is_invalid(expression))
+        {
+            colon_location = LOCATION_INVALID;
+            expression = NULL;
+        }
+        else
+        {
+            QualifiedType e_type = expression_get_qualified_type(expression);
+            if (!qualified_type_is_integer(&e_type))
+            {
+                diagnostic_error_at(sc->dm, expression_get_location(expression),
+                        "bit-field expression must have integer type");
+                colon_location = LOCATION_INVALID;
+                expression = NULL;
+            }
+        }
     }
 
     // Check that we do not have a function type. note that a pointer to a
@@ -1853,11 +2039,9 @@ void semantic_checker_handle_function_end(SemanticChecker* sc,
     Identifier* identifier = declaration_get_identifier(function);
     Declaration* previous = semantic_checker_lookup_external(sc, identifier);
 
-    // This was the first declaration of the function.
-    if (previous == function)
-    {
-        return;
-    }
+    // Note that if previous == function then this was the first declaration of
+    // the function. If this is the case still set the definition field to be
+    // the pointer to itself so we can still easily detect function redefinition
 
     // Otherwise we want to set the body of the function definition to be this
     declaration_function_set_definition(previous, function);
@@ -2355,10 +2539,15 @@ static Expression* semantic_checker_promote_integer(SemanticChecker* sc,
         Expression* expression)
 {
     // Get the current type
-    QualifiedType current_type = expression_get_qualified_type(expression);
-    assert(qualified_type_is_integer(&current_type));
+    QualifiedType type = expression_get_qualified_type(expression);
+    if (!qualified_type_is_integer(&type))
+    {
+        return expression;
+    }
+    assert(qualified_type_is_integer(&type));
 
-    switch (qualified_type_get_kind(&current_type))
+    QualifiedType real_type = qualified_type_get_canonical(&type);
+    switch (qualified_type_get_kind(&real_type))
     {
         // These are all of the types that will need to be promoted if 
         // arithmetic is performed on them.
@@ -2385,6 +2574,55 @@ static Expression* semantic_checker_promote_integer(SemanticChecker* sc,
 
     panic("uncreachable");
     return NULL;
+}
+
+static Expression* semantic_checker_decay_expression_type(SemanticChecker* sc,
+        Expression* expression)
+{
+    // Ignore invalid expression
+    if (expression_is_invalid(expression))
+    {
+        return expression;
+    }
+
+
+    // Get the type of the expression that we might want to decay
+    QualifiedType type = expression_get_qualified_type(expression);
+
+    // Note: we can only get an array type if we have an lvalue
+    if (qualified_type_is(&type, TYPE_ARRAY))
+    {
+        // Ignore the parenthesis and see if we get a register expression to
+        // check for the possibility of having a register array
+        Expression* no_parens = expression_ignore_parenthesis(expression);
+        if (expression_is(no_parens, EXPRESSION_REFERENCE))
+        {
+            Declaration* ref = expression_reference_get_decl(no_parens);
+            if (declaration_get_storage_class(ref) == STORAGE_REGISTER)
+            {
+                diagnostic_error_at(sc->dm, expression_get_location(no_parens),
+                        "address of register variable requested");
+                return semantic_checker_handle_error_expression(sc,
+                        expression_get_location(expression));
+            }
+        }
+    }
+
+    // Attempt to decay the type noting if it got decayed or not
+    bool decayed;
+    QualifiedType decayed_type = semantic_checker_decay_type(sc, type,
+            &decayed);
+
+    // If we didn't get decayed return the expression as is. No changes are
+    // needed to the expression
+    if (!decayed)
+    {
+        return expression;
+    }
+
+    // Otherwise if we were decayed create an implicit cast expression to the
+    // new decayed type. e.g. int[3] -> int *
+    return semantic_checker_create_implicit_cast(sc, expression, decayed_type);
 }
 
 static bool type_is_subscriptable(const QualifiedType* type)
@@ -2437,6 +2675,11 @@ static ExpressionValueKind expression_classify(SemanticChecker* sc,
     if (!qualifier_type_is_object_type(&real_type))
     {
         return VALUE_KIND_FUNCTION_DESIGNATOR;
+    }
+
+    if (qualified_type_is(&real_type, TYPE_VOID))
+    {
+        return VALUE_KIND_RVALUE;
     }
 
     ExpressionValueKind kind;
@@ -2506,29 +2749,23 @@ static ExpressionValueKind expression_classify(SemanticChecker* sc,
         case EXPRESSION_ARRAY_ACCESS:
         case EXPRESSION_STRING_LITERAL:
         case EXPRESSION_COMPOUND_LITERAL:
-            kind = VALUE_KIND_LVALUE;
-            break;
 
-        // the result of a member access (dot) operator if its left-hand
-        // argument is lvalue 
-        case EXPRESSION_MEMBER_ACCESS:
-
-        // the result of a member access through pointer -> operator 
         case EXPRESSION_MEMBER_POINTER_ACCESS:
-            // panic("TODO: both member access cases");
+
+        case EXPRESSION_UNARY_ADDRESS: // I don't think this is an lvalue
+        case EXPRESSION_UNARY_DEREFERENCE: // If applied to a pointer to object
             kind = VALUE_KIND_LVALUE;
             break;
 
-        // address and dereferene definitely are but the below seem to also
-        // be accepted by clang and gcc
-        case EXPRESSION_UNARY_ADDRESS:
-            // the result of the indirection (unary *) operator applied to a 
-            // pointer to object 
-
-        case EXPRESSION_UNARY_DEREFERENCE:
-            panic("TODO: unary address operators");
-            kind = VALUE_KIND_LVALUE;
-            break;
+        // Special case, this is only a lvalue if the left hand side is
+        case EXPRESSION_MEMBER_ACCESS:
+        {
+            Expression* lhs = expression_member_access_get_lhs(expression);
+            
+            // TODO: is this correct? Or should I be classifying the expression
+            // TODO: and not the LHS
+            return expression_classify(sc, lhs);   
+        }
 
         case EXPRESSION_PARENTHESISED:
         {
@@ -2536,6 +2773,20 @@ static ExpressionValueKind expression_classify(SemanticChecker* sc,
             return expression_classify(sc, inner);
         }
 
+        case EXPRESSION_ARRAY_DECAY:
+        {
+            Expression* inner = expression_array_decay_get_inner(expression);
+            return expression_classify(sc, inner);
+        }
+
+        case EXPRESSION_LVALUE_CAST:
+        {
+            Expression* inner = expression_lvalue_cast_get_inner(expression);
+            return expression_classify(sc, inner);
+        }
+
+        // TODO: this could possible get triggered by implicit cast but im not
+        // TODO: too sure yet
         default:
             panic("cannot classify expression kind; unimplemented");
             return VALUE_KIND_RVALUE;
@@ -2544,11 +2795,15 @@ static ExpressionValueKind expression_classify(SemanticChecker* sc,
     // Should only try to check for modifiable lvalues if we have an lvalue
     assert(kind == VALUE_KIND_LVALUE);
     
-    // TODO: check if expression is modifiable lvalue or not (below is wrong)
-    if (kind == VALUE_KIND_LVALUE)
-    {
-        return VALUE_KIND_MODIFIABLE_LVALUE;
-    }
+    // // TODO: check if expression is modifiable lvalue or not (below is wrong)
+    // if (kind == VALUE_KIND_LVALUE)
+    // {
+    //     return VALUE_KIND_MODIFIABLE_LVALUE;
+    // }
+
+    // Okay now we know we have an lvalue type, but we want to be able to know 
+    // if it is modifiable or not.
+    return VALUE_KIND_MODIFIABLE_LVALUE;
 
     return kind;
 }
@@ -2591,21 +2846,66 @@ static bool expression_is_modifiable_lvalue(const Expression* expression)
     return true;
 }
 
+static Expression* semantic_checker_lvalue_to_rvalue(SemanticChecker* sc,
+        Expression* expression)
+{
+    ExpressionValueKind kind = expression_classify(sc, expression);
+
+    // If we are not an lvalue or an rvalue make sure to just return the
+    // expression as is.
+    if (kind != VALUE_KIND_LVALUE && kind != VALUE_KIND_MODIFIABLE_LVALUE)
+    {
+        return expression;
+    }
+
+    // Get the canonical type and remove the qualifiers to convert from lvalue
+    // to an rvalue
+    QualifiedType type = expression_get_qualified_type(expression);
+    type = qualified_type_get_canonical(&type);
+
+    QualifiedType unqualed = qualified_type_remove_quals(&type);
+    return expression_create_lvalue_cast(&sc->ast->ast_allocator, expression,
+            unqualed);
+}
+
 Expression* semantic_checker_handle_error_expression(SemanticChecker* sc,
         Location location)
 {
      return expression_create_error(&sc->ast->ast_allocator,
-                sc->ast->base_types.type_error);
+                sc->ast->base_types.type_error, location);
 }
 
 Expression* semantic_checker_handle_parenthesis_expression(SemanticChecker* sc,
         Location lparen_location, Expression* inner, Location rparen_location)
 {
-    // TODO: reinstate assert
-    // assert(inner != NULL);
-
-    return expression_create_parenthesised(&sc->ast->ast_allocator,
+    Expression* expr = expression_create_parenthesised(&sc->ast->ast_allocator,
             lparen_location, rparen_location, inner);
+
+    // Set the new expression to be invalid if the inner expression was to
+    // poison any new ast nodes that get created from it
+    if (expression_is_invalid(inner))
+    {
+        expression_set_invalid(expr);
+    }
+
+    return expr;
+}
+
+Expression* semantic_checker_handle_builtin_identifier(SemanticChecker* sc,
+        Location location)
+{
+    // __func__ is not valid inside of a function. Both clang and gcc treat this
+    // as a warning however
+    if (sc->function == NULL)
+    {
+        diagnostic_error_at(sc->dm, location,
+                "predefined identifier is only valid inside function");
+        return semantic_checker_handle_error_expression(sc, location);
+    }
+
+    // TODO: need to create a new expression type for this...
+    QualifiedType type;
+    return semantic_checker_handle_error_expression(sc, location);
 }
 
 Expression* semantic_checker_handle_reference_expression(SemanticChecker* sc,
@@ -2626,18 +2926,31 @@ Expression* semantic_checker_handle_reference_expression(SemanticChecker* sc,
 
         // TODO: handle builting function giving it type int() and putting the
         // TODO: declaration at the identifier location.
-        return expression_create_error(&sc->ast->ast_allocator,
-                sc->ast->base_types.type_error);
+        return semantic_checker_handle_error_expression(sc,
+                identifier_location);
     }
     else if (declaration_is(declaration, DECLARATION_TYPEDEF))
     {
         diagnostic_error_at(sc->dm, identifier_location,
                 "unexpected type name '%s': expected expression",
                 identifier->string.ptr);
-        return expression_create_error(&sc->ast->ast_allocator,
-                sc->ast->base_types.type_error);
+        return semantic_checker_handle_error_expression(sc,
+                identifier_location);
+    }
+    else if (declaration_is(declaration, DECLARATION_ENUM_CONSTANT))
+    {
+        // TODO: handle this case seperately
+        diagnostic_error_at(sc->dm, identifier_location,
+                "cannot handle enumeration constant expression at this time");
+        return semantic_checker_handle_error_expression(sc,
+                identifier_location);
     }
 
+    // Here we should either be a variable or a function
+    assert(declaration_is(declaration, DECLARATION_VARIABLE)
+            || declaration_is(declaration, DECLARATION_FUNCTION));
+
+    // Get the type of the expression and create it
     QualifiedType type = declaration_get_type(declaration);
     Expression* reference = expression_create_reference(&sc->ast->ast_allocator,
             identifier, identifier_location, declaration, type);
@@ -2648,6 +2961,13 @@ Expression* semantic_checker_handle_reference_expression(SemanticChecker* sc,
     {
         expression_set_invalid(reference);
     }
+
+    // Except when it is the operand of the sizeof operator or the unary & 
+    // operator, or is a string literal used to initialize an array, an 
+    // expression that has type ‘array of type’ is converted to an expression
+    // with type ‘pointer to type’ that points to the initial element of the
+    // array object and is not an lvalue. If the array object has register 
+    // storage class, the behavior is undefined
 
     return reference;
 }
@@ -2768,11 +3088,18 @@ Expression* semantic_checker_handle_array_expression(SemanticChecker* sc,
         return semantic_checker_handle_error_expression(sc, lbracket_loc);
     }
 
-    QualifiedType type_lhs = expression_get_qualified_type(lhs);
-    QualifiedType decayed_lhs = semantic_checker_decay_type(sc, type_lhs);
+    // TODO: I almost certainly want to handle this whole situation differently
+    // TODO: should involve the decaying of the expressions to their decayed
+    // TODO: type
 
+    // TODO: I probably do care about the decayed type here?
+    QualifiedType type_lhs = expression_get_qualified_type(lhs);
+    QualifiedType decayed_lhs = semantic_checker_decay_type(sc, type_lhs, NULL);
+
+    // TODO: I probably do care about the decayed type here?
     QualifiedType type_member = expression_get_qualified_type(member);
-    QualifiedType decayed_rhs = semantic_checker_decay_type(sc, type_member);
+    QualifiedType decayed_rhs = semantic_checker_decay_type(sc, type_member,
+            NULL);
 
     // Make sure that one of our types is an array or pointer
     bool lhs_is_array = type_is_subscriptable(&decayed_lhs);
@@ -2807,15 +3134,60 @@ Expression* semantic_checker_handle_array_expression(SemanticChecker* sc,
             lbracket_loc, rbracket_loc, lhs, member, expr_type, lhs_is_array);
 }
 
+static bool semantic_checker_is_callable(SemanticChecker* sc,
+        const Expression* expression)
+{
+    QualifiedType type = expression_get_qualified_type(expression);
+    QualifiedType real_type = qualified_type_get_canonical(&type);
+
+    // Note: any callable object should have been correctly decayed to a pointer
+    // to function type so no function types should exist. Although it may be
+    // slower to decay then check it is easier to deal with and check we are
+    // doing the correct thing
+    assert(!qualified_type_is(&real_type, TYPE_FUNCTION));
+
+    // Any callable expression should be of type 'pointer to function'
+    if (qualified_type_is(&real_type, TYPE_POINTER))
+    {
+        QualifiedType inner = type_pointer_get_pointee(&real_type);
+        return qualified_type_is(&inner, TYPE_FUNCTION);
+    }
+
+    return false;
+}
+
 Expression* semantic_checker_handle_call_expression(SemanticChecker* sc,
         Expression* lhs, Location lparen_location, Expression* expr_list,
         Location rparen_location)
 {
-    QualifiedType call_type = expression_get_qualified_type(lhs);
-    QualifiedType real_type = qualified_type_get_canonical(&call_type);
+    // Do nothing if we got an error
+    if (expression_is_invalid(lhs))
+    {
+        return semantic_checker_handle_error_expression(sc, lparen_location);
+    }
 
-    // TODO: this...
+    // Decay the expression to it's corrosponding type
+    lhs = semantic_checker_decay_expression_type(sc, lhs);
 
+    if (!semantic_checker_is_callable(sc, lhs))
+    {
+        /* TODO: when type printing it should say "type '<type>'"*/
+        diagnostic_error_at(sc->dm, lparen_location,
+                "called object is not a function or function pointer");
+        return semantic_checker_handle_error_expression(sc, lparen_location);
+    }
+
+    // TODO: we know we have a function and or function pointer so 
+
+    // Now we know we have a function we want to attempt to check that the 
+    // parameters are valid and the types that they should be.
+
+    // Get the return type of the function
+    QualifiedType pointer = expression_get_qualified_type(lhs);
+    QualifiedType function_type = type_pointer_get_pointee(&pointer);
+    QualifiedType real_type = qualified_type_get_canonical(&function_type);
+    
+    QualifiedType return_type = type_function_get_return(&function_type);
     return semantic_checker_handle_error_expression(sc, lparen_location);
 }
 
@@ -2963,38 +3335,430 @@ Expression* semantic_checker_handle_increment_expression(SemanticChecker* sc,
         return semantic_checker_handle_error_expression(sc, operator_loc);
     }
 
-    if (kind != VALUE_KIND_MODIFIABLE_LVALUE)
-    {
-        diagnostic_error_at(sc->dm, operator_loc,
-                "read only variable is not assignable");
+    // Set increment if were are ++a or a++
+    bool increment = (type == EXPRESSION_UNARY_POST_INCREMENT
+            || type == EXPRESSION_UNARY_PRE_INCREMENT) ? true : false;
+        
+    // Now check if we are actually a type that we are allowed to increment or
+    // decrement. If we are not produce an error
+    QualifiedType expr_type = expression_get_qualified_type(expression);
+    if (!qualified_type_is_integer(&expr_type))
+    {   
+        // TODO: add 'of type ...'
+        diagnostic_error_at(sc->dm, operator_loc, "cannot %s value",
+                increment ? "increment" : "decrement");
         return semantic_checker_handle_error_expression(sc, operator_loc);
     }
 
-    // TODO: determine the type... I think some integer types get promoted
-    QualifiedType qual_type = {0};
-    return NULL;
-    // return expression_create_unary(&sc->ast->ast_allocator, type, operator_loc,
-    //         expression, qual_type);
+    // Then check that the expression type is actually modifiable. We know that
+    // we have an lvalue with integer type at this point
+    if (kind != VALUE_KIND_MODIFIABLE_LVALUE)
+    {
+        // TODO: the clang error messages here get more specific if we know
+        // we have a variable and what not. Maybe implement that way later?
+        diagnostic_error_at(sc->dm, operator_loc,
+                "read-only variable is not assignable");
+        return semantic_checker_handle_error_expression(sc, operator_loc);
+    }
+
+    // TODO: integer types don't get promoted here but find out where it says
+    // TODO: that 
+
+    // Get the type of the expression and remove any qualifiers that we might
+    // have. Note that we check that the current type itself cannot be const
+    // since that would be quite bad.
+    QualifiedType qual_type = expression_get_qualified_type(expression);
+    assert(!type_qualifier_is_const(qual_type.qualifiers));
+
+    qual_type = qualified_type_remove_quals(&qual_type);
+    return expression_create_unary(&sc->ast->ast_allocator, type, operator_loc,
+            expression, qual_type);
 }
 
+Expression* semantic_checker_handle_unary_expression(SemanticChecker* sc,
+        ExpressionType type, Location operator_loc, Expression* rhs)
+{
+    // Do nothing if we have an invalid expression
+    if (expression_is_invalid(rhs))
+    {
+        return semantic_checker_handle_error_expression(sc, operator_loc);
+    }
 
+    // First promote the right hand side of the expression if needed
+    rhs = semantic_checker_promote_integer(sc, rhs);
+
+    // The fucntion we will use to check the type of the right hand side and the
+    // expr type to add context to the message
+    bool (*checking_func)(const QualifiedType*) = NULL;
+    const char* expr_type = NULL;
+    switch (type)
+    {
+        // These 2 should have arithmetic type
+        case EXPRESSION_UNARY_PLUS:
+            checking_func = qualified_type_is_arithmetic;
+            expr_type = "unary plus";
+            break;
+
+        case EXPRESSION_UNARY_MINUS:
+            checking_func = qualified_type_is_arithmetic;
+            expr_type = "unary minus";
+            break;
+
+        // This should have integer type
+        case EXPRESSION_UNARY_BIT_NOT:
+            checking_func = qualified_type_is_integer;
+            expr_type = "unary bit-complement";
+            break;
+
+        // This should have scalar type
+        case EXPRESSION_UNARY_NOT:
+            checking_func = qualified_type_is_scaler;
+            expr_type = "unary exclamation mark";
+            break;
+
+        default:
+            panic("unexpected unary expression type");
+            return semantic_checker_handle_error_expression(sc, operator_loc);
+    }
+    assert(checking_func);
+    assert(expr_type);
+
+    // Get the rhs type and see if we have an error
+    QualifiedType rhs_type = expression_get_qualified_type(rhs);
+    if (!checking_func(&rhs_type))
+    {
+        // TODO: add the name of the type after the word 'type' e.g. type '%s'
+        diagnostic_error_at(sc->dm, operator_loc, "invalid argument type to %s",
+                expr_type);
+        return semantic_checker_handle_error_expression(sc, operator_loc);
+    }
+
+    // The result of a unary expression in all cases is the type of it's
+    // promoted operand unless it is the not operator, in which case it's type
+    // is automatically int 
+    QualifiedType return_type = rhs_type;
+    if (type == EXPRESSION_UNARY_NOT)
+    {
+        return_type = semantic_checker_get_int_type(sc);
+    }
+
+    return expression_create_unary(&sc->ast->ast_allocator, type, operator_loc,
+            rhs, return_type);
+}
+
+// Enum to represent the different failure modes of the address expression.
+// This is to help provide more accurate messages when diagnosing issues.
+typedef enum AddressableKind {
+    ADDRESSABLE_OK, // Okay to take address of
+    ADDRESSABLE_RVALUE, // cannot take address of rvalue
+    ADDRESSABLE_REGISTER, // cannot take address of register variable
+    ADDRESSABLE_BITFIELD // cannot take address of bitfield
+} AddressableKind;
+
+static AddressableKind check_expression_addressable(SemanticChecker* sc,
+        Expression* expression)
+{
+    // First classify the expression to 
+    ExpressionValueKind vk = expression_classify(sc, expression);
+
+    // First check if we have an rvalue and error since that will always be
+    // invalid to take the address of that.
+    if (vk == VALUE_KIND_RVALUE)
+    {
+        return ADDRESSABLE_RVALUE;
+    }
+
+    // If we're a function designator we can simply return the expression of
+    // pointer to the function type.
+    if (vk == VALUE_KIND_FUNCTION_DESIGNATOR)
+    {
+        return ADDRESSABLE_OK;
+    }
+
+    Expression* no_parens = expression_ignore_parenthesis(expression);
+    if (expression_is(no_parens, EXPRESSION_UNARY_DEREFERENCE)
+            || expression_is(no_parens, EXPRESSION_ARRAY_ACCESS))
+    {
+        return ADDRESSABLE_OK;
+    }
+
+    // Can be an lvalue but must no designate an object that is a bitfield and
+    // cannot be declared with the register specifier
+    if (expression_value_kind_is_lvalue(vk))
+    {
+        if (expression_is(no_parens, EXPRESSION_REFERENCE))
+        {
+            Declaration* decl = expression_reference_get_decl(no_parens);
+            if (declaration_get_storage_class(decl) == STORAGE_REGISTER)
+            {
+                return ADDRESSABLE_REGISTER;
+            }
+        }
+        else if (expression_is(no_parens, EXPRESSION_MEMBER_ACCESS)
+                || expression_is(no_parens, EXPRESSION_MEMBER_POINTER_ACCESS))
+        {
+            Declaration* decl = expression_member_access_get_decl(no_parens);
+            if (declaration_field_has_bitfield(decl))
+            {
+                return ADDRESSABLE_BITFIELD;
+            }
+
+            // Finally check the lhs most side is addressable and simply return
+            // that. This is to handle the cases of nested struct access as that
+            // is not handled by any of the above code.
+            Expression* lhs = expression_member_access_get_most_lhs(no_parens);
+            
+            return check_expression_addressable(sc, lhs);
+        }
+    }
+
+    return ADDRESSABLE_OK;
+}
+
+Expression* semantic_checker_handle_address_expression(SemanticChecker* sc,
+        Expression* rhs, Location and_location)
+{
+    // Ignore invalid expressions.
+    if (expression_is_invalid(rhs))
+    {
+        return semantic_checker_handle_error_expression(sc, and_location);
+    }
+    
+    // he operand of the unary & operator shall be either a function designator,
+    // the result of a [] or unary * operator, or an lvalue that designates an
+    // object that is not a bit-field and is not declared with the register
+    // storage-class specifier
+
+    AddressableKind ak = check_expression_addressable(sc, rhs);
+    if (ak != ADDRESSABLE_OK)
+    {
+        const char* msg = NULL;
+        switch (ak)
+        {
+            case ADDRESSABLE_RVALUE:
+                msg = "cannot take the address of an rvalue";
+                break;
+
+            case ADDRESSABLE_REGISTER:
+                msg = "address of register variable requested";
+                break;
+            
+            case ADDRESSABLE_BITFIELD:
+                msg = "address of bit-field requested";
+                break;
+
+            default:
+                panic("unreachable");
+                break;
+        }
+
+        diagnostic_error_at(sc->dm, and_location, msg);
+        return semantic_checker_handle_error_expression(sc, and_location);
+    }
+
+    // Create the type of pointer to (expression type)
+    QualifiedType expr_type = expression_get_qualified_type(rhs);
+    QualifiedType pointer = semantic_checker_create_pointer(sc, expr_type,
+            QUALIFIER_NONE);
+
+    // Finally create the unary expression
+    return expression_create_unary(&sc->ast->ast_allocator,
+            EXPRESSION_UNARY_ADDRESS, and_location, rhs, pointer);
+}
+
+Expression* semantic_checker_handle_dereference_expression(SemanticChecker* sc,
+        Expression* rhs, Location star_location)
+{
+    // First decay the expression since we know that derefence is valid if an
+    // expresion has pointer type. if the expression is invalid nothing will
+    // happen
+    rhs = semantic_checker_decay_expression_type(sc, rhs);
+    
+    // Check for invalid expressions since we want to prevent cascading errors
+    if (expression_is_invalid(rhs))
+    {
+        return semantic_checker_handle_error_expression(sc, star_location);
+    }
+
+    // If it is not a pointer type then we have a problem
+    QualifiedType type = expression_get_qualified_type(rhs);
+    type = qualified_type_get_canonical(&type);
+    if (!qualified_type_is(&type, TYPE_POINTER))
+    {
+        diagnostic_error_at(sc->dm, star_location,
+                "indirection requires pointer operand");
+        return semantic_checker_handle_error_expression(sc, star_location);
+    }
+
+    // Okay we have checked the only possible constraint. So all we need to do
+    // here is get the pointee type and create the expression.
+    QualifiedType pointee = type_pointer_get_pointee(&type);
+    return expression_create_unary(&sc->ast->ast_allocator,
+            EXPRESSION_UNARY_DEREFERENCE, star_location, rhs, pointee);
+}
+
+Expression* semantic_checker_handle_sizeof_type_expression(SemanticChecker* sc,
+        Location sizeof_location, Location lparen_loc, QualifiedType type,
+        Location rparen_loc)
+{
+    // Get the real type and make sure that it is complete
+    QualifiedType real_type = qualified_type_get_canonical(&type);
+    if (!qualified_type_is_complete(&real_type))
+    {
+        diagnostic_error_at(sc->dm, sizeof_location,
+                "invalid application of 'sizeof' to an incomplete type");
+        return semantic_checker_handle_error_expression(sc, sizeof_location);
+    }
+
+    // Get the standard size type for the value of the expression
+    QualifiedType size_type = semantic_checker_get_size_type(sc);
+    
+    return NULL;
+}
+
+Expression* semantic_checker_handle_sizeof_expression(SemanticChecker* sc,
+        Location sizeof_location, Expression* expression)
+{
+    if (expression_is_invalid(expression))
+    {
+        return semantic_checker_handle_error_expression(sc, sizeof_location);
+    }
+
+    QualifiedType type = expression_get_qualified_type(expression);
+    QualifiedType real_type = qualified_type_get_canonical(&type);
+    if (!qualified_type_is_complete(&real_type))
+    {
+        diagnostic_error_at(sc->dm, sizeof_location,
+                "invalid application of 'sizeof' to incomplete type");
+        return semantic_checker_handle_error_expression(sc, sizeof_location);
+    }
+
+    // Get the standard size type for the value of the expression
+    QualifiedType size_type = semantic_checker_get_size_type(sc);
+
+    return NULL;
+}
+
+Expression* semantic_checker_handle_cast_expression(SemanticChecker* sc,
+        Location lparen_loc, QualifiedType type, Location rparen_loc,
+        Expression* rhs)
+{
+    if (expression_is_invalid(rhs))
+    {
+        semantic_checker_handle_error_expression(sc, lparen_loc);
+    }
+
+    // Both the named type and the right hand side should have scaler type
+    // unless the named type is a void type
+    QualifiedType real_type = qualified_type_get_canonical(&type);
+    if (qualified_type_is(&real_type, TYPE_VOID))
+    {
+        return expression_create_cast(&sc->ast->ast_allocator, lparen_loc,
+                type, rparen_loc, rhs);
+    }
+
+    // First check if names type is scaler
+    if (!qualified_type_is_scaler(&real_type))
+    {
+        // diagnostic_error_at(sc->dm, lparen_loc,
+        //         "used type '%s' where arithmetic or pointer type is required",
+        //         "<type name>");
+        diagnostic_error_at(sc->dm, lparen_loc,
+                "expected arithmetic or pointer type");
+        semantic_checker_handle_error_expression(sc, lparen_loc);
+    }
+
+    // Then check if the expression given is scaler
+    QualifiedType expr_type = expression_get_qualified_type(rhs);
+    QualifiedType real_expr_type = qualified_type_get_canonical(&expr_type);
+    if (!qualified_type_is_scaler(&real_expr_type))
+    {
+        // TODO: instead of location being the lparen make it the location of
+        // TODO: the operand. Will need to get locations going for all of our
+        // TODO: expressions for this to work
+        // diagnostic_error_at(sc->dm, lparen_loc, "operand of type '%s' where "
+        //         "arithmetic or pointer type is required", "<type name>");
+        diagnostic_error_at(sc->dm, lparen_loc,
+                "expected arithmetic or pointer type");
+        semantic_checker_handle_error_expression(sc, lparen_loc);
+    }
+
+    return expression_create_cast(&sc->ast->ast_allocator, lparen_loc, type,
+            rparen_loc, rhs);
+}
 
 Expression* semantic_checker_handle_arithmetic_expression(SemanticChecker* sc,
         ExpressionType type, Expression* lhs, Location operator_loc,
         Expression* rhs)
 {
-    // Ignore invalid expressions
+    // Ignore invalid expressions if either of them are.
     if (expression_is_invalid(lhs) || expression_is_invalid(rhs))
     {
         return semantic_checker_handle_error_expression(sc, operator_loc);
     }
 
-    Expression* converted_lhs = NULL;
-    Expression* converted_rhs = NULL;
+    // Get types of both sides in preperations for checking they can do the
+    // arithmetic
+    QualifiedType type_lhs = expression_get_qualified_type(lhs);
+    QualifiedType type_rhs = expression_get_qualified_type(rhs);
+
+    switch (type)
+    {
+        // Logical operations -- TODO: check the constraints on these ones
+        case EXPRESSION_BINARY_LOGICAL_OR:
+        case EXPRESSION_BINARY_LOGICAL_AND:
+
+        // All of these below require integer types
+        case EXPRESSION_BINARY_OR:
+        case EXPRESSION_BINARY_XOR:
+        case EXPRESSION_BINARY_AND:
+        case EXPRESSION_BINARY_SHIFT_LEFT:
+        case EXPRESSION_BINARY_SHIFT_RIGHT:
+
+        // Usual arithmetic rules
+        case EXPRESSION_BINARY_ADD:
+        case EXPRESSION_BINARY_SUBTRACT:
+        case EXPRESSION_BINARY_TIMES:
+        case EXPRESSION_BINARY_DIVIDE:
+        case EXPRESSION_BINARY_MODULO:
+
+        // TODO -- SHOULD THESE BE HANDLED HERE
+        case EXPRESSION_BINARY_EQUAL:
+        case EXPRESSION_BINARY_NOT_EQUAL:
+        case EXPRESSION_BINARY_LESS_THAN:
+        case EXPRESSION_BINARY_GREATER_THAN:
+        case EXPRESSION_BINARY_LESS_THAN_EQUAL:
+        case EXPRESSION_BINARY_GREATER_THAN_EQUAL:
+        // TODO -- SHOULD THESE BE HANDLED HERE
+            break;
+
+        default:
+            panic("unhandled arithmetic expression type");
+            break;
+    }
+
+
+    // if (!qualified_type_is_arithmetic(&type_lhs)
+    //         || !qualified_type_is_arithmetic(&type_rhs))
+    // {
+    //     diagnostic_error_at(sc->dm, operator_loc,
+    //             "invalid operands to binary expression");
+    //     return semantic_checker_handle_error_expression(sc, operator_loc);
+    // }
+
+    // QualifiedType converted_type = semantic_checker_arithmetic_conversion(sc,
+    //         type_lhs, type_rhs);
 
     // TODO: integer conversions need to be implemented.
 
-    return NULL;
+    return semantic_checker_handle_error_expression(sc, operator_loc);
+}
+
+Expression* semantic_checker_handle_assignment_expression(SemanticChecker* sc,
+        ExpressionType type, Expression* lhs, Location operator_loc,
+        Expression* rhs)
+{
+    return semantic_checker_handle_error_expression(sc, operator_loc);   
 }
 
 Expression* semantic_checker_handle_comma_expression(SemanticChecker* sc,
@@ -3234,24 +3998,43 @@ Statement* semantic_checker_handle_return_statement(SemanticChecker* sc,
         Location return_location, Expression* expression,
         Location semi_location)
 {
+    if (expression != NULL && expression_is_invalid(expression))
+    {
+        return semantic_checker_handle_error_statement(sc);
+    }
+
     FunctionScope* scope = sc->function;
     Declaration* function = function_scope_get_function(scope);
     assert(declaration_is(function, DECLARATION_FUNCTION));
 
     // Get the return type from the function
     QualifiedType type = declaration_get_type(function);
-    QualifiedType return_type = type.type->type_function.return_type;
+    QualifiedType return_type = type_function_get_return(&type);
     QualifiedType real_type = qualified_type_get_canonical(&return_type);
 
     // Check for a return type mismatch
     if (qualified_type_is(&real_type, TYPE_VOID) && expression != NULL)
     {
-        // TODO: clang does this thing where if will create an AST node with an
-        // TODO: implicit cast to void expression
-        diagnostic_error_at(sc->dm, return_location,
-                "void function '%s' should not return a value",
-                function->base.identifier->string.ptr);
-        expression = NULL;
+        QualifiedType expr_type = expression_get_qualified_type(expression);
+        QualifiedType real_expr = qualified_type_get_canonical(&expr_type);
+
+        // Note: this below, is a -Wpedantic in Clang and GCC
+        if (qualified_type_is(&real_expr, TYPE_VOID))
+        {
+            diagnostic_error_at(sc->dm, return_location,
+                    "void function '%s' should not return void expression",
+                    function->base.identifier->string.ptr);
+        }
+        else
+        {
+            diagnostic_error_at(sc->dm, return_location,
+                    "void function '%s' should not return a value",
+                    function->base.identifier->string.ptr);
+
+            // Copy Clang behaviour and create implicit cast to void since this
+            // is a warning in Clang.
+            expression = semantic_checker_cast_to_void(sc, expression);
+        }
     }
     else if (!qualified_type_is(&real_type, TYPE_VOID))
     {
@@ -3269,11 +4052,10 @@ Statement* semantic_checker_handle_return_statement(SemanticChecker* sc,
             // TODO: type!
         }
     }
-
-    Statement* return_stmt = statement_create_return(&sc->ast->ast_allocator,
-            return_location, semi_location, expression);
-
-    return return_stmt;
+    
+    // Create and return the statement
+    return statement_create_return(&sc->ast->ast_allocator, return_location,
+            semi_location, expression);
 }
 
 Statement* semantic_checker_handle_empty_statement(SemanticChecker* sc,

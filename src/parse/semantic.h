@@ -129,6 +129,8 @@ Expression* semantic_checker_handle_error_expression(SemanticChecker* sc,
 
 Expression* semantic_checker_handle_parenthesis_expression(SemanticChecker* sc,
         Location lparen_location, Expression* inner, Location rparen_location);
+Expression* semantic_checker_handle_builtin_identifier(SemanticChecker* sc,
+        Location location);
 Expression* semantic_checker_handle_reference_expression(SemanticChecker* sc,
         Location identifier_location, Identifier* identifier,
         bool is_function_call);
@@ -136,19 +138,41 @@ Expression* semantic_checker_handle_number_expression(SemanticChecker* sc,
         Location number_location, LiteralValue value, bool success);
 Expression* semantic_checker_handle_char_expression(SemanticChecker* sc,
         Location char_location, CharValue value, bool success);
+
 Expression* semantic_checker_handle_array_expression(SemanticChecker* sc,
         Expression* lhs, Location lbracket_loc, Expression* member,
         Location rbracket_loc);
 Expression* semantic_checker_handle_call_expression(SemanticChecker* sc,
         Expression* lhs, Location lparen_location, Expression* expr_list,
         Location rparen_location);
+
 Expression* semantic_checker_handle_member_expression(SemanticChecker* sc,
         Expression* lhs, Location operator_loc, Identifier* identifier,
         Location identifier_location, bool dot);
+
 Expression* semantic_checker_handle_increment_expression(SemanticChecker* sc,
         ExpressionType type, Expression* expression, Location operator_loc);
+Expression* semantic_checker_handle_unary_expression(SemanticChecker* sc,
+        ExpressionType type, Location operator_loc, Expression* rhs);
+Expression* semantic_checker_handle_address_expression(SemanticChecker* sc,
+        Expression* rhs, Location and_location);
+Expression* semantic_checker_handle_dereference_expression(SemanticChecker* sc,
+        Expression* rhs, Location star_location);
+Expression* semantic_checker_handle_sizeof_type_expression(SemanticChecker* sc,
+        Location sizeof_location, Location lparen_loc, QualifiedType type,
+        Location rparen_loc);
+Expression* semantic_checker_handle_sizeof_expression(SemanticChecker* sc,
+        Location sizeof_location, Expression* expression);
+
+Expression* semantic_checker_handle_cast_expression(SemanticChecker* sc,
+        Location lparen_loc, QualifiedType type, Location rparen_loc,
+        Expression* rhs);
 
 Expression* semantic_checker_handle_arithmetic_expression(SemanticChecker* sc,
+        ExpressionType type, Expression* lhs, Location operator_loc,
+        Expression* rhs);
+
+Expression* semantic_checker_handle_assignment_expression(SemanticChecker* sc,
         ExpressionType type, Expression* lhs, Location operator_loc,
         Expression* rhs);
 

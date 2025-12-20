@@ -8,14 +8,14 @@ CFLAGS = -Wall \
 	-O0 \
 	-MMD \
 	-MP
+
 CFLAGS += -Wno-unused-parameter \
 	-Wno-unused-variable \
 	-Wno-unused-function \
 	-Wno-unused-but-set-variable \
 	-Wno-switch \
 	-Wshadow \
-	-Wvla \
-	-ferror-limit=0
+	-Wvla
 
 LFLAGS = -lm
 
@@ -71,7 +71,7 @@ PARSE = src/parse/ast_allocator.c \
 	src/parse/parser.c \
 	src/parse/semantic.c
 
-SRCS = $(UTIL) $(FILES) $(LEX) $(PARSE) $(DRIVER) src/main.c
+SRCS = $(UTIL) $(FILES) $(DRIVER) $(LEX) $(PARSE) src/main.c
 
 BUILDDIR = build
 OBJS = $(patsubst src/%.c, $(BUILDDIR)/%.o, $(SRCS))

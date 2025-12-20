@@ -1,19 +1,12 @@
 #ifndef FILEPATH_H
 #define FILEPATH_H
 
+#include <stdio.h>
 #include <stddef.h>
 #include <stdbool.h>
 
-// TODO: either find a standard header for path max, or turn into a string
-#ifdef __linux
-#include <linux/limits.h>
-#define FILEPATH_MAX_LEN PATH_MAX
-#else
-#define FILFILEPATH_MAX_LEN (4096)
-#endif
-
 typedef struct Filepath {
-    char path[FILEPATH_MAX_LEN];
+    char path[FILENAME_MAX];
     size_t len;
 } Filepath;
 

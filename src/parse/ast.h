@@ -11,6 +11,7 @@
 typedef struct Ast {
     AstAllocator ast_allocator;
     TypeBuiltins base_types;
+    QualifiedType size_type; // For the return type of sizeof expression
     DeclarationVector top_level_decls;
 } Ast;
 

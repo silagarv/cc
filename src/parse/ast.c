@@ -14,6 +14,14 @@ Ast ast_create(void)
         .top_level_decls = declaration_vector_create(1)
     };
 
+    // Set the size type to be unsigned long long
+    // TODO: this might be target dependant.
+    ast.size_type = (QualifiedType)
+    {
+        .qualifiers = QUALIFIER_NONE,
+        .type = ast.base_types.type_unsigned_long
+    };
+
     return ast;
 }
 

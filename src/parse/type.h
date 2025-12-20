@@ -267,6 +267,7 @@ QualifiedType type_function_parameter_get_type(TypeFunctionParameter* param);
 QualifiedType type_create_function(AstAllocator* allocator,
         QualifiedType return_type, TypeFunctionParameter* paramaters,
         size_t num_paramaters, bool unspecified_paramters, bool variadic);
+QualifiedType type_function_get_return(const QualifiedType* function);
 
 TypeQualifiers qualified_type_get_quals(const QualifiedType* type);
 QualifiedType qualified_type_remove_quals(const QualifiedType* type);
@@ -297,7 +298,16 @@ Type* qualified_type_get_raw(const QualifiedType* type);
 TypeKind qualified_type_get_kind(const QualifiedType* type);
 bool type_is(const Type* type, TypeKind kind);
 bool qualified_type_is(const QualifiedType* type, TypeKind kind);
+
+size_t qualified_type_get_size(const QualifiedType* type);
+
 bool qualified_type_is_integer(const QualifiedType* type);
+size_t qualified_type_get_rank(const QualifiedType* type);
+bool qualified_type_is_signed(const QualifiedType* type);
+bool qualified_type_is_unsigned(const QualifiedType* type);
+bool qualified_type_is_arithmetic(const QualifiedType* type);
+bool qualified_type_is_scaler(const QualifiedType* type);
+
 bool qualified_type_is_compound(const QualifiedType* type);
 QualifiedType type_get_canonical(const Type* type);
 QualifiedType qualified_type_get_canonical(const QualifiedType* type);
@@ -305,8 +315,7 @@ QualifiedType qualified_type_get_canonical(const QualifiedType* type);
 bool qualified_type_is_compatible(const QualifiedType* t1,
         const QualifiedType* t2);
 
-bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2);
-bool qualifier_type_is_equal_canonical(const QualifiedType* t1, 
+bool qualified_type_builtin_equal(const QualifiedType* t1,
         const QualifiedType* t2);
 
 // Functions to compare types and test if they are equal...

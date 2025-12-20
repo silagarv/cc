@@ -638,25 +638,21 @@ static bool lex_string_like_literal(Lexer* lexer, Token* token, TokenType type)
         if (current == '\\')
         {
             buffer_add_char(&string, '\\');
-
             current = get_next_char(lexer);
         }
 
         // Below are two bad cases. The first one is that we got a newline in
         // the string. I.e. an unterminated string. We just end the token here
         // the next one is that we got end of file during the string.
-        if (current == '\r' || current == '\n')
+        if (current == '\r' || current == '\n'
+                || (current == '\0' && at_eof(lexer)))
         {
             token->type = TOKEN_UNKNOWN;
 
+            diagnostic_warning_at(lexer->dm, token->loc,
+                    "missing terminating '%c' character", ending_delim);
             goto finish_string;
         } 
-        else if (current == '\0' && at_eof(lexer))
-        {
-            token->type = TOKEN_UNKNOWN;
-
-            goto finish_string;
-        }
 
         // Finally add the char and get the next one
         buffer_add_char(&string, current);
@@ -672,16 +668,13 @@ finish_string:
     buffer_make_cstr(&string);
 
     // Invalid character constants since they have nothing in them...
-    if (is_character_like(type))
+    if (is_character_like(type) 
+            && ((is_wide(type) && buffer_get_len(&string) == 3) 
+            || (buffer_get_len(&string) == 2)))
     {
-        if (is_wide(type) && buffer_get_len(&string) == 3)
-        {
-            token->type = TOKEN_UNKNOWN;
-        }
-        else if (buffer_get_len(&string) == 2)
-        {
-            token->type = TOKEN_UNKNOWN;
-        }
+        diagnostic_warning_at(lexer->dm, token->loc,
+                "empty character constant");
+        token->type = TOKEN_UNKNOWN;
     }
 
     token->data = lexer_create_literal_node(lexer, &string);
@@ -766,17 +759,16 @@ retry_lexing:;
                 // Warn about no newline at eof
                 if (!(token->flags & TOKEN_FLAG_BOL))
                 {
+                    // TODO: fix this, will crash if unterminated token at eof
                     diagnostic_warning_at(lexer->dm, token->loc,
                             "no newline at end of file");
                 }
 
                 token->type = TOKEN_EOF;
-
                 return false;
             }
             
             whitespace = true;
-
             goto retry_lexing;
 
         // Our special whitespace tokens skip all of the white space that we can
@@ -839,7 +831,6 @@ retry_lexing:;
         case '0': case '1': case '2': case '3': case '4':
         case '5': case '6': case '7': case '8': case '9':
             lex_number(lexer, token, token_start);
-
             break;
 
         case 'L':
@@ -849,7 +840,6 @@ retry_lexing:;
                 consume_char(lexer);
 
                 lex_wide_string_literal(lexer, token);
-
                 break;
             }
             else if (curr == '\'')
@@ -857,7 +847,6 @@ retry_lexing:;
                 consume_char(lexer);
 
                 lex_wide_character_literal(lexer, token);
-
                 break;
             }
 
@@ -873,18 +862,15 @@ retry_lexing:;
         case 'v': case 'w': case 'x': case 'y': case 'z':
         case '_':
             lex_identifier(lexer, token, token_start);
-
             break;
 
         // String and character literals
         case '"':
             lex_string_literal(lexer, token);
-
             break;
 
         case '\'':
             lex_character_literal(lexer, token);
-
             break;
         
         case '.':

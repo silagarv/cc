@@ -485,23 +485,6 @@ Location declaration_get_location(const Declaration* decl)
     return decl->base.location;
 }
 
-void declaration_set_next(Declaration* decl, Declaration* next)
-{
-    assert(decl->base.next == NULL);
-
-    decl->base.next = next;
-}
-
-Declaration* declaration_get_next(Declaration* decl)
-{
-    return decl->base.next;
-}
-
-Declaration** declaration_get_next_ptr(Declaration* decl)
-{
-    return &decl->base.next;
-}
-
 // This is a function to create a barebones base declaration.
 static Declaration* declaration_create_base(AstAllocator* allocator, 
         size_t size, DeclarationType decl_type, Location location, 
@@ -520,8 +503,6 @@ static Declaration* declaration_create_base(AstAllocator* allocator,
         .function_specifier = function,
         .implicit = implicit,
         .invalid = false,
-        .most_recent = decl, /*set most recent to this one */
-        .next = NULL
     };
 
     return decl;
@@ -577,6 +558,14 @@ DeclarationLinkage declaration_variable_get_linkage(const Declaration* decl)
 {
     assert(declaration_is(decl, DECLARATION_VARIABLE));
     return decl->variable.linkage;
+}
+
+void declaration_variable_add_decl(Declaration* prev, Declaration* new_var)
+{
+    assert(declaration_is(prev, DECLARATION_VARIABLE));
+    assert(declaration_is(new_var, DECLARATION_VARIABLE));
+
+    
 }
 
 Declaration* declaration_create_typedef(AstAllocator* allocator,
@@ -686,6 +675,13 @@ Declaration* declaration_create_field(AstAllocator* allocator,
     return decl;
 }
 
+bool declaration_field_has_bitfield(const Declaration* decl)
+{
+    assert(declaration_is(decl, DECLARATION_FIELD));
+
+    return decl->field.has_bitfield;
+}
+
 Declaration* declaration_create_struct(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type)
 {
@@ -768,6 +764,8 @@ Declaration* declaration_create_function(AstAllocator* allocator,
     declaration->function.definition = NULL;
     declaration->function.function_body = NULL;
     declaration->function.paramaters = paramaters;
+
+    declaration_list_push(&declaration->function.all_decls, declaration);
 
     return declaration;
 }

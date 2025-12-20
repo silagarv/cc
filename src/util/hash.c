@@ -14,7 +14,7 @@ static uint32_t get_hash_internal(const char* ptr, size_t length)
 
     for (size_t i = 0; i < length; i++)
     {
-        hash ^= ptr[i];
+        hash ^= (unsigned char) ptr[i];
         hash *= FNV_32_PRIME;
     }
 

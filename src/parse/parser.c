@@ -59,7 +59,6 @@ static const size_t type_specifier_count = countof(type_specifier);
 static const size_t type_qualifier_count = countof(type_qualifier);
 static const size_t function_specificer_count = countof(function_specificer);
 
-
 // Parser methods for getting the current and next token. We aim to be a LL(1)
 // like parser so we should only ever need these in order to figure own the
 // current production.
@@ -115,25 +114,6 @@ static Location current_token_end_location(Parser* parser)
 {
     return parser->token.end;
 }
-
-// // Methods for mathing a token type or unconditionally consuming a token.
-// static Location match(Parser* parser, TokenType type)
-// {
-//     if (current_token_type(parser) == type)
-//     {
-//         Location location = current_token_start_location(parser);
-
-//         consume(parser);
-
-//         return location;
-//     }
-
-//     // diagnostic_error_at(parser->dm, parser->token.loc,
-//     //         "expected '%s' but got '%s'", token_type_get_name(type), 
-//     //         token_type_get_name(current_token_type(parser)));
-
-//     return LOCATION_INVALID;
-// }
 
 static Location consume(Parser* parser)
 {
@@ -357,8 +337,7 @@ static bool is_initializer_start(Parser* parser, const Token* tok);
 // Functions for parsing our constants which include integer, floating point
 // enumeration and character constants
 static Expression* parse_primary_expression(Parser* parser);
-static Expression* parse_postfix_expression(Parser* parser,
-        Expression* compound_literal);
+static Expression* parse_postfix_expression(Parser* parser);
 static Expression* parse_argument_expression_list(Parser* parser);
 static Expression* parse_unary_expression(Parser* parser);
 static Expression* parse_cast_expression(Parser* parser);
@@ -521,6 +500,9 @@ static bool is_expression_token(TokenType type)
         case TOKEN_TILDE:
         case TOKEN_SIZEOF:
         case TOKEN_IDENTIFIER:
+
+        // Builtin identifiers
+        case TOKEN___FUNC__:
             return true;
 
         default:
@@ -607,7 +589,8 @@ static Expression* parse_primary_expression(Parser* parser)
     static const TokenType string_tokens[] = {TOKEN_STRING, TOKEN_WIDE_STRING};
     static const size_t num_string_tokens = countof(string_tokens);
 
-    switch (current_token_type(parser))
+    TokenType type = current_token_type(parser);
+    switch (type)
     {
         case TOKEN_LPAREN:
         {
@@ -634,7 +617,6 @@ static Expression* parse_primary_expression(Parser* parser)
             Location identifer_loc = consume(parser);
 
             bool is_function_call = is_match(parser, TOKEN_LPAREN);
-      
             return semantic_checker_handle_reference_expression(&parser->sc,
                     identifer_loc, identifier, is_function_call);
         }
@@ -715,6 +697,13 @@ static Expression* parse_primary_expression(Parser* parser)
                     start_location);
         }
 
+        case TOKEN___FUNC__:
+        {
+            Location location = consume(parser);
+            return semantic_checker_handle_builtin_identifier(&parser->sc,
+                    location);
+        }
+
         default:
         {
             Location err_loc = current_token_location(parser);
@@ -739,27 +728,13 @@ static Expression* parse_argument_expression_list(Parser* parser)
     return NULL;
 }
 
-static Expression* parse_postix_beginning(Parser* parser)
-{
-    return NULL;
-}
-
-static Expression* parse_postfix_expression(Parser* parser,
-        Expression* beginning)
+static Expression* parse_postfix_ending(Parser* parser, Expression* start)
 {
     static const TokenType operators[] = {TOKEN_LBRACKET, TOKEN_LPAREN,
             TOKEN_DOT, TOKEN_ARROW, TOKEN_PLUS_PLUS, TOKEN_MINUS_MINUS};
     static const size_t num_operators = countof(operators);
 
-    // How a handle compound literal is handled. Since the start of it looks
-    // exactly like a cast expression we parse the cast first. Then since we see
-    // a '{' we then parse the compound literal. After a compound literal we
-    // should end up here. But since we that is hard we just pass in the 
-    // compound literal expression and DON'T parse a primary expression. 
-    Expression* expr = beginning != NULL 
-            ? beginning
-            : parse_primary_expression(parser);
-
+    Expression* expr = start;
     while (has_match(parser, operators, num_operators))
     {
         switch (current_token_type(parser))
@@ -868,6 +843,21 @@ static Expression* parse_postfix_expression(Parser* parser,
     return expr;
 }
 
+static Expression* parse_postfix_expression(Parser* parser)
+{
+    static const TokenType operators[] = {TOKEN_LBRACKET, TOKEN_LPAREN,
+            TOKEN_DOT, TOKEN_ARROW, TOKEN_PLUS_PLUS, TOKEN_MINUS_MINUS};
+    static const size_t num_operators = countof(operators);
+
+    // How a handle compound literal is handled. Since the start of it looks
+    // exactly like a cast expression we parse the cast first. Then since we see
+    // a '{' we then parse the compound literal. After a compound literal we
+    // should end up here. But since we that is hard we just pass in the 
+    // compound literal expression and DON'T parse a primary expression. 
+    Expression* expr = parse_primary_expression(parser);
+    return parse_postfix_ending(parser, expr);
+}
+
 static Expression* parse_unary_expression(Parser* parser)
 {
     switch (current_token_type(parser))
@@ -892,20 +882,16 @@ static Expression* parse_unary_expression(Parser* parser)
         {
             Location op_loc = consume(parser);
             Expression* expr = parse_cast_expression(parser);
-            
-            return NULL;
-            // return expression_create_unary(&parser->ast.ast_allocator,
-            //         EXPRESSION_UNARY_ADDRESS, op_loc, expr);
+            return semantic_checker_handle_address_expression(&parser->sc, expr,
+                    op_loc);
         }
 
         case TOKEN_STAR:
         {
             Location op_loc = consume(parser);
             Expression* expr = parse_cast_expression(parser);
-            
-            return NULL;
-            // return expression_create_unary(&parser->ast.ast_allocator,
-            //         EXPRESSION_UNARY_DEREFERENCE, op_loc, expr);
+            return semantic_checker_handle_dereference_expression(&parser->sc,
+                    expr, op_loc);
         }
 
         case TOKEN_PLUS:
@@ -913,9 +899,8 @@ static Expression* parse_unary_expression(Parser* parser)
             Location op_loc = consume(parser);
             Expression* expr = parse_cast_expression(parser);
             
-            return NULL;
-            // return expression_create_unary(&parser->ast.ast_allocator,
-            //         EXPRESSION_UNARY_PLUS, op_loc, expr);
+            return semantic_checker_handle_unary_expression(&parser->sc,
+                    EXPRESSION_UNARY_PLUS, op_loc, expr);
         }
 
         case TOKEN_MINUS:
@@ -923,9 +908,8 @@ static Expression* parse_unary_expression(Parser* parser)
             Location op_loc = consume(parser);
             Expression* expr = parse_cast_expression(parser);
             
-            return NULL;
-            // return expression_create_unary(&parser->ast.ast_allocator,
-            //         EXPRESSION_UNARY_MINUS, op_loc, expr);
+            return semantic_checker_handle_unary_expression(&parser->sc,
+                    EXPRESSION_UNARY_MINUS, op_loc, expr);
         }
 
         case TOKEN_TILDE:
@@ -933,9 +917,8 @@ static Expression* parse_unary_expression(Parser* parser)
             Location op_loc = consume(parser);
             Expression* expr = parse_cast_expression(parser);
             
-            return NULL;
-            // return expression_create_unary(&parser->ast.ast_allocator,
-            //         EXPRESSION_UNARY_BIT_NOT, op_loc, expr);
+            return semantic_checker_handle_unary_expression(&parser->sc,
+                    EXPRESSION_UNARY_BIT_NOT, op_loc, expr);
         }
 
         case TOKEN_NOT:
@@ -943,9 +926,8 @@ static Expression* parse_unary_expression(Parser* parser)
             Location op_loc = consume(parser);
             Expression* expr = parse_cast_expression(parser);
             
-            return NULL;
-            // return expression_create_unary(&parser->ast.ast_allocator,
-            //         EXPRESSION_UNARY_NOT, op_loc, expr);
+            return semantic_checker_handle_unary_expression(&parser->sc,
+                    EXPRESSION_UNARY_NOT, op_loc, expr);
         }
 
         case TOKEN_SIZEOF:
@@ -956,9 +938,7 @@ static Expression* parse_unary_expression(Parser* parser)
                     is_typename_start(parser, next_token(parser)))
             {
                 Location lparen_loc = consume(parser);
-
                 QualifiedType type = parse_type_name(parser);
-                
                 Location rparen_loc;
                 if (!try_match(parser, TOKEN_RPAREN, &rparen_loc))
                 {
@@ -967,17 +947,19 @@ static Expression* parse_unary_expression(Parser* parser)
                     rparen_loc = LOCATION_INVALID;
                 }
 
-                return NULL;
+                return semantic_checker_handle_sizeof_type_expression(
+                        &parser->sc, sizeof_loc, lparen_loc, type, rparen_loc);
             }
             else
             {
                 Expression* expr = parse_unary_expression(parser);
-
-                return NULL;
+                return semantic_checker_handle_sizeof_expression(&parser->sc,
+                        sizeof_loc, expr);
             }
         }
 
-        default: return parse_postfix_expression(parser, NULL);
+        default:
+            return parse_postfix_expression(parser);
     }
 }
 
@@ -997,13 +979,14 @@ static Expression* parse_compound_literal(Parser* parser, Location lparen_loc,
     
     // TODO: create the compound literal
     Expression* compound_literal = NULL;
-    return parse_postfix_expression(parser, compound_literal);
+    return parse_postfix_ending(parser, compound_literal);
 }
 
 static Expression* parse_cast_expression(Parser* parser)
 {
     // If we cant possible have a cast expression just parse a unary expression
-    if (!is_match(parser, TOKEN_LPAREN))
+    if (!is_match(parser, TOKEN_LPAREN)
+            || !is_typename_start(parser, next_token(parser)))
     {
         return parse_unary_expression(parser);
     }
@@ -1020,8 +1003,10 @@ static Expression* parse_cast_expression(Parser* parser)
                 "expected ')' after type name");
     }
 
-    // Here we do a little trickery to get this parsing properly, see parse
-    // postfix expression for details
+    // If we are parsing along and discover we in fact don't have a cast 
+    // expression but rather a compound literal, make sure to parse our args
+    // along and parse the compound literal. This will then correctly parse the
+    // postfix expression after.
     if (is_match(parser, TOKEN_LCURLY))
     {
         return parse_compound_literal(parser, lparen_loc, type, rparen_loc);
@@ -1029,9 +1014,9 @@ static Expression* parse_cast_expression(Parser* parser)
 
     Expression* expr = parse_cast_expression(parser);
 
-    // TODO: create the cast expression
-
-    return expr;
+    // Finally, create the cast expression for parsing.
+    return semantic_checker_handle_cast_expression(&parser->sc, lparen_loc,
+            type, rparen_loc, expr);
 }
 
 static Expression* parse_multiplicative_expression(Parser* parser)
@@ -1122,9 +1107,8 @@ static Expression* parse_shift_expression(Parser* parser)
         Location op_loc = consume(parser);
         Expression* rhs = parse_additive_expression(parser);
 
-        // return NULL;
-        // expr = expression_create_binary(&parser->ast.ast_allocator, type,
-        //         op_loc, expr, rhs);
+        expr = semantic_checker_handle_arithmetic_expression(&parser->sc, type,
+                expr, op_loc, rhs);
     }
 
     return expr;
@@ -1162,9 +1146,8 @@ static Expression* parse_relational_expression(Parser* parser)
         Location op_loc = consume(parser);
         Expression* rhs = parse_shift_expression(parser);
 
-        // return NULL;
-        // expr = expression_create_binary(&parser->ast.ast_allocator, type,
-        //         op_loc, expr, rhs);
+        expr = semantic_checker_handle_arithmetic_expression(&parser->sc, type,
+                expr, op_loc, rhs);
     }
 
     return expr;
@@ -1194,9 +1177,8 @@ static Expression* parse_equality_expression(Parser* parser)
         Location op_loc = consume(parser);
         Expression* rhs = parse_relational_expression(parser);
 
-        // return NULL;
-        // expr = expression_create_binary(&parser->ast.ast_allocator, type, 
-        //         op_loc, expr, rhs);
+        expr = semantic_checker_handle_arithmetic_expression(&parser->sc, type,
+                expr, op_loc, rhs);
     }
 
     return expr;
@@ -1211,9 +1193,8 @@ static Expression* parse_and_expression(Parser* parser)
         Location op_loc = consume(parser);
         Expression* rhs = parse_equality_expression(parser);
 
-        // return NULL;
-        // expr = expression_create_binary(&parser->ast.ast_allocator,
-        //         EXPRESSION_BINARY_AND, op_loc, expr, rhs);
+        expr = semantic_checker_handle_arithmetic_expression(&parser->sc,
+                EXPRESSION_BINARY_AND, expr, op_loc, rhs);
     }
 
     return expr;
@@ -1228,9 +1209,8 @@ static Expression* parse_exclusive_or_expression(Parser* parser)
         Location op_loc = consume(parser);
         Expression* rhs = parse_and_expression(parser);
 
-        // return NULL;
-        // expr = expression_create_binary(&parser->ast.ast_allocator,
-        //         EXPRESSION_BINARY_XOR, op_loc, expr, rhs);
+        expr = semantic_checker_handle_arithmetic_expression(&parser->sc,
+                EXPRESSION_BINARY_XOR, expr, op_loc, rhs);
     }
 
     return expr;
@@ -1245,9 +1225,8 @@ static Expression* parse_inclusive_or_expression(Parser* parser)
         Location op_loc = consume(parser);
         Expression* rhs = parse_exclusive_or_expression(parser);
 
-        // return NULL;
-        // expr = expression_create_binary(&parser->ast.ast_allocator,
-        //         EXPRESSION_BINARY_OR, op_loc, expr, rhs);
+        expr = semantic_checker_handle_arithmetic_expression(&parser->sc,
+                EXPRESSION_BINARY_OR, expr, op_loc, rhs);
     }
 
     return expr;
@@ -1262,8 +1241,8 @@ static Expression* parse_logical_and_expression(Parser* parser)
         Location op_loc = consume(parser);
         Expression* rhs = parse_inclusive_or_expression(parser);
 
-        // expr = expression_create_binary(&parser->ast.ast_allocator, 
-        //         EXPRESSION_BINARY_LOGICAL_AND, op_loc, expr, rhs);
+        expr = semantic_checker_handle_arithmetic_expression(&parser->sc,
+                EXPRESSION_BINARY_LOGICAL_AND, expr, op_loc, rhs);
     }
 
     return expr;
@@ -1278,9 +1257,8 @@ static Expression* parse_logical_or_expression(Parser* parser)
         Location op_loc = consume(parser);
         Expression* rhs = parse_logical_and_expression(parser);
 
-        // return NULL;
-        // expr = expression_create_binary(&parser->ast.ast_allocator,
-        //         EXPRESSION_BINARY_LOGICAL_OR, op_loc, expr, rhs);
+        expr = semantic_checker_handle_arithmetic_expression(&parser->sc,
+                EXPRESSION_BINARY_LOGICAL_OR, expr, op_loc, rhs);
     }
 
     return expr;
@@ -1378,10 +1356,8 @@ static Expression* parse_assignment_expression(Parser* parser)
         Location op_location = consume(parser);
         Expression* rhs = parse_assignment_expression(parser);
 
-        // Now make our new binary expression...
-        return NULL;
-        // expr = expression_create_binary(&parser->ast.ast_allocator,
-        //         type, op_location, expr, rhs);
+        expr = semantic_checker_handle_assignment_expression(&parser->sc, type,
+                expr, op_location, rhs);
     }
 
     return expr;
@@ -1392,6 +1368,7 @@ static Expression* parse_constant_expression(Parser* parser)
     Expression* expr = parse_conditional_expression(parser);
 
     // TODO: handle folding the constant expression...
+
     return expr;
 }
 
@@ -1568,7 +1545,16 @@ static Location parse_trailing_semi(Parser* parser, const char* context)
     {
         diagnostic_error_at(parser->dm, current_token_location(parser),
                 "expected ';' after %s", context);
-        recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
+
+        // Only attempt some recovery if we arent at the end of a compound stmt.
+        // Note that if this is at top level it will emit an extraneous closing
+        // brace warning which will need to be fixed anyways so I think this is
+        // fine.
+        if (!is_match(parser, TOKEN_RCURLY))
+        {
+            recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
+        }
+        
         return LOCATION_INVALID;
     }
 
@@ -1601,15 +1587,14 @@ static Statement* parse_expression_statement(Parser* parser)
 
     Expression* expr = parse_expression(parser);
 
-    // If the expression is invalid and we not going to match a semi we want to
-    // supress further errors so just create an error statement here
-    if (expression_is_invalid(expr) && !is_match(parser, TOKEN_SEMI))
+    // Another clang special case error message
+    if (is_match(parser, TOKEN_RPAREN) && is_next_match(parser, TOKEN_SEMI))
     {
-        return semantic_checker_handle_error_statement(&parser->sc);
+        Location rparen = consume(parser);
+        diagnostic_error_at(parser->dm, rparen, "extraneous ')' before ';'");
     }
 
     Location semi_loc = parse_trailing_semi(parser, "expression");
-    
     return semantic_checker_handle_expression_statement(&parser->sc,
             expr, semi_loc);
 }
@@ -1622,7 +1607,7 @@ static bool parse_expression_for_statement(Parser* parser, Location* lparen_loc,
         diagnostic_error_at(parser->dm, current_token_location(parser),
                 "expected '(' after '%s'", context);
         recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
-                
+
         return false;
     }
 
@@ -1633,13 +1618,22 @@ static bool parse_expression_for_statement(Parser* parser, Location* lparen_loc,
     if (!is_match(parser, TOKEN_RPAREN))
     {
         diagnostic_error_at(parser->dm, current_token_location(parser),
-                "expected ')'");
+                "expected ')' after condition");
         recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
-
         return false;
     }
 
     *rparen_loc = consume(parser);
+
+    // Clang will emit errors for exsessive paren usage. But continue on parsing
+    // as if there was no error, since this error is likely only limited to one
+    // paren anyways
+    while (is_match(parser, TOKEN_RPAREN))
+    {   
+        Location extra_paren = consume(parser);
+        diagnostic_error_at(parser->dm, extra_paren,
+                "extraneous ')' after condition, expected a statement");
+    }
 
     return true;
 }
@@ -1647,6 +1641,14 @@ static bool parse_expression_for_statement(Parser* parser, Location* lparen_loc,
 static Statement* parse_if_statement(Parser* parser)
 {
     assert(is_match(parser, TOKEN_IF));
+
+    // TODO: the if statement pushes a block scope to make the following invalid
+    // if (sizeof(const enum a {A, B, C})) {
+    //     ...
+    // }
+    // 
+    // A;
+    // ^ invalid since A is not in scope
 
     Location if_loc = consume(parser);
 
@@ -1676,6 +1678,8 @@ static Statement* parse_if_statement(Parser* parser)
 static Statement* parse_switch_statement(Parser* parser)
 {
     assert(is_match(parser, TOKEN_SWITCH));
+
+    // TODO: apply the same fix for the switch statement for the if too
 
     Location switch_loc = consume(parser);
 
@@ -1776,7 +1780,6 @@ static Statement* parse_do_while_statement(Parser* parser)
     }
 
     Location semi_loc = parse_trailing_semi(parser, "do/while statement");
-
     return semantic_checker_handle_do_while_statement(&parser->sc, do_loc,
             body, while_loc, lparen_loc, cond, rparen_loc, semi_loc);
 }
@@ -2103,6 +2106,8 @@ static Initializer* parse_initializer(Parser* parser)
         {
             diagnostic_error_at(parser->dm, rcurly,
                     "expected '}' after initializer");
+            recover(parser, TOKEN_RCURLY,
+                    RECOVER_EAT_TOKEN | RECOVER_STOP_AT_SEMI);
         }
         // TODO: create initializer
     }
@@ -2117,8 +2122,14 @@ static Initializer* parse_initializer(Parser* parser)
 
 static Initializer* parse_initializer_list(Parser* parser)
 {
-    while (!is_match(parser, TOKEN_RCURLY) && !is_match(parser, TOKEN_EOF))
+    do
     {
+        // If we see the end of an initializer list then we are simply done.
+        if (is_match(parser, TOKEN_RCURLY))
+        {
+            break;
+        }
+
         // If we can match a designation do that...
         if (has_match(parser, (TokenType[]) {TOKEN_DOT, TOKEN_LBRACKET}, 2))
         {
@@ -2127,23 +2138,8 @@ static Initializer* parse_initializer_list(Parser* parser)
 
         // Then get the initializer
         parse_initializer(parser);
-
-        // End of initializer list e.g. , }
-        if (is_match(parser, TOKEN_COMMA) && is_next_match(parser, TOKEN_RCURLY))
-        {
-            consume(parser); // Consume the comma
-            break;
-        }
-        else if (is_match(parser, TOKEN_RCURLY))
-        {
-            break;
-        }
-        else // Get the comma and keep going
-        {
-            consume(parser);
-            assert(!is_match(parser, TOKEN_RCURLY));
-        }
     }
+    while (try_match(parser, TOKEN_COMMA, NULL));
 
     return NULL;
 }
@@ -2227,7 +2223,7 @@ static void parse_initializer_after_declarator(Parser* parser,
 
 static void parse_knr_function_parameters(Parser* parser, Declaration* decl)
 {
-
+    
 }
 
 static void parse_skip_function_body(Parser* parser)
@@ -2718,7 +2714,6 @@ static void parse_direct_declarator(Parser* parser, Declarator* declarator)
             // the identifier would have been.
             declarator_set_identifier(declarator, NULL,
                     current_token_location(parser));
-
             goto parse_tail;
         }
 
@@ -3574,8 +3569,12 @@ static void parse_declaration_or_definition(Parser* parser)
     
     // If we had a function declaration with a body then we do not want to try
     // to parse a ';' afterwards and can simply return. Otherwise try to...
-    if (declaration_is(declaration, DECLARATION_FUNCTION)
+    // Also note we will also not try to parse a semi if the declaration is NULL
+    // this still works if for example we get 'int' since it will try to parse
+    // an identifier after.
+    if ((declaration_is(declaration, DECLARATION_FUNCTION)
             && declaration_function_has_body(declaration))
+            || declaration == NULL)
     {
         return;
     }

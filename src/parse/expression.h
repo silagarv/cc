@@ -11,9 +11,15 @@
 #include "parse/literal_parser.h"
 
 union Initializer;
+union Expression;
+union Statement;
+union Declaration;
 
 typedef enum ExpressionType {
     EXPRESSION_ERROR,
+
+    EXPRESSION_ARRAY_DECAY, // To represent array decay to a pointer
+    EXPRESSION_LVALUE_CAST, // represents lvalue to rvalue implicit cast
 
     EXPRESSION_REFERENCE, // an identifier in the symbol table
 
@@ -94,6 +100,16 @@ typedef struct ExpressionBase {
     bool poisoned;
 } ExpressionBase;
 
+typedef struct ExpressionArrayToPtr {
+    ExpressionBase base;
+    Expression* inner;
+} ExpressionArrayToPtr;
+
+typedef struct ExpressionLValueCast {
+    ExpressionBase base;
+    Expression* inner_expression;
+} ExpressionLValueCast;
+
 // Our primary expressions
 typedef struct ExpressionReference {
     ExpressionBase base;
@@ -129,6 +145,7 @@ typedef struct ExpressionEnumeration {
 typedef struct ExpressionCharacter {
     ExpressionBase base;
     CharValue value;
+    Location location;
 } ExpressionCharacter;
 
 typedef struct ExpressionStringLiteral {
@@ -227,10 +244,14 @@ typedef struct ExpressionParenthesised {
 
 typedef struct ExpressionError {
     ExpressionBase base;
+    Location location;
 } ExpressionError;
 
 union Expression {
     ExpressionBase base;
+
+    ExpressionArrayToPtr array_decay;
+    ExpressionLValueCast lvalue_cast;
 
     ExpressionParenthesised parenthesised;
     ExpressionReference reference;
@@ -266,15 +287,26 @@ void expression_set_invalid(Expression* expr);
 QualifiedType expression_get_qualified_type(const Expression* expr);
 
 Expression* expression_create_error(AstAllocator* allocator,
-        Type* error_type);
+        Type* error_type, Location location);
+
+Expression* expression_create_lvalue_cast(AstAllocator* allocator,
+        Expression* inner, QualifiedType new_type);
+Expression* expression_lvalue_cast_get_inner(const Expression* expr);
 
 Expression* expression_create_parenthesised(AstAllocator* allocator,
         Location lparen_loc, Location rparen_loc, Expression* inside);
 Expression* expression_parenthesised_get_inner(const Expression* expr);
+Expression* expression_parenthesised_get_innermost(const Expression* expr);
+Expression* expression_ignore_parenthesis(Expression* expr);
 
 Expression* expression_create_reference(AstAllocator* allocator,
         Identifier* identifier, Location location,
         union Declaration* declaration, QualifiedType expr_type);
+union Declaration* expression_reference_get_decl(const Expression* expr);
+
+Expression* expression_create_array_decay(AstAllocator* allocator,
+        Expression* expression, QualifiedType new_type);
+Expression* expression_array_decay_get_inner(const Expression* expr);
     
 Expression* expression_create_integer(AstAllocator* allocator,
         Location location, IntegerValue value, QualifiedType type);
@@ -300,6 +332,9 @@ Expression* expression_create_binary(AstAllocator* allocator,
 Expression* expression_create_member_access(AstAllocator* allocator,
         Location op_loc, Expression* lhs, union Declaration* member,
         QualifiedType expr_type, bool dot);
+Expression* expression_member_access_get_lhs(const Expression* expression);
+Expression* expression_member_access_get_most_lhs(const Expression* expr);
+union Declaration* expression_member_access_get_decl(const Expression* expr);
 
 Expression* expression_create_cast(AstAllocator* allocator, Location lparen_loc,
         QualifiedType type, Location rparen_loc, Expression* rhs);

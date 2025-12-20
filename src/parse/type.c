@@ -289,6 +289,13 @@ QualifiedType type_create_function(AstAllocator* allocator,
     return (QualifiedType) {QUALIFIER_NONE, type};
 }
 
+QualifiedType type_function_get_return(const QualifiedType* function)
+{
+    assert(qualified_type_is(function, TYPE_FUNCTION));
+
+    return function->type->type_function.return_type;
+}
+
 QualifiedType type_create_enum(AstAllocator* allocator, Type* base)
 {
     size_t base_size = base->type_base.type_size;
@@ -468,6 +475,11 @@ bool qualified_type_is(const QualifiedType* type, TypeKind kind)
     return type->type->type_base.type == kind;
 }
 
+size_t qualified_type_get_size(const QualifiedType* type)
+{
+    return type->type->type_base.type_size;
+}
+
 bool qualified_type_is_integer(const QualifiedType* type)
 {
     if (type->type == NULL)
@@ -503,6 +515,126 @@ bool qualified_type_is_integer(const QualifiedType* type)
         default:
             return false;
     }
+}
+
+size_t qualified_type_get_rank(const QualifiedType* type)
+{
+    assert(qualified_type_is_integer(type));
+
+    switch (qualified_type_get_kind(type))
+    {
+        case TYPE_BOOL:
+            return 1;
+
+        case TYPE_CHAR:
+        case TYPE_S_CHAR:
+        case TYPE_U_CHAR:
+            return 2;
+
+        case TYPE_S_SHORT:
+        case TYPE_U_SHORT:
+            return 3;
+
+        case TYPE_S_INT:
+        case TYPE_U_INT:
+        case TYPE_ENUM:
+            return 4;
+
+        case TYPE_S_LONG:
+        case TYPE_U_LONG:
+            return 5;
+
+        case TYPE_S_LONG_LONG:
+        case TYPE_U_LONG_LONG:
+            return 6;
+
+        default:
+            panic("unreachable");
+            return 0;
+    }
+}
+
+bool qualified_type_is_signed(const QualifiedType* type)
+{
+    assert(qualified_type_is_integer(type));
+
+    QualifiedType real_type = qualified_type_get_canonical(type);
+    switch (qualified_type_get_kind(&real_type))
+    {
+        case TYPE_CHAR:
+        case TYPE_S_CHAR:
+        case TYPE_S_SHORT:
+        case TYPE_S_INT:
+        case TYPE_S_LONG:
+        case TYPE_S_LONG_LONG:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+bool qualified_type_is_unsigned(const QualifiedType* type)
+{
+    assert(qualified_type_is_integer(type));
+
+    QualifiedType real_type = qualified_type_get_canonical(type);
+    switch (qualified_type_get_kind(&real_type))
+    {
+        case TYPE_U_CHAR:
+        case TYPE_U_SHORT:
+        case TYPE_U_INT:
+        case TYPE_U_LONG:
+        case TYPE_U_LONG_LONG:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+bool qualified_type_is_arithmetic(const QualifiedType* type)
+{
+    QualifiedType real_type = qualified_type_get_canonical(type);
+    if (qualified_type_is_integer(&real_type))
+    {
+        return true;
+    }
+
+    if (qualified_type_is(&real_type, TYPE_FLOAT))
+    {
+        return true;
+    }
+
+    if (qualified_type_is(&real_type, TYPE_DOUBLE))
+    {
+        return true;
+    }
+
+    if (qualified_type_is(&real_type, TYPE_LONG_DOUBLE))
+    {
+        return true;
+    }
+
+    // NOTE: enum case is already covered
+
+    return false;
+}
+
+bool qualified_type_is_scaler(const QualifiedType* type)
+{
+    QualifiedType real_type = qualified_type_get_canonical(type);
+    if (qualified_type_is_arithmetic(&real_type))
+    {
+        return true;
+    }
+
+    if (qualified_type_is(&real_type, TYPE_POINTER))
+    {
+        return true;
+    }
+
+    return false;
 }
 
 bool qualified_type_is_compound(const QualifiedType* type)
@@ -712,12 +844,7 @@ bool qualified_type_is_compatible(const QualifiedType* t1,
     return true;
 }
 
-bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2)
-{
-    return t1->type == t2->type && t1->qualifiers == t2->qualifiers;
-}
-
-bool qualifier_type_is_equal_canonical(const QualifiedType* t1, 
+bool qualified_type_builtin_equal(const QualifiedType* t1,
         const QualifiedType* t2)
 {
     return t1->type == t2->type;

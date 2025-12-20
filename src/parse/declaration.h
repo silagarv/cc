@@ -217,12 +217,6 @@ typedef struct DeclarationBase {
 
     // Is this declaration invalid.
     bool invalid;
-
-    // The most recent declaration for this identifier
-    union Declaration* most_recent;
-
-    // A pointer to the next declaration in this scope
-    union Declaration* next;
 } DeclarationBase;
 
 typedef struct DeclarationVariable {
@@ -235,8 +229,16 @@ typedef struct DeclarationVariable {
     // The initializer for this variable
     Initializer* initializer;
 
+    // A list of all of the declarations for this variable. Note this is only
+    // used if we are a declaration with linkage. Otherwise it is unused
+    DeclarationList all_decls;
+
     // Is this a tentative definition
     bool tentative;
+
+    // Does this variable have a definition (note this field is only useful if
+    // the variable is one with linkage and can be anything otherwise)
+    bool has_definition;
 } DeclarationVariable;
 
 // A declaration of a function.
@@ -471,6 +473,7 @@ bool declaration_variable_has_initializer(const Declaration* declaration);
 bool declaration_variable_has_linkage(const Declaration* declaration);
 bool declaration_variable_is_extern(const Declaration* declaration);
 DeclarationLinkage declaration_variable_get_linkage(const Declaration* decl);
+void declaration_variable_add_decl(Declaration* prev, Declaration* new_var);
 
 Declaration* declaration_create_typedef(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type);
@@ -491,6 +494,7 @@ int declaration_enum_constant_get_value(const Declaration* enum_constant);
 Declaration* declaration_create_field(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type,
         Location colon_location, Expression* expression);
+bool declaration_field_has_bitfield(const Declaration* decl);
 
 Declaration* declaration_create_struct(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type);
