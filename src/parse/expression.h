@@ -134,13 +134,6 @@ typedef struct ExpressionFloating {
     FloatingValue value;
 } ExpressionFloating;
 
-typedef struct ExpressionFloat ExpressionFloat;
-
-typedef struct ExpressionEnumeration {
-    ExpressionBase base;
-    Identifier* enumeration;
-} ExpressionEnumeration;
-
 // 6.4.4.4 (Characters have type int)
 typedef struct ExpressionCharacter {
     ExpressionBase base;
@@ -282,6 +275,7 @@ Location expression_get_location(const Expression* expr);
 
 // Get the type of the expression
 ExpressionType expression_get_kind(const Expression* expr);
+bool expression_is_valid(const Expression* expr);
 bool expression_is_invalid(const Expression* expr);
 void expression_set_invalid(Expression* expr);
 QualifiedType expression_get_qualified_type(const Expression* expr);
@@ -299,6 +293,10 @@ Expression* expression_parenthesised_get_inner(const Expression* expr);
 Expression* expression_parenthesised_get_innermost(const Expression* expr);
 Expression* expression_ignore_parenthesis(Expression* expr);
 
+Expression* expression_create_enum_constant(AstAllocator* allocator,
+        Identifier* identifier, Location location,
+        union Declaration* declaration, QualifiedType expr_type);
+
 Expression* expression_create_reference(AstAllocator* allocator,
         Identifier* identifier, Location location,
         union Declaration* declaration, QualifiedType expr_type);
@@ -310,6 +308,7 @@ Expression* expression_array_decay_get_inner(const Expression* expr);
     
 Expression* expression_create_integer(AstAllocator* allocator,
         Location location, IntegerValue value, QualifiedType type);
+IntegerValue expression_integer_get_value(const Expression* expression);
     
 Expression* expression_create_float(AstAllocator* allocator, Location location,
         FloatingValue value, QualifiedType type);
@@ -340,6 +339,7 @@ Expression* expression_create_cast(AstAllocator* allocator, Location lparen_loc,
         QualifiedType type, Location rparen_loc, Expression* rhs);
 Expression* expression_create_implicit_cast(AstAllocator* allocator,
         QualifiedType cast_to, Expression* expression);
+Expression* expression_cast_get_inner(const Expression* expression);
 
 // TODO: somehow we will need to be able to fold expressions...
 // TODO: so we will need to set up some stuff here to do that. This will also

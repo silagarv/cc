@@ -760,8 +760,9 @@ static Expression* parse_postfix_ending(Parser* parser, Expression* start)
             case TOKEN_LPAREN:
             {
                 Location lparen_loc = consume(parser);
+
                 Expression* expr_list = NULL;
-                if (!is_match(parser, TOKEN_RPAREN))
+                if  (!is_match(parser, TOKEN_RPAREN))
                 {
                     expr_list = parse_argument_expression_list(parser);
                 }
@@ -771,6 +772,12 @@ static Expression* parse_postfix_ending(Parser* parser, Expression* start)
                 {
                     diagnostic_error_at(parser->dm, rparen_loc, "expected ')'");
                     rparen_loc = LOCATION_INVALID;
+                    recover(parser, TOKEN_RPAREN,
+                            RECOVER_EAT_TOKEN | RECOVER_STOP_AT_SEMI);
+
+                    expr = semantic_checker_handle_error_expression(&parser->sc,
+                            lparen_loc);
+                    break;
                 }
                 
                 expr = semantic_checker_handle_call_expression(&parser->sc,
@@ -1506,6 +1513,13 @@ static Statement* parse_compound_statement_internal(Parser* parser)
         // update current to be the next one.
         Statement* next = parse_statement(parser, true);
 
+        // Make sure to ignore completely empty statement like 'int;' so that
+        // we don't segfault as these are represented as NULL
+        if (next == NULL)
+        {
+            continue;
+        }
+
         statement_set_next(current, next);
         current = next;
     }
@@ -1631,6 +1645,12 @@ static bool parse_expression_for_statement(Parser* parser, Location* lparen_loc,
     while (is_match(parser, TOKEN_RPAREN))
     {   
         Location extra_paren = consume(parser);
+
+        while (is_match(parser, TOKEN_RPAREN))
+        {
+            consume(parser);
+        }
+
         diagnostic_error_at(parser->dm, extra_paren,
                 "extraneous ')' after condition, expected a statement");
     }
@@ -2015,16 +2035,14 @@ static Statement* parse_statement(Parser* parser, bool declaration_allowed)
             
             /* FALLTHROUGH */
 
-        default: 
+        default:
         {
-            if (is_typename_start(parser, current_token(parser)))
+            if (declaration_allowed 
+                    && is_typename_start(parser, current_token(parser)))
             {
                 // Note: declarations are not considered statements all of the
                 // time in C. e.g. they are not allowed after labels.
-                if (declaration_allowed)
-                {
-                    return parse_declaration_statement(parser);
-                }
+                return parse_declaration_statement(parser);
             }
 
             return parse_expression_statement(parser);
@@ -2223,7 +2241,10 @@ static void parse_initializer_after_declarator(Parser* parser,
 
 static void parse_knr_function_parameters(Parser* parser, Declaration* decl)
 {
-    
+    // while (is_typename_start(parser, current_token(parser)))
+    // {
+    //     Declaration* param_decl = parse_paramater_declaration(parser);
+    // }
 }
 
 static void parse_skip_function_body(Parser* parser)
@@ -2378,7 +2399,7 @@ static Declaration* parse_init_declarator_list(Parser* parser,
                 // and return NULL
                 diagnostic_error_at(parser->dm, current_token_location(parser),
                         "function definition is not allowed here");
-                recover(parser, TOKEN_SEMI, RECOVER_NONE);
+                parse_skip_function_body(parser);
                 return NULL;
             }
         }
@@ -2578,7 +2599,9 @@ static void parse_paramater_type_list(Parser* parser, Declarator* declarator)
 
 static void parse_function_declarator(Parser* parser, Declarator* declarator)
 {
-    if (is_typename_start(parser, next_token(parser)))
+    // Note the check for elipsis is explained by parse direct-declarator
+    if (is_typename_start(parser, next_token(parser))
+            || is_next_match(parser, TOKEN_ELIPSIS))
     {
         parse_paramater_type_list(parser, declarator);
     }
@@ -2701,8 +2724,13 @@ static void parse_direct_declarator(Parser* parser, Declarator* declarator)
         //
         // Also this one below should be parsed as a function type
         // 3. void()
+        //
+        // Note: the check for an elipsis match is there to improve diagnostics
+        // since that construct is valid in C23, and it would be nice to handle
+        // the parsing a bit better.
         if (!identifier_needed && (is_typename_start(parser, next_token(parser))
-                || is_next_match(parser, TOKEN_RPAREN)))
+                || is_next_match(parser, TOKEN_RPAREN)
+                || is_next_match(parser, TOKEN_ELIPSIS)))
         {
             // Here like the case below we also want to set the identifier.
             // e.g. in the below

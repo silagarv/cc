@@ -637,6 +637,13 @@ bool qualified_type_is_scaler(const QualifiedType* type)
     return false;
 }
 
+bool qualified_type_is_pointer(const QualifiedType* type)
+{
+    QualifiedType real_type = qualified_type_get_canonical(type);
+
+    return qualified_type_is(&real_type, TYPE_POINTER);
+}
+
 bool qualified_type_is_compound(const QualifiedType* type)
 {
     QualifiedType real_type = qualified_type_get_canonical(type);
@@ -681,37 +688,23 @@ bool type_is_builtin(const Type* t1)
 
 bool type_is_equal(const Type* t1, const Type* t2)
 {
-    // If different types then obviously not equal
-    if (t1->type_base.type != t2->type_base.type)
-    {
-        return false;
-    }
-
-    // If they are both the same builtin type then they are equal
-    if (type_is_builtin(t1))
-    {
-        return true;
-    }
-
-    // Otherwise for the non-builtin types, we need to check they refer to the
-    // same thing.
-    switch (t1->type_base.type)
-    {
-        default:
-            break;
-    }
-
+    panic("DO NOT USE");
     return false;
 }
 
-bool qualified_type_is_compatible(const QualifiedType* t1,
-        const QualifiedType* t2)
+bool qualified_type_is_equal(const QualifiedType* t1, const QualifiedType* t2)
+{
+    return qualified_type_is_compatible(t1, t2);
+}
+
+static bool qualified_type_is_compatible_internal(const QualifiedType* t1,
+        const QualifiedType* t2, bool quals)
 {
     QualifiedType real_t1 = qualified_type_get_canonical(t1);
     QualifiedType real_t2 = qualified_type_get_canonical(t2);
 
     // If the qualifiers aren't compatible then the types arent
-    if (real_t1.qualifiers != real_t2.qualifiers)
+    if (quals && real_t1.qualifiers != real_t2.qualifiers)
     {
         return false;
     }
@@ -802,8 +795,8 @@ bool qualified_type_is_compatible(const QualifiedType* t1,
             }
             
             // Check return types are compatible
-            if (!qualified_type_is_compatible(&f_t1.return_type,
-                    &f_t2.return_type))
+            if (!qualified_type_is_compatible_internal(&f_t1.return_type,
+                    &f_t2.return_type, quals))
             {
                 return false;
             }
@@ -813,7 +806,8 @@ bool qualified_type_is_compatible(const QualifiedType* t1,
 
             while (p1 != NULL)
             {
-                if (!qualified_type_is_compatible(&p1->type, &p2->type))
+                if (!qualified_type_is_compatible_internal(&p1->type, &p2->type,
+                        quals))
                 {
                     return false;
                 }
@@ -830,7 +824,7 @@ bool qualified_type_is_compatible(const QualifiedType* t1,
             QualifiedType p_t1 = real_t1.type->type_pointer.underlying_type;
             QualifiedType p_t2 = real_t2.type->type_pointer.underlying_type;
 
-            return qualified_type_is_compatible(&p_t1, &p_t2);
+            return qualified_type_is_compatible_internal(&p_t1, &p_t2, quals);
         }
 
         case TYPE_TYPEDEF:
@@ -842,6 +836,18 @@ bool qualified_type_is_compatible(const QualifiedType* t1,
     }
 
     return true;
+}
+
+bool qualified_type_is_compatible(const QualifiedType* t1,
+        const QualifiedType* t2)
+{
+    return qualified_type_is_compatible_internal(t1, t2, true);
+}
+
+bool qualified_type_is_compatible_no_quals(const QualifiedType* t1,
+        const QualifiedType* t2)
+{
+    return qualified_type_is_compatible_internal(t1, t2, false);
 }
 
 bool qualified_type_builtin_equal(const QualifiedType* t1,
@@ -856,6 +862,10 @@ bool qualified_type_is_complete(const QualifiedType* qual_type)
     
     switch (qualified_type_get_kind(&real_type))
     {
+        case TYPE_TYPEDEF:
+            panic("UNREACHABLE");
+            return false;
+
         case TYPE_ENUM:
             return type_enum_is_complete(&real_type);
 
@@ -908,6 +918,14 @@ void type_print(const QualifiedType* t1)
             printf("void ");
             break;
 
+        case TYPE_S_LONG:
+            printf("long ");
+            break;
+
+        case TYPE_U_LONG:
+            printf("unsigned long ");
+            break;
+
         case TYPE_S_INT:
             printf("int ");
             break;
@@ -926,6 +944,14 @@ void type_print(const QualifiedType* t1)
 
         case TYPE_CHAR:
             printf("char");
+            break;
+
+        case TYPE_FLOAT:
+            printf("float ");
+            break;
+
+        case TYPE_DOUBLE:
+            printf("double ");
             break;
 
         case TYPE_ENUM:

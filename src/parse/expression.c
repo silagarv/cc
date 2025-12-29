@@ -147,6 +147,16 @@ ExpressionType expression_get_kind(const Expression* expr)
     return expr->base.kind;        
 }
 
+bool expression_is_valid(const Expression* expr)
+{
+    if (expr == NULL)
+    {
+        return false;
+    }
+
+    return !expr->base.poisoned;
+}
+
 bool expression_is_invalid(const Expression* expr)
 {
     if (expr == NULL)
@@ -258,6 +268,20 @@ Expression* expression_ignore_parenthesis(Expression* expr)
     return expression_parenthesised_get_inner(expr);
 }
 
+Expression* expression_create_enum_constant(AstAllocator* allocator,
+        Identifier* identifier, Location location,
+        union Declaration* declaration, QualifiedType expr_type)
+{
+    Expression* expr = expression_create_base(allocator,
+            sizeof(ExpressionReference), EXPRESSION_ENUMERATION_CONSTANT,
+            expr_type);
+    expr->reference.identifier = identifier;
+    expr->reference.identifier_loc = location;
+    expr->reference.declaration = declaration;
+
+    return expr;
+}
+
 Expression* expression_create_reference(AstAllocator* allocator,
         Identifier* identifier, Location location,
         union Declaration* declaration, QualifiedType expr_type)
@@ -310,6 +334,11 @@ Expression* expression_create_integer(AstAllocator* allocator,
     expr->integer.num_location = location;
 
     return expr;
+}
+
+IntegerValue expression_integer_get_value(const Expression* expression)
+{
+    return expression->integer.value;
 }
 
 Expression* expression_create_float(AstAllocator* allocator, Location location,
@@ -448,5 +477,17 @@ Expression* expression_create_implicit_cast(AstAllocator* allocator,
     expr->cast.rhs = expression;
     expr->cast.implicit = true;
 
+    if (expression_is_invalid(expression))
+    {
+        expr->base.poisoned = true;
+    }
+
     return expr;
+}
+
+Expression* expression_cast_get_inner(const Expression* expression)
+{
+    assert(expression_is(expression, EXPRESSION_CAST));
+
+    return expression->cast.rhs;
 }

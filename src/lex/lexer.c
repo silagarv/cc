@@ -115,19 +115,20 @@ static char get_char_and_size_raw(const char* curr_ptr, const char* end_ptr,
 static char get_char_and_size_raw(const char* curr_ptr, const char* end_ptr,
         size_t* peek)
 {
-    const char current = curr_ptr[*peek];
+    char current = curr_ptr[*peek];
 
     if (is_simple_char(current))
     {
         *peek += 1;
+
         return current;
     }
     
     return get_char_and_size_slow_raw(curr_ptr, end_ptr, peek, current);
 }
 
-static char get_char_and_size_slow_raw(const char* curr_ptr, const char* end_ptr, 
-        size_t* peek, char curr)
+static char get_char_and_size_slow_raw(const char* curr_ptr,
+        const char* end_ptr, size_t* peek, char curr)
 {
     assert(!is_simple_char(curr));
 
@@ -221,7 +222,7 @@ static char get_curr_char(Lexer* lexer)
 static char get_next_char(Lexer* lexer)
 {
     size_t len = 0;
-    const char current = get_char_and_size(lexer, &len);
+    char current = get_char_and_size(lexer, &len);
     seek(lexer, len);
     return current;
 }
@@ -250,16 +251,19 @@ static bool at_eof(Lexer* lexer)
 }
 
 // Get the current position
-static Location get_curr_location(Lexer* lexer)
+static Location get_location_from(const Lexer* lexer, const char* position)
 {
-    const Location offset = lexer->current_ptr - lexer->buffer_start;
-    return (lexer->start_loc + offset);
+    return lexer->start_loc + position - lexer->buffer_start;
 }
 
-static Location get_ending_location(Lexer* lexer)
+static Location get_curr_location(const Lexer* lexer)
 {
-    const Location offset = lexer->current_ptr - lexer->buffer_start;
-    return (lexer->start_loc + offset - 1);
+    return get_location_from(lexer, lexer->current_ptr);
+}
+
+static Location get_ending_location(const Lexer* lexer)
+{
+    return get_location_from(lexer, lexer->current_ptr) - 1;
 }
 
 static void reset_token(Token* token)
@@ -511,6 +515,12 @@ static bool lex_identifier(Lexer* lexer, Token* token, char* start)
         // then we can continue
         if (current == '\\')
         {
+            char peek = peek_char(lexer);
+            if (peek != 'u' && peek != 'U')
+            {
+                break;                
+            }
+
             utf32 value;
             if (!try_lex_ucn(lexer, token, &identifier, &value))
             {
@@ -1240,10 +1250,9 @@ retry_lexing:;
 
         case '\\': // TODO: ucn starting an identifier
             curr = get_curr_char(lexer);
-
             if (curr == 'u')
             {
-                panic("currently an identifier cannot start a ucn");
+                panic("currently a ucn cannot start an identifier");
             }
 
             // RESET TO '\\' FOR NOW ONLY TO CREATE AN UNKNOWN TOKEN TYPE

@@ -37,7 +37,7 @@ Target target_create_x86_64_linux(void)
         true,
 
         // Byte order
-        TARGET_BYTE_ORDER_LITTLE_ENDIAN
+        TBO_LITTLE_ENDIAN
     };
 
     return target;

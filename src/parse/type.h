@@ -307,12 +307,15 @@ bool qualified_type_is_signed(const QualifiedType* type);
 bool qualified_type_is_unsigned(const QualifiedType* type);
 bool qualified_type_is_arithmetic(const QualifiedType* type);
 bool qualified_type_is_scaler(const QualifiedType* type);
+bool qualified_type_is_pointer(const QualifiedType* type);
 
 bool qualified_type_is_compound(const QualifiedType* type);
 QualifiedType type_get_canonical(const Type* type);
 QualifiedType qualified_type_get_canonical(const QualifiedType* type);
 
 bool qualified_type_is_compatible(const QualifiedType* t1,
+        const QualifiedType* t2);
+bool qualified_type_is_compatible_no_quals(const QualifiedType* t1,
         const QualifiedType* t2);
 
 bool qualified_type_builtin_equal(const QualifiedType* t1,

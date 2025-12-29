@@ -176,9 +176,11 @@ bool declarator_identifier_allowed(const Declarator* declarator)
         case DECL_CTX_FILE:
         case DECL_CTX_STRUCT:
             return true;
-    }
 
-    panic("bad declarator context");
+        default:
+            panic("bad declarator context");
+            return false;
+    }
 }
 
 bool declarator_identifier_required(const Declarator* declarator)
@@ -193,9 +195,11 @@ bool declarator_identifier_required(const Declarator* declarator)
         case DECL_CTX_FILE:
         case DECL_CTX_STRUCT:
             return true;
-    }
 
-    panic("bad declarator context");
+        default:
+            panic("bad declarator context");
+            return false;
+    }
 }
 
 bool declarator_is_func_defn(const Declarator* declarator)

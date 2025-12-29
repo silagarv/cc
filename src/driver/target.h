@@ -7,8 +7,8 @@
 #include <string.h>
 
 typedef enum TargetByteOrder {
-    TARGET_BYTE_ORDER_LITTLE_ENDIAN,
-    TARGET_BYTE_ORDER_BIG_ENDIAN
+    TBO_LITTLE_ENDIAN,
+    TBO_BIG_ENDIAN
 } TargetByteOrder;
 
 // A strucut to hold information about the target we would like to build for

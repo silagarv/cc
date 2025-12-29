@@ -15,7 +15,8 @@ CFLAGS += -Wno-unused-parameter \
 	-Wno-unused-but-set-variable \
 	-Wno-switch \
 	-Wshadow \
-	-Wvla
+	-Wvla \
+	-ferror-limit=0
 
 LFLAGS = -lm
 
