@@ -522,14 +522,18 @@ Declaration* declaration_create_error(AstAllocator* allocator,
 
 Declaration* declaration_create_variable(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type, 
-        StorageSpecifier storage, DeclarationLinkage linkage)
+        StorageSpecifier storage, DeclarationLinkage linkage,
+        bool maybe_tentative)
 {
     Declaration* decl = declaration_create_base(allocator,
             sizeof(DeclarationVariable), DECLARATION_VARIABLE, location, 
             identifier, type, storage, FUNCTION_SPECIFIER_NONE, false);
     decl->variable.linkage = linkage;
     decl->variable.initializer = NULL;
-    decl->variable.tentative = false;
+    decl->variable.all_decls = declaration_list_create(allocator);
+    decl->variable.definition = NULL;
+    decl->variable.tentative = maybe_tentative;
+    decl->variable.has_definition = false;
 
     return decl;
 }
@@ -553,6 +557,30 @@ bool declaration_variable_has_linkage(const Declaration* declaration)
     return declaration->variable.linkage != DECLARATION_LINKAGE_NONE;
 }
 
+bool declaration_variable_is_tentative(const Declaration* declaration)
+{
+    return declaration->variable.tentative;
+}
+
+void declaration_variable_set_definition(Declaration* decl, Declaration* defn)
+{
+    assert(declaration_is(decl, DECLARATION_VARIABLE));
+    assert(declaration_is(defn, DECLARATION_VARIABLE));
+    assert(!declaration_variable_has_definition(decl));
+
+    decl->variable.definition = defn;
+}
+
+bool declaration_variable_has_definition(const Declaration* declaration)
+{
+    return declaration->variable.definition != NULL;
+}
+
+Declaration* declaration_variable_get_definition(const Declaration* decl)
+{
+    return decl->variable.definition;
+}
+
 bool declaration_variable_is_extern(const Declaration* declaration)
 {
     return declaration->variable.linkage == DECLARATION_LINKAGE_EXTERNAL;
@@ -569,7 +597,7 @@ void declaration_variable_add_decl(Declaration* prev, Declaration* new_var)
     assert(declaration_is(prev, DECLARATION_VARIABLE));
     assert(declaration_is(new_var, DECLARATION_VARIABLE));
 
-    
+    declaration_list_push(&prev->variable.all_decls, new_var);
 }
 
 Declaration* declaration_create_typedef(AstAllocator* allocator,

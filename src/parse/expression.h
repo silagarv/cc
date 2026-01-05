@@ -270,6 +270,8 @@ union Expression {
     ExpressionError error;
 };
 
+bool expression_type_is_assignment(ExpressionType type);
+
 bool expression_is(const Expression* expr, ExpressionType type);
 Location expression_get_location(const Expression* expr);
 
@@ -340,6 +342,10 @@ Expression* expression_create_cast(AstAllocator* allocator, Location lparen_loc,
 Expression* expression_create_implicit_cast(AstAllocator* allocator,
         QualifiedType cast_to, Expression* expression);
 Expression* expression_cast_get_inner(const Expression* expression);
+
+Expression* expression_create_conditional(AstAllocator* allocator,
+        Expression* condition, Location question, Expression* true_expr,
+        Location colon, Expression* false_expr, QualifiedType type);
 
 // TODO: somehow we will need to be able to fold expressions...
 // TODO: so we will need to set up some stuff here to do that. This will also

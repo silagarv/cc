@@ -25,19 +25,15 @@ To building, run 'make' in the cc directory and it wll output an executable name
     - complete the building of the function types (knr type left only)
     - complete struct / union building including sizeof and offsets...
 
-- Scoping
-    - fix redefinitions of externel entities
-
 - Semantic
     - expressions
-    - declarations
-    - initializers
+        - make the final few expression types
+        - fix constant expressions
+        - fold constant expressions
+    - initializers 
+        - clean up the code for variable initializations to make it alot more clean so that it can easily be seen what is happening where.
+        - also make the calculation of what is tentative and what is not tentative more clear so that we can do the above better
     - Finish proper switch statement building
-
-- AST
-    - create expressions for all expression types
-    - initializer building
-    - ast printing (later)
 
 ## Later TODO
 - Command-line driver

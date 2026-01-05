@@ -96,12 +96,12 @@ void semantic_checker_handle_function_end(SemanticChecker* sc,
 void semantic_checker_add_function_parameters(SemanticChecker* sc,
         Declaration* declaration);
 
-bool semantic_checker_check_initializer_allowed(SemanticChecker* sc,
-        Declaration* declaration, DeclaratorContext context);
 void semantic_checker_declaration_add_initializer(SemanticChecker* sc,
-        Declaration* declaration, Location equals, Initializer* initializer);
+        Declaration* declaration, DeclaratorContext context, Location equals,
+        Initializer* initializer);
 void semantic_checker_declaration_finish(SemanticChecker* sc,
         Declaration* declaration);
+void semantic_checker_check_externals(SemanticChecker* sc);
 
 void semantic_checker_finish_struct_declaration(SemanticChecker* sc,
         Declaration* struct_declaration);
@@ -154,6 +154,9 @@ Expression* semantic_checker_handle_increment_expression(SemanticChecker* sc,
         ExpressionType type, Expression* expression, Location operator_loc);
 Expression* semantic_checker_handle_unary_expression(SemanticChecker* sc,
         ExpressionType type, Location operator_loc, Expression* rhs);
+Expression* semantic_checker_handle_compound_literal(SemanticChecker* sc,
+        Location lparen_loc, QualifiedType type, Location rparen_loc,
+        Initializer* initializer);
 Expression* semantic_checker_handle_address_expression(SemanticChecker* sc,
         Expression* rhs, Location and_location);
 Expression* semantic_checker_handle_dereference_expression(SemanticChecker* sc,
@@ -172,6 +175,10 @@ Expression* semantic_checker_handle_arithmetic_expression(SemanticChecker* sc,
         ExpressionType type, Expression* lhs, Location operator_loc,
         Expression* rhs);
 
+Expression* semantic_checker_handle_conditional_expression(SemanticChecker* sc,
+        Expression* condition, Location question, Expression* true_expr,
+        Location colon, Expression* false_expr);
+
 Expression* semantic_checker_handle_assignment_expression(SemanticChecker* sc,
         ExpressionType type, Expression* lhs, Location operator_loc,
         Expression* rhs);
@@ -179,9 +186,16 @@ Expression* semantic_checker_handle_assignment_expression(SemanticChecker* sc,
 Expression* semantic_checker_handle_comma_expression(SemanticChecker* sc,
         Expression* lhs, Location comma_location, Expression* rhs);
 
+Expression* semantic_checker_expression_finalize(SemanticChecker* sc,
+        Expression* expression);
+
 // Semantic checking functions for all of the statement types that we will exist
 // in C. These are for the most part very simple functions which do a few basic
 // checks but will just create a nice statement for us...
+
+Expression* semantic_checker_check_condition(SemanticChecker* sc,
+        Location kw_location, Expression* expression, bool is_switch,
+        const char* context);
 
 Statement* semantic_checker_handle_compound_statement(SemanticChecker* sc,
         Location lcurly, Statement* first, Location rcurly);

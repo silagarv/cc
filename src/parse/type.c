@@ -121,6 +121,11 @@ bool type_qualifier_already_has(TypeQualifiers qualifiers, TypeQualifiers has)
     return (qualifiers & has) != 0;
 }
 
+TypeQualifiers type_qualifier_combine(TypeQualifiers this, TypeQualifiers that)
+{
+    return this | that;
+}
+
 static Type* type_create_builtin(AstAllocator* allocator, TypeKind kind,
         size_t size, size_t align, bool complete)
 {
@@ -272,6 +277,12 @@ TypeQualifiers qualified_type_get_quals(const QualifiedType* type)
 QualifiedType qualified_type_remove_quals(const QualifiedType* type)
 {
     return (QualifiedType) {QUALIFIER_NONE, type->type};
+}
+
+QualifiedType qualified_type_add_quals(const QualifiedType* type,
+        TypeQualifiers quals)
+{
+    return (QualifiedType) {type->qualifiers | quals, type->type};
 }
 
 QualifiedType type_create_function(AstAllocator* allocator,
@@ -475,6 +486,7 @@ bool qualified_type_is(const QualifiedType* type, TypeKind kind)
     return type->type->type_base.type == kind;
 }
 
+
 size_t qualified_type_get_size(const QualifiedType* type)
 {
     return type->type->type_base.type_size;
@@ -486,10 +498,14 @@ bool qualified_type_is_integer(const QualifiedType* type)
     {
         return false;
     }
-
+    
+    // Get the canonical type to ignore typedefs
     QualifiedType real_type = qualified_type_get_canonical(type);
+    real_type = qualified_type_get_canonical(&real_type);
+    assert(real_type.type);
+    assert(qualified_type_get_kind(&real_type) != TYPE_TYPEDEF);
     switch (qualified_type_get_kind(&real_type))
-    {
+    {        
         case TYPE_BOOL: // TODO: is this correct
         case TYPE_CHAR:
         case TYPE_S_CHAR:
@@ -505,10 +521,10 @@ bool qualified_type_is_integer(const QualifiedType* type)
             return true;
 
         // From clang we only allow complete enum declarations to be considered
-        // pointers.
+        // as integers.
         case TYPE_ENUM:
         {
-            Declaration* enum_decl = type->type->type_enum.enum_decl;
+            const Declaration* enum_decl = real_type.type->type_enum.enum_decl;
             return declaration_enum_has_entries(enum_decl);
         }
 
@@ -891,12 +907,6 @@ bool qualifier_type_is_object_type(const QualifiedType* type)
 
 void type_print(const QualifiedType* t1)
 {
-    if (t1->type == NULL)
-    {
-        printf("<invalid-type>");
-        return;
-    }
-
     if (t1->qualifiers & QUALIFIER_CONST)
     {
         printf("const ");
@@ -910,6 +920,12 @@ void type_print(const QualifiedType* t1)
     if (t1->qualifiers & QUALIFIER_RESTRICT)
     {
         printf("restrict ");
+    }
+
+    if (t1->type == NULL)
+    {
+        printf("<invalid-type>");
+        return;
     }
 
     switch (t1->type->type_base.type)
@@ -955,8 +971,9 @@ void type_print(const QualifiedType* t1)
             break;
 
         case TYPE_ENUM:
-            printf("enum %s",
-                    t1->type->type_enum.enum_decl->base.identifier->string.ptr);
+            printf("enum %s (entries %d)",
+                    t1->type->type_enum.enum_decl->base.identifier->string.ptr,
+                    declaration_enum_has_entries(t1->type->type_enum.enum_decl));
             break;
 
         case TYPE_POINTER:

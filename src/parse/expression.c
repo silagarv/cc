@@ -11,6 +11,28 @@
 #include "parse/declaration.h"
 #include "parse/type.h"
 
+bool expression_type_is_assignment(ExpressionType type)
+{
+    switch (type)
+    {
+        case EXPRESSION_BINARY_ASSIGN:
+        case EXPRESSION_BINARY_TIMES_ASSIGN:
+        case EXPRESSION_BINARY_DIVIDE_ASSIGN:
+        case EXPRESSION_BINARY_MODULO_ASSIGN:
+        case EXPRESSION_BINARY_ADD_ASSIGN:
+        case EXPRESSION_BINARY_SUBTRACT_ASSIGN:
+        case EXPRESSION_BINARY_SHIFT_LEFT_ASSIGN:
+        case EXPRESSION_BINARY_SHIFT_RIGHT_ASSIGN:
+        case EXPRESSION_BINARY_AND_ASSIGN:
+        case EXPRESSION_BINARY_XOR_ASSIGN:
+        case EXPRESSION_BINARY_OR_ASSIGN:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
 bool expression_is(const Expression* expr, ExpressionType type)
 {
     if (expr == NULL)
@@ -490,4 +512,19 @@ Expression* expression_cast_get_inner(const Expression* expression)
     assert(expression_is(expression, EXPRESSION_CAST));
 
     return expression->cast.rhs;
+}
+
+Expression* expression_create_conditional(AstAllocator* allocator,
+        Expression* condition, Location question, Expression* true_expr,
+        Location colon, Expression* false_expr, QualifiedType type)
+{
+    Expression* expr = expression_create_base(allocator,
+            sizeof(ExpressionConditional), EXPRESSION_CONDITIONAL, type);
+    expr->conditional.question = question;
+    expr->conditional.colon = colon;
+    expr->conditional.condition = condition;
+    expr->conditional.true_part = true_expr;
+    expr->conditional.false_part = false_expr;
+
+    return expr;
 }

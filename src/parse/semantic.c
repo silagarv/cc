@@ -1275,7 +1275,7 @@ Declaration* semantic_checker_process_function_param(SemanticChecker* sc,
     Identifier* identifier = declarator_get_identifier(declarator);
     Declaration* declaration =  declaration_create_variable(
             &sc->ast->ast_allocator, declarator->identifier_location,
-            identifier, type, storage, DECLARATION_LINKAGE_NONE);
+            identifier, type, storage, DECLARATION_LINKAGE_NONE, false);
 
     // Check for previous declaration of function parameter.
     Declaration* previous = semantic_checker_lookup_previous(sc, identifier,
@@ -1499,7 +1499,7 @@ Declaration* semantic_checker_process_function_declaration(SemanticChecker* sc,
 static void semantic_checker_check_variable_redeclaration(SemanticChecker* sc,
         Declaration* variable, Declaration* old_decl)
 {
-    // Give up if we're already invalid
+    // Give up if this declaration is already invalid
     if (!declaration_is_valid(variable))
     {
         return;
@@ -1650,10 +1650,41 @@ static void semantic_checker_chain_variable_declaration(SemanticChecker* sc,
     assert(declaration_variable_has_linkage(variable));
     assert(declaration_variable_has_linkage(previous));
     
-    // declaration_variable_add_decl(previous, variable);
+    // Note: that we will also have to do work with the fact that the variable
+    // might be tentative and whatnot.
 
-    // Note: that we will also have to do some calculations for it the variable
-    // is tentative or not.
+    declaration_variable_add_decl(previous, variable);
+}
+
+static DeclarationLinkage calculate_variable_linkage(StorageSpecifier storage,
+        DeclaratorContext context)
+{
+    // Ignoring any errors with auto or register file scoped variables have
+    // external linkage automatically. So <none>, and 'extern' will have 
+    // external linkage. Whereas static will have interal linkage.
+    // Block context is different. Here if the storage is none, register, or
+    // auto then linkage stays as none. static is a special case here where,
+    // it does not affect the linage if it is at block scope. Otherwise, if
+    //  it is extern, only then does it have external linkage.
+
+    if (storage == STORAGE_EXTERN)
+    {
+        return DECLARATION_LINKAGE_EXTERNAL;
+    }
+
+    if (context == DECL_CTX_FILE)
+    {
+        if (storage == STORAGE_STATIC)
+        {
+            return DECLARATION_LINKAGE_INTERNAL;
+        }
+        else
+        {
+            return DECLARATION_LINKAGE_EXTERNAL;
+        }
+    }
+
+    return DECLARATION_LINKAGE_NONE;
 }
 
 Declaration* semantic_checker_process_variable(SemanticChecker* sc,
@@ -1689,33 +1720,19 @@ Declaration* semantic_checker_process_variable(SemanticChecker* sc,
     semantic_checker_diagnose_inline(sc, spec);
 
     // Now determine the type of linkage that this variable has.
-    // Ignoring any errors with auto or register file scoped variables have
-    // external linkage automatically. So <none>, and 'extern' will have 
-    // external linkage. Whereas static will have interal linkage.
-    // Block context is different. Here if the storage is none, register, or
-    // auto then linkage stays as none. static is a special case here where,
-    // it does not affect the linage if it is at block scope. Otherwise, if
-    //  it is extern, only then does it have external linkage.
-    DeclarationLinkage linkage = DECLARATION_LINKAGE_NONE;
-    if (storage == STORAGE_EXTERN)
-    {
-        linkage = DECLARATION_LINKAGE_EXTERNAL;
-    }
-    else if (ctx == DECL_CTX_FILE)
-    {
-        if (storage == STORAGE_STATIC)
-        {
-            linkage = DECLARATION_LINKAGE_INTERNAL;
-        }
-        else
-        {
-            linkage = DECLARATION_LINKAGE_EXTERNAL;
-        }
-    }
+    DeclarationLinkage linkage = calculate_variable_linkage(storage, ctx);
+
+    // Now we need to determine if the definition might be tentative...
+    bool maybe_tentative = (linkage != DECLARATION_LINKAGE_NONE)
+            && (storage != STORAGE_EXTERN)
+            && !declarator_has_initializer(declarator);
+    assert(maybe_tentative
+            ? (storage == STORAGE_NONE || storage == STORAGE_STATIC)
+            : true);
 
     // Create the new deckaration that we use.
     Declaration* new_var = declaration_create_variable(&sc->ast->ast_allocator,
-            identifer_loc, identifier, type, storage, linkage);
+            identifer_loc, identifier, type, storage, linkage, maybe_tentative);
     
     // Set invalid if needed. example of why this is after checking
     // redeclaration ```register int foo;``` (at file scope). We still want to
@@ -1726,7 +1743,7 @@ Declaration* semantic_checker_process_variable(SemanticChecker* sc,
     }
 
     // Lookup the previous declaration to see if we need to chain them or not
-    bool has_linkage = linkage != DECLARATION_LINKAGE_NONE;
+    bool has_linkage = (linkage != DECLARATION_LINKAGE_NONE);
     bool this_scope = false;
     Declaration* previous = semantic_checker_lookup_previous(sc, identifier,
             has_linkage, &this_scope);
@@ -1819,8 +1836,7 @@ Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
     StorageSpecifier storage = declaration_specifiers_storage(spec);
 
     // Only process this as a typedef if it is not a function definition
-    if (storage == STORAGE_TYPEDEF
-            && !declarator_is_func_defn(declarator))
+    if (storage == STORAGE_TYPEDEF && !declarator_is_func_defn(declarator))
     {
         return semantic_checker_process_typedef(sc, declarator, type);        
     }
@@ -2053,7 +2069,7 @@ void semantic_checker_handle_function_end(SemanticChecker* sc,
     declaration_function_set_definition(previous, function);
 }
 
-bool semantic_checker_check_initializer_allowed(SemanticChecker* sc,
+static bool semantic_checker_check_initializer_allowed(SemanticChecker* sc,
         Declaration* declaration, DeclaratorContext context)
 {
     // First we must check that the declaration is allowed to have an 
@@ -2079,16 +2095,72 @@ bool semantic_checker_check_initializer_allowed(SemanticChecker* sc,
         return false;
     }
 
+    // QualifiedType type = declaration_get_type(declaration);
+    // if (!qualified_type_is_complete(&type))
+    // {
+    //     diagnostic_error_at(sc->dm, declaration_get_location(declaration),
+    //             "variable '%s' has incomplete type",
+    //             declaration_get_identifier(declaration)->string.ptr);
+    //     declaration_set_invalid(declaration);
+    //     return false;
+    // }
+
     return true;
 }
 
 void semantic_checker_declaration_add_initializer(SemanticChecker* sc,
-        Declaration* declaration, Location equals, Initializer* initializer)
+        Declaration* declaration, DeclaratorContext context, Location equals,
+        Initializer* initializer)
 {
-    // Otherwise add the initializer to the declaration
-    if (declaration_is_valid(declaration))
+    // If we find out an initializer isnt allowed bail so we don't produce any
+    // more errors.
+    if (!semantic_checker_check_initializer_allowed(sc, declaration, context))
     {
-        declaration_variable_add_initializer(declaration, initializer);
+        return;
+    }
+
+    assert(declaration_is(declaration, DECLARATION_VARIABLE));
+    assert(!declaration_variable_is_tentative(declaration));
+
+    // Leave this alone if the declaration is not valid...
+    if (!declaration_is_valid(declaration))
+    {
+        return;
+    }
+
+    // Otherwise add the initializer to the declaration
+    declaration_variable_add_initializer(declaration, initializer);
+
+    // NOTE: all of the below is handling and checking 
+
+    // We now also need to do some checks for duplicate initializers if the 
+    // variable was an external definition
+    if (!declaration_variable_has_linkage(declaration))
+    {
+        return;
+    }
+
+    // Lookup the entry for the declaration
+    Identifier* name = declaration_get_identifier(declaration);
+    Declaration* master = semantic_checker_lookup_external(sc, name);
+
+    // If we do not have a definition at all we can safely be done.
+    if (!declaration_variable_has_definition(master))
+    {
+        declaration_variable_set_definition(master, declaration);
+
+        // Finally, warn in the case the we have an 'extern' variable.
+        if (declaration_get_storage_class(declaration) == STORAGE_EXTERN)
+        {
+            diagnostic_warning_at(sc->dm, declaration_get_location(declaration),
+                    "'extern' variable has initializer");
+        }
+    }
+    else
+    {
+         // Issue a redefinition error.
+        diagnostic_error_at(sc->dm, declaration_get_location(declaration),
+                "redefinition of '%s'", name->string.ptr);
     }
 }
 
@@ -2101,25 +2173,109 @@ void semantic_checker_declaration_finish(SemanticChecker* sc,
         return;
     }
 
-    switch (declaration_get_kind(declaration))
+    // Nothing extra to do for variables.
+    if (declaration_get_kind(declaration) != DECLARATION_VARIABLE)
     {
-        case DECLARATION_VARIABLE:
+        return;
+    }
+
+    QualifiedType type = declaration_get_type(declaration);
+    DeclarationLinkage linkage = declaration_variable_get_linkage(declaration);
+    if (linkage == DECLARATION_LINKAGE_NONE)
+    {
+        if (!qualified_type_is_complete(&type))
         {
-            QualifiedType type = declaration_get_type(declaration);
-            if (!qualified_type_is_complete(&type))
-            {
-                diagnostic_error_at(sc->dm,
-                        declaration_get_location(declaration),
-                        "variable '%s' has incomplete type",
-                        declaration_get_identifier(declaration)->string.ptr);
-                declaration_set_invalid(declaration);
-            }
-            break;
+            diagnostic_error_at(sc->dm, declaration_get_location(declaration),
+                    "variable '%s' has incomplete type",
+                    declaration_get_identifier(declaration)->string.ptr);
+            declaration_set_invalid(declaration);
         }
-            
-        // Do nothing for the others but make it easier to add stuff later...
-        default:
-            break;
+    }
+    else if (declaration_variable_is_tentative(declaration))
+    {   
+        // Get the real type and the linkage.
+        QualifiedType real_type = qualified_type_get_canonical(&type);
+        if (qualified_type_is(&real_type, TYPE_VOID))
+        {
+            diagnostic_error_at(sc->dm, declaration_get_location(declaration),
+                    "variable '%s' has incomplete type",
+                    declaration_get_identifier(declaration)->string.ptr);
+            declaration_set_invalid(declaration);
+        }
+        else if (linkage == DECLARATION_LINKAGE_INTERNAL
+                && !qualified_type_is_complete(&real_type))
+        {
+            diagnostic_warning_at(sc->dm, declaration_get_location(declaration),
+                    "tentative definition of variable '%s' with internal "
+                    "linkage has incomplete non-array type",
+                    declaration_get_identifier(declaration)->string.ptr);
+        }
+    }
+}
+
+static void semantic_checker_finish_external(SemanticChecker* sc,
+        Declaration* declaration)
+{    
+    // Skip any functions declarations as these shouldn't need any extra work
+    // put into them to have them complete.
+    if (declaration_is(declaration, DECLARATION_FUNCTION))
+    {
+        return;
+    }
+
+    assert(declaration_is(declaration, DECLARATION_VARIABLE));
+
+    // If the declaration isn't valid ignore it
+    if (!declaration_is_valid(declaration))
+    {
+        return;
+    }
+
+    // If we have a definition we are done, we would have already diagnosed any
+    // thing wrong with the declaration
+    if (declaration_variable_has_definition(declaration))
+    {
+        return;
+    }
+
+    // Also if the declaration is fully external (cannot be tentative) then we
+    // should skip it since the below is valid
+    //
+    // extern struct foo a;
+    // ^^^^^^ note that extern is required for it to be not tentative.
+    if (!declaration_variable_is_tentative(declaration))
+    {
+        return;
+    }
+
+    // If the type never gets complete then issue a warning for an incomplete
+    // definition. Note that declaration may already have a warning for this.
+    QualifiedType type = declaration_get_type(declaration);
+    if (!qualified_type_is_complete(&type))
+    {
+        diagnostic_error_at(sc->dm, declaration_get_location(declaration),
+                "tentative definition of '%s' has type that is never completed",
+                declaration_get_identifier(declaration)->string.ptr);
+        declaration_set_invalid(declaration);
+    }
+}
+
+void semantic_checker_check_externals(SemanticChecker* sc)
+{
+    DeclarationList decls = scope_get_declarations(sc->externals);
+    DeclarationListEntry* entry = declaration_list_iter(&decls);
+
+    // For each of our declarations go ahead and try to complete it without 
+    // error.
+    while (entry != NULL)
+    {
+        Declaration* decl = declaration_list_entry_get(entry);
+
+        // TODO: this will need some fixing to incorporate incomplete array 
+        // types but for now this should work okay enough.
+        semantic_checker_finish_external(sc, decl);
+
+        entry = declaration_list_next(entry);
     }
 }
 
@@ -2611,7 +2767,8 @@ static Expression* semantic_checker_decay_expression_type(SemanticChecker* sc,
             if (declaration_get_storage_class(ref) == STORAGE_REGISTER)
             {
                 diagnostic_error_at(sc->dm, expression_get_location(no_parens),
-                        "address of register variable requested");
+                        "address of register variable '%s' requested",
+                        declaration_get_identifier(ref)->string.ptr);
                 return semantic_checker_handle_error_expression(sc,
                         expression_get_location(expression));
             }
@@ -2674,6 +2831,52 @@ typedef enum ExpressionValueKind {
 static bool expression_value_kind_is_lvalue(ExpressionValueKind kind)
 {
     return kind == VALUE_KIND_LVALUE || kind == VALUE_KIND_MODIFIABLE_LVALUE;
+}
+
+static bool expression_value_kind_is_modifiable_lvalue(ExpressionValueKind kind)
+{
+    return kind == VALUE_KIND_MODIFIABLE_LVALUE;
+}
+
+// Note: this function will recursively check for const fields.
+static bool struct_has_const_field(const Declaration* declaration)
+{
+    // Struct only be in here for structs or unions!
+    assert(declaration_is(declaration, DECLARATION_STRUCT) 
+            || declaration_is(declaration, DECLARATION_UNION));
+
+    DeclarationList members = declaration_struct_get_members(declaration);
+    DeclarationListEntry* entry = declaration_list_iter(&members);
+    while (entry != NULL)
+    {
+        // Get the member of the struct, it's type and then check if it's quals
+        // have const in them.
+        Declaration* member = declaration_list_entry_get(entry);
+
+        QualifiedType type = declaration_get_type(member);
+        type = qualified_type_get_canonical(&type);
+
+        TypeQualifiers quals = qualified_type_get_quals(&type);
+        if (type_qualifier_is_const(quals))
+        {
+            return true;
+        }
+
+        // Now that we know that this member isn't const we should recursively
+        // check it's members if it is a struct.
+        if (qualified_type_is_compound(&type))
+        {
+            Declaration* decl = qualified_type_struct_get_declaration(&type);
+            if (struct_has_const_field(decl))
+            {
+                return true;
+            }
+        }
+
+        entry = declaration_list_next(entry);
+    }
+
+    return false;
 }
 
 static ExpressionValueKind expression_classify(SemanticChecker* sc,
@@ -2778,10 +2981,18 @@ static ExpressionValueKind expression_classify(SemanticChecker* sc,
         case EXPRESSION_MEMBER_ACCESS:
         {
             Expression* lhs = expression_member_access_get_lhs(expression);
-            
-            // TODO: is this correct? Or should I be classifying the expression
-            // TODO: and not the LHS
-            return expression_classify(sc, lhs);   
+            ExpressionValueKind lhs_kind = expression_classify(sc, lhs);
+
+            // If it's not an lvalue return whatever the lhs happened to be
+            // otherwise, we will need to classify what kind of lvalue the type
+            // is.
+            if (!expression_value_kind_is_lvalue(lhs_kind))
+            {
+                return lhs_kind;
+            }
+
+            kind = VALUE_KIND_LVALUE;
+            break;
         }
 
         case EXPRESSION_PARENTHESISED:
@@ -2812,27 +3023,50 @@ static ExpressionValueKind expression_classify(SemanticChecker* sc,
     // Should only try to check for modifiable lvalues if we have an lvalue
     assert(kind == VALUE_KIND_LVALUE);
 
-    // TODO: there is more to it than this but this will work for now...
-    if (!type_qualifier_is_const(expr_type.qualifiers))
+    // A modifiable lvalue is any lvalue expression of complete, non-array type 
+    // which is not const-qualified, and, if it's a struct/union, has no members
+    // that are const-qualified, recursively. 
+
+    if (!qualified_type_is_complete(&real_type))
     {
-        return VALUE_KIND_MODIFIABLE_LVALUE;
+        return VALUE_KIND_LVALUE;
     }
-    
-    // // TODO: check if expression is modifiable lvalue or not (below is wrong)
-    // if (kind == VALUE_KIND_LVALUE)
-    // {
-    //     return VALUE_KIND_MODIFIABLE_LVALUE;
-    // }
 
-    // Okay now we know we have an lvalue type, but we want to be able to know 
-    // if it is modifiable or not.
+    // Checking for array type
+    if (qualified_type_is(&real_type, TYPE_ARRAY))
+    {
+        return VALUE_KIND_LVALUE;
+    }
 
-    return kind;
+    // Checking that it is not const qualified
+    TypeQualifiers quals = qualified_type_get_quals(&real_type);
+    if (type_qualifier_is_const(quals))
+    {
+        return VALUE_KIND_LVALUE;
+    }
+
+    // If it's a struct or union we will need to recursively check if any of
+    // it's members are const qualified.
+    if (qualified_type_is_compound(&real_type))
+    {
+        // Get the declaration from the type
+        Declaration* decl = qualified_type_struct_get_declaration(&real_type);
+        if (struct_has_const_field(decl))
+        {
+            return VALUE_KIND_LVALUE;
+        }
+    }
+
+    return VALUE_KIND_MODIFIABLE_LVALUE;
 }
 
 static bool expression_is_modifiable_lvalue(const Expression* expression)
 {
     ExpressionValueKind kind = expression_classify(NULL, expression);
+    if (!expression_value_kind_is_lvalue(kind))
+    {
+        return false;
+    }
 
     // Get the real type
     QualifiedType type = expression_get_qualified_type(expression);
@@ -3503,6 +3737,13 @@ Expression* semantic_checker_handle_unary_expression(SemanticChecker* sc,
             rhs, return_type);
 }
 
+Expression* semantic_checker_handle_compound_literal(SemanticChecker* sc,
+        Location lparen_loc, QualifiedType type, Location rparen_loc,
+        Initializer* initializer)
+{
+    return semantic_checker_handle_error_expression(sc, lparen_loc);
+}
+
 // Enum to represent the different failure modes of the address expression.
 // This is to help provide more accurate messages when diagnosing issues.
 typedef enum AddressableKind {
@@ -3644,11 +3885,20 @@ Expression* semantic_checker_handle_dereference_expression(SemanticChecker* sc,
         diagnostic_error_at(sc->dm, star_location,
                 "indirection requires pointer operand");
         return semantic_checker_handle_error_expression(sc, star_location);
+    }   
+
+    // Get the type that is pointed too and check that it is complete. Note that
+    // gcc and clang both allow void pointers to be dereferenced to maybe
+    // implement this in the future?
+    QualifiedType pointee = type_pointer_get_pointee(&type);
+    if (!qualified_type_is_complete(&pointee))
+    {
+        diagnostic_error_at(sc->dm, star_location,
+                "incomplete type where a complete type is required");
+        return semantic_checker_handle_error_expression(sc, star_location);
     }
 
-    // Okay we have checked the only possible constraint. So all we need to do
-    // here is get the pointee type and create the expression.
-    QualifiedType pointee = type_pointer_get_pointee(&type);
+    // Finally create the expression    
     return expression_create_unary(&sc->ast->ast_allocator,
             EXPRESSION_UNARY_DEREFERENCE, star_location, rhs, pointee);
 }
@@ -3701,7 +3951,7 @@ Expression* semantic_checker_handle_cast_expression(SemanticChecker* sc,
 {
     if (expression_is_invalid(rhs))
     {
-        semantic_checker_handle_error_expression(sc, lparen_loc);
+        return semantic_checker_handle_error_expression(sc, lparen_loc);
     }
 
     // Both the named type and the right hand side should have scaler type
@@ -3721,7 +3971,7 @@ Expression* semantic_checker_handle_cast_expression(SemanticChecker* sc,
         //         "<type name>");
         diagnostic_error_at(sc->dm, lparen_loc,
                 "expected arithmetic or pointer type");
-        semantic_checker_handle_error_expression(sc, lparen_loc);
+        return semantic_checker_handle_error_expression(sc, lparen_loc);
     }
 
     // Then check if the expression given is scaler
@@ -3736,7 +3986,7 @@ Expression* semantic_checker_handle_cast_expression(SemanticChecker* sc,
         //         "arithmetic or pointer type is required", "<type name>");
         diagnostic_error_at(sc->dm, lparen_loc,
                 "expected arithmetic or pointer type");
-        semantic_checker_handle_error_expression(sc, lparen_loc);
+        return semantic_checker_handle_error_expression(sc, lparen_loc);
     }
 
     return expression_create_cast(&sc->ast->ast_allocator, lparen_loc, type,
@@ -3749,13 +3999,27 @@ Expression* semantic_checker_handle_cast_expression(SemanticChecker* sc,
 // cast in the expression if the expression was already of the type that we 
 // wanted it to be.
 static void semantic_checker_do_usual_arithmetic_conversions(
-        SemanticChecker* sc, Expression** lhs, Expression** rhs)
+        SemanticChecker* sc, Expression** lhs, Expression** rhs,
+        bool assignment)
 {
     assert(expression_is_valid(*lhs) && expression_is_valid(*rhs));
 
-    // First lvlaue to rvalue before doing anything
-    *lhs = semantic_checker_func_array_lvalue_convert(sc, *lhs);
+    // First lvlaue to rvalue before doing anything. Note that the left hand 
+    // side should only be converted if it is not an assignment.
+    if (!assignment)
+    {
+        *lhs = semantic_checker_func_array_lvalue_convert(sc, *lhs);
+        if (expression_is_invalid(*lhs))
+        {
+            return;
+        }
+    }
+
     *rhs = semantic_checker_func_array_lvalue_convert(sc, *rhs);
+    if (expression_is_invalid(*rhs))
+    {
+        return;
+    }
 
     // First check that both types are actually arithmetic
     QualifiedType lhs_type = expression_get_qualified_type(*lhs);
@@ -3785,7 +4049,10 @@ static void semantic_checker_do_usual_arithmetic_conversions(
             lhs_type, rhs_type);
     
     // If either of the types aren't equal, create an implicit cast from one to
-    // the other.
+    // the other. Note that we still do this even if there is a compound 
+    // assignment since the calculation still needs to happen in the correct
+    // type to be compliant. The function calling this one should save the type
+    // of the left hand side in order to make a valid expression.
     if (!qualified_type_is_equal(&arithmetic_type, &lhs_type))
     {
         *lhs = semantic_checker_create_implicit_cast(sc, *lhs, arithmetic_type);
@@ -3800,131 +4067,47 @@ static void semantic_checker_do_usual_arithmetic_conversions(
 // Helper function to print an general error when invalid operands are provided
 // to a binary expression. Prints the operator used to try to be as helpful as
 // possible.
+static const char* binary_expression_type_to_string(ExpressionType type)
+{
+    switch (type)
+    {
+        case EXPRESSION_BINARY_TIMES: return "*";
+        case EXPRESSION_BINARY_DIVIDE: return "/";
+        case EXPRESSION_BINARY_MODULO: return "%";
+        case EXPRESSION_BINARY_ADD: return "+";
+        case EXPRESSION_BINARY_SUBTRACT: return "-";
+        case EXPRESSION_BINARY_SHIFT_LEFT: return "<<";
+        case EXPRESSION_BINARY_SHIFT_RIGHT: return ">>";
+        case EXPRESSION_BINARY_LESS_THAN: return "<";
+        case EXPRESSION_BINARY_GREATER_THAN: return ">";
+        case EXPRESSION_BINARY_LESS_THAN_EQUAL: return "<=";
+        case EXPRESSION_BINARY_GREATER_THAN_EQUAL: return ">=";
+        case EXPRESSION_BINARY_EQUAL: return "==";
+        case EXPRESSION_BINARY_NOT_EQUAL: return "!=";
+        case EXPRESSION_BINARY_AND: return "&";
+        case EXPRESSION_BINARY_XOR: return "^";
+        case EXPRESSION_BINARY_OR: return "|";
+        case EXPRESSION_BINARY_LOGICAL_AND: return "&&";
+        case EXPRESSION_BINARY_LOGICAL_OR: return "||";
+        case EXPRESSION_BINARY_ASSIGN: return "=";
+        case EXPRESSION_BINARY_TIMES_ASSIGN: return "*=";
+        case EXPRESSION_BINARY_DIVIDE_ASSIGN: return "/=";
+        case EXPRESSION_BINARY_MODULO_ASSIGN: return "%=";
+        case EXPRESSION_BINARY_ADD_ASSIGN: return "+=";
+        case EXPRESSION_BINARY_SUBTRACT_ASSIGN: return "-=";
+        case EXPRESSION_BINARY_SHIFT_LEFT_ASSIGN: return "<<=";
+        case EXPRESSION_BINARY_SHIFT_RIGHT_ASSIGN: return ">>=";
+        case EXPRESSION_BINARY_AND_ASSIGN: return "&=";
+        case EXPRESSION_BINARY_XOR_ASSIGN: return "^=";
+        case EXPRESSION_BINARY_OR_ASSIGN: return "|=";
+        default: panic("invalid binary operator type"); return ""; 
+    }
+}
+
 static void semantic_checker_binary_invalid_operands(SemanticChecker* sc,
         ExpressionType type, Location operator_location)
 {
-    const char* expression_operator = NULL;
-    switch (type)
-    {
-        case EXPRESSION_BINARY_TIMES:
-            expression_operator = "*";
-            break;
-
-        case EXPRESSION_BINARY_DIVIDE:
-            expression_operator = "/";
-            break;
-
-        case EXPRESSION_BINARY_MODULO:
-            expression_operator = "%";
-            break;
-
-        case EXPRESSION_BINARY_ADD:
-            expression_operator = "+";
-            break;
-
-        case EXPRESSION_BINARY_SUBTRACT:
-            expression_operator = "-";
-            break;
-
-        case EXPRESSION_BINARY_SHIFT_LEFT:
-            expression_operator = "<<";
-            break;
-
-        case EXPRESSION_BINARY_SHIFT_RIGHT:
-            expression_operator = ">>";
-            break;
-
-        case EXPRESSION_BINARY_LESS_THAN:
-            expression_operator = "<";
-            break;
-
-        case EXPRESSION_BINARY_GREATER_THAN:
-            expression_operator = ">";
-            break;
-
-        case EXPRESSION_BINARY_LESS_THAN_EQUAL:
-            expression_operator = "<=";
-            break;
-
-        case EXPRESSION_BINARY_GREATER_THAN_EQUAL:
-            expression_operator = ">=";
-            break;
-
-        case EXPRESSION_BINARY_EQUAL:
-            expression_operator = "==";
-            break;
-
-        case EXPRESSION_BINARY_NOT_EQUAL:
-            expression_operator = "!=";
-            break;
-
-        case EXPRESSION_BINARY_AND:
-            expression_operator = "&";
-            break;
-
-        case EXPRESSION_BINARY_XOR:
-            expression_operator = "^";
-            break;
-
-        case EXPRESSION_BINARY_OR:
-            expression_operator = "|";
-            break;
-
-        case EXPRESSION_BINARY_LOGICAL_AND:
-            expression_operator = "&&";
-            break;
-
-        case EXPRESSION_BINARY_LOGICAL_OR:
-            expression_operator = "||";
-            break;
-
-        case EXPRESSION_BINARY_ASSIGN:
-            expression_operator = "=";
-            break;
-
-        case EXPRESSION_BINARY_TIMES_ASSIGN:
-            expression_operator = "*=";
-            break;
-
-        case EXPRESSION_BINARY_DIVIDE_ASSIGN:
-            expression_operator = "/=";
-            break;
-
-        case EXPRESSION_BINARY_MODULO_ASSIGN:
-            expression_operator = "%/";
-            break;
-
-        case EXPRESSION_BINARY_ADD_ASSIGN:
-            expression_operator = "+=";
-            break;
-
-        case EXPRESSION_BINARY_SUBTRACT_ASSIGN:
-            expression_operator = "-=";
-            break;
-
-        case EXPRESSION_BINARY_SHIFT_LEFT_ASSIGN:
-            expression_operator = "<<=";
-            break;
-
-        case EXPRESSION_BINARY_SHIFT_RIGHT_ASSIGN:
-            expression_operator = ">>=";
-            break;
-
-        case EXPRESSION_BINARY_AND_ASSIGN:
-            expression_operator = "&=";
-            break;
-
-        case EXPRESSION_BINARY_XOR_ASSIGN:
-            expression_operator = "^=";
-            break;
-
-        case EXPRESSION_BINARY_OR_ASSIGN:
-            expression_operator = "|=";
-            break;
-
-        default: panic("invalid binary operator type"); return; 
-    }
-
+    const char* expression_operator = binary_expression_type_to_string(type);
     diagnostic_error_at(sc->dm, operator_location,
             "invalid operands to binary %s expression", expression_operator);
 }
@@ -3964,13 +4147,22 @@ Expression* semantic_checker_handle_bitwise_expression(SemanticChecker* sc,
         ExpressionType type, Expression* lhs, Location operator_loc,
         Expression* rhs)
 {
+    // Check we are either a bitwise type or an assignment bitwise type
     assert(type == EXPRESSION_BINARY_XOR || type == EXPRESSION_BINARY_OR
-            || type == EXPRESSION_BINARY_AND);
+            || type == EXPRESSION_BINARY_AND
+            || type == EXPRESSION_BINARY_XOR_ASSIGN
+            || type == EXPRESSION_BINARY_OR_ASSIGN
+            || type == EXPRESSION_BINARY_XOR_ASSIGN);
     assert(expression_is_valid(lhs) && expression_is_valid(rhs));
+
+    // Check if the type of this bitwise expression is an assignment. Since 
+    // this may be used later.
+    bool assignment = expression_type_is_assignment(type);
 
     // Check both operants are of integer type
     QualifiedType lhs_type = expression_get_qualified_type(lhs);
     QualifiedType rhs_type = expression_get_qualified_type(rhs);
+    
     if (!qualified_type_is_integer(&lhs_type)
             || !qualified_type_is_integer(&rhs_type))
     {
@@ -3978,12 +4170,28 @@ Expression* semantic_checker_handle_bitwise_expression(SemanticChecker* sc,
         return semantic_checker_handle_error_expression(sc, operator_loc);
     }
 
-    // Now here we do our usual arithmetic conversions for the lhs and rhs
-    semantic_checker_do_usual_arithmetic_conversions(sc, &lhs, &rhs);
+    // If we have an assignment save the type of the left hand side to use as
+    // the result type of the expression.
+    QualifiedType result_type;
+    if (assignment)
+    {
+        result_type = expression_get_qualified_type(lhs);
+    }
 
-    // Now we know that the types of lhs and rhs should be the same, so just get
-    // the left hand side here
-    QualifiedType result_type = expression_get_qualified_type(lhs);
+    // Now here we do our usual arithmetic conversions for the lhs and rhs.
+    // NOTE: in an assignment the lhs may be casted to another value!
+    semantic_checker_do_usual_arithmetic_conversions(sc, &lhs, &rhs,
+            assignment);
+
+    // Finally, if it is not an assignment, then get the qualified type of one
+    // of the sides. Note, it doesn't particularly matter, so we just choose
+    // the left side.
+    if (!assignment)
+    {
+        result_type = expression_get_qualified_type(lhs);
+    }
+
+    // Finally, create our binary expression here, with type and location
     return expression_create_binary(&sc->ast->ast_allocator, type, operator_loc,
             lhs, rhs, result_type);
 }
@@ -3993,8 +4201,13 @@ Expression* semantic_checker_handle_shift_expression(SemanticChecker* sc,
         Expression* rhs)
 {
     assert(type == EXPRESSION_BINARY_SHIFT_LEFT
-            || type == EXPRESSION_BINARY_SHIFT_RIGHT);
+            || type == EXPRESSION_BINARY_SHIFT_RIGHT
+            || type == EXPRESSION_BINARY_SHIFT_LEFT_ASSIGN
+            || type == EXPRESSION_BINARY_SHIFT_RIGHT_ASSIGN);
     assert(expression_is_valid(lhs) && expression_is_valid(rhs));
+
+    // Note if we are an assignment expression or not.
+    bool assignment = expression_type_is_assignment(type);
 
     // Check both operants are of integer type
     QualifiedType lhs_type = expression_get_qualified_type(lhs);
@@ -4006,15 +4219,27 @@ Expression* semantic_checker_handle_shift_expression(SemanticChecker* sc,
         return semantic_checker_handle_error_expression(sc, operator_loc);
     }
 
-    // Promote integer types
+    // Now we need to detemine the result type for the shift expression
+    QualifiedType result_type;
+    if (assignment)
+    {
+        result_type = expression_get_qualified_type(lhs);
+    }
+
+    // Promote integer types as required.
     lhs = semantic_checker_promote_integer(sc, lhs);
     rhs = semantic_checker_promote_integer(sc, rhs);
 
-    // `The type of the result is that of the promoted left operand`
-    QualifiedType result_type = expression_get_qualified_type(lhs);
+    // `The type of the result is that of the promoted left operand` (if we're)
+    // not an assignment expression in which case the result type is always of
+    // the original operand. But we still have to do promotion for the 
+    // calculation.
+    if (!assignment)
+    {
+        result_type = expression_get_qualified_type(lhs);
+    }
 
-    // TODO: add checks for if the right operand is an expression that will be
-    // TODO: negative and warn about it?
+    // TODO: add checks for if the right operand is -ve
     return expression_create_binary(&sc->ast->ast_allocator, type, operator_loc,
             lhs, rhs, result_type);
 }
@@ -4033,7 +4258,9 @@ Expression* semantic_checker_handle_add_expression(SemanticChecker* sc,
         ExpressionType type, Expression* lhs, Location op_location,
         Expression* rhs)
 {
-    assert(type == EXPRESSION_BINARY_ADD || type == EXPRESSION_BINARY_SUBTRACT);
+    assert(type == EXPRESSION_BINARY_ADD || type == EXPRESSION_BINARY_SUBTRACT
+            || type == EXPRESSION_BINARY_ADD_ASSIGN
+            || type == EXPRESSION_BINARY_SUBTRACT_ASSIGN);
     assert(expression_is_valid(lhs) && expression_is_valid(rhs));
 
     // For addition, either both operands shall have arithmetic type, or one 
@@ -4048,6 +4275,13 @@ Expression* semantic_checker_handle_add_expression(SemanticChecker* sc,
     // First get the type of both of the expressions
     QualifiedType lhs_type = expression_get_qualified_type(lhs);
     QualifiedType rhs_type = expression_get_qualified_type(rhs);
+
+    // Get if the expression is an assignment expression since this affects what
+    // is allowed to be present. Additive and subtractive assignment only allow
+    // the following cases:
+    // -> left hand pointer, right hand integer
+    // -> left hand arithmetic, right hand arithmetic
+    bool assignment = expression_type_is_assignment(type);
 
     ExpressionAdditionKind kind;
     if (qualified_type_is_arithmetic(&lhs_type)
@@ -4124,22 +4358,31 @@ Expression* semantic_checker_handle_add_expression(SemanticChecker* sc,
         kind = EXPRESSION_ADDITION_POINTER_POINTER;
     }
     else
-    { 
+    {
         semantic_checker_binary_invalid_operands(sc, type, op_location);
         return semantic_checker_handle_error_expression(sc, op_location);
     }
 
     // Okay now we know we have valid operands to our binary addition expression
     // what we can do is implement the semantics of the expression afterwards.
-    QualifiedType result_type = {0};
+    QualifiedType result_type;
+    if (assignment)
+    {
+        result_type = lhs_type;
+    }
+
     switch (kind)
     {
         // If both operands have arithmetic type, the usual arithmetic 
         // conversions are performed on them.
         case EXPRESSION_ADDITION_ARITHMETIC:
         {
-            semantic_checker_do_usual_arithmetic_conversions(sc, &lhs, &rhs);
-            result_type = expression_get_qualified_type(lhs);
+            semantic_checker_do_usual_arithmetic_conversions(sc, &lhs, &rhs,
+                    assignment);
+            if (!assignment)
+            {
+                result_type = expression_get_qualified_type(lhs);
+            }
             break;
         }
 
@@ -4150,7 +4393,10 @@ Expression* semantic_checker_handle_add_expression(SemanticChecker* sc,
         {
             Expression* pointer = (kind == EXPRESSION_ADDITION_POINTER_INT)
                     ? lhs : rhs;
-            result_type = expression_get_qualified_type(pointer);
+            if (!assignment)
+            {
+                result_type = expression_get_qualified_type(pointer);
+            }
             break;
         }
 
@@ -4160,12 +4406,15 @@ Expression* semantic_checker_handle_add_expression(SemanticChecker* sc,
             // TODO: this is not portable at all, there should be some way to
             // TODO: get the ptrdiff_t type without the header. I.e. it should
             // TODO: be defined somewhere in the target.
-            result_type = semantic_checker_get_long_type(sc);
+            if (!assignment)
+            {
+                result_type = semantic_checker_get_long_type(sc);
+            }
             break;
 
         default:
             panic("invalid expression kind after checking operands");
-            break;
+            return semantic_checker_handle_error_expression(sc, op_location);
     }
 
     // Finally one we know the types and everything about this expression we can
@@ -4180,15 +4429,27 @@ Expression* semantic_checker_handle_mult_expression(SemanticChecker* sc,
         Expression* rhs)
 {
     assert(type == EXPRESSION_BINARY_TIMES || type == EXPRESSION_BINARY_DIVIDE
-            || type == EXPRESSION_BINARY_MODULO);
+            || type == EXPRESSION_BINARY_MODULO
+            || type == EXPRESSION_BINARY_TIMES_ASSIGN
+            || type == EXPRESSION_BINARY_DIVIDE_ASSIGN
+            || type == EXPRESSION_BINARY_MODULO_ASSIGN);
     assert(expression_is_valid(lhs) && expression_is_valid(rhs));
+
+    // Get if we have an assignment expression since that affects how we perform
+    // our conversions if the expression is valid
+    bool assignment = expression_type_is_assignment(type);
 
     // For both '*' and '/' the operands just have to be arithmetic, but for 
     // '%' the operands should be integer.
-    bool need_integer = (type == EXPRESSION_BINARY_MODULO);
-    bool (*operand_checking_func)(const QualifiedType*) = need_integer
-            ? qualified_type_is_integer
-            : qualified_type_is_arithmetic;
+    bool (*operand_checking_func)(const QualifiedType*);
+    if (type == EXPRESSION_BINARY_MODULO)
+    {
+        operand_checking_func = qualified_type_is_integer;
+    }
+    else
+    {
+        operand_checking_func = qualified_type_is_arithmetic;
+    }
 
     // Check both operants are of integer type
     QualifiedType lhs_type = expression_get_qualified_type(lhs);
@@ -4200,12 +4461,27 @@ Expression* semantic_checker_handle_mult_expression(SemanticChecker* sc,
         return semantic_checker_handle_error_expression(sc, op_location);
     }
 
+    // if we're assignment we need the result type before performing any
+    // conversions on the expressions at all.
+    QualifiedType result_type;
+    if (assignment)
+    {
+        result_type = expression_get_qualified_type(lhs);
+    }
+
     // Now here we do our usual arithmetic conversions for the lhs and rhs
-    semantic_checker_do_usual_arithmetic_conversions(sc, &lhs, &rhs);
+    semantic_checker_do_usual_arithmetic_conversions(sc, &lhs, &rhs,
+            assignment);
+    
+    // Same as all the others, if we're not assignment get the result type after
+    // performing all the arihmetic conversion
+    if (!assignment)
+    {
+        result_type = expression_get_qualified_type(lhs);
+    }
 
     // Now we know that the types of lhs and rhs should be the same, so just get
     // the left hand side here
-    QualifiedType result_type = expression_get_qualified_type(lhs);
     return expression_create_binary(&sc->ast->ast_allocator, type, op_location,
             lhs, rhs, result_type);
 }
@@ -4262,7 +4538,8 @@ Expression* semantic_checker_handle_relational_expression(SemanticChecker* sc,
     // or if it was a pointer comparison.
     if (arithmetic_comparison)
     {
-        semantic_checker_do_usual_arithmetic_conversions(sc, &lhs, &rhs);        
+        semantic_checker_do_usual_arithmetic_conversions(sc, &lhs, &rhs,
+                false);        
     }
     else
     {
@@ -4438,7 +4715,8 @@ Expression* semantic_checker_handle_equality_expression(SemanticChecker* sc,
         // If both of the operands have arithmetic type, the usual arithmetic 
         // conversions are performed
         case EQUALITY_EXPRESSION_ARITHMETIC:
-            semantic_checker_do_usual_arithmetic_conversions(sc, &lhs, &rhs);
+            semantic_checker_do_usual_arithmetic_conversions(sc, &lhs, &rhs,
+                    false);
             break;
 
         // Otherwise, at least one operand is a pointer
@@ -4582,20 +4860,508 @@ Expression* semantic_checker_handle_arithmetic_expression(SemanticChecker* sc,
     }    
 }
 
+// Internal enum to help classify the conditional expression type during 
+// semantic checking to help implement the proper semantics
+typedef enum ConditionalExpressionType {
+    CONDITIONAL_EXPRESSION_ARITHMETIC, // Both sides arithmetic
+    CONDITIONAL_EXPRESSION_STRUCT, // Both sides struct / union compatible
+    CONDITIONAL_EXPRESSION_VOID, // Both sides void
+    CONDITIONAL_EXPRESSION_POINTER, // Both sides compatible pointers
+    CONDITIONAL_EXPRESSION_NULL_RHS, // lhs pointer, rhs nullptr
+    CONDITIONAL_EXPRESSION_NULL_LHS, // lhs nullptr, rhs pointer,
+    CONDITIONAL_EXPRESSION_POINTER_VOID, // lhs ptr, rhs void ptr
+    CONDITIONAL_EXPRESSION_VOID_POINTER // lhs void ptr, rhs ptr
+} ConditionalExpressionType;
+
+Expression* semantic_checker_handle_conditional_expression(SemanticChecker* sc,
+        Expression* condition, Location question, Expression* true_expr,
+        Location colon, Expression* false_expr)
+{
+    assert(question != LOCATION_INVALID);
+
+    // Decay all expressionss and then abort early if any are invalid
+    condition = semantic_checker_func_array_lvalue_convert(sc, condition);
+    if (expression_is_invalid(condition))
+    {
+        return semantic_checker_handle_error_expression(sc, question);
+    }
+
+    true_expr = semantic_checker_func_array_lvalue_convert(sc, true_expr);
+    if (expression_is_invalid(true_expr))
+    {
+        return semantic_checker_handle_error_expression(sc, question);
+    }
+
+    false_expr = semantic_checker_func_array_lvalue_convert(sc, false_expr);
+    if (expression_is_invalid(false_expr))
+    {
+        return semantic_checker_handle_error_expression(sc, question);
+    }
+
+    // The first operand should have scalar type.
+    QualifiedType condition_type = expression_get_qualified_type(condition);
+    if (!qualified_type_is_scaler(&condition_type))
+    {
+        // used type 'type' where arithmetic or pointer type is required
+        diagnostic_error_at(sc->dm, question,
+                "conditional expression requires scalar type");
+        return semantic_checker_handle_error_expression(sc, question);
+    }
+
+    // One of the following shall hold for the second and third operands:
+    // — both operands have arithmetic type;
+    // — both operands have compatible structure or union types;
+    // — both operands have void type;
+    // — both operands are pointers to qualified or unqualified versions of 
+    //   compatible types;
+    // — one operand is a pointer and the other is a null pointer constant; or
+    // — one operand is a pointer to an object or incomplete type and the other
+    //   is a pointer to a qualified or unqualified version of void.
+
+    // First get the expression types and their true type to help us know if any
+    // of the following hold, also get the real types to help us evalulate this
+    // a bit easier, but in diagnostics make sure to use the original types.
+    QualifiedType true_type = expression_get_qualified_type(true_expr);
+    QualifiedType real_true_type = qualified_type_get_canonical(&true_type);
+
+    QualifiedType false_type = expression_get_qualified_type(false_expr);
+    QualifiedType real_false_type = qualified_type_get_canonical(&false_type);
+
+    bool compatible = qualified_type_is_compatible_no_quals(&real_true_type,
+            &real_false_type);
+
+    ConditionalExpressionType kind;
+    if (qualified_type_is_arithmetic(&real_true_type)
+            && qualified_type_is_arithmetic(&real_false_type))
+    {
+        kind = CONDITIONAL_EXPRESSION_ARITHMETIC;
+    }
+    else if (compatible && (qualified_type_is(&real_true_type, TYPE_STRUCT)
+            || qualified_type_is(&real_true_type, TYPE_UNION)))
+    {
+        kind = CONDITIONAL_EXPRESSION_STRUCT;
+    }
+    else if (qualified_type_is(&real_true_type, TYPE_VOID)
+        && qualified_type_is(&real_false_type, TYPE_VOID))
+    {
+        kind = CONDITIONAL_EXPRESSION_VOID;
+    }
+    else if (qualified_type_is_pointer(&real_true_type)
+            && semantic_checker_is_null_pointer(sc, false_expr))
+    {
+        kind = CONDITIONAL_EXPRESSION_NULL_RHS;
+    }
+    else if (semantic_checker_is_null_pointer(sc, true_expr)
+            && qualified_type_is_pointer(&real_false_type))
+    {
+        kind = CONDITIONAL_EXPRESSION_NULL_LHS;
+    }
+    else if (qualified_type_is_pointer(&real_true_type)
+            && qualified_type_is_pointer(&real_false_type))
+    {
+        // Now we want to get the types that the pointers point too so we can
+        // determine exactly which type on conditional expression we got so that
+        // we can more easily finish the semantic analysis.
+        QualifiedType true_pointee = type_pointer_get_pointee(&real_true_type);
+        true_pointee = qualified_type_get_canonical(&true_pointee);
+
+        QualifiedType false_pointee = type_pointer_get_pointee(
+                &real_false_type);
+        false_pointee = qualified_type_get_canonical(&false_pointee);
+
+        if (compatible)
+        {
+            kind = CONDITIONAL_EXPRESSION_POINTER;
+        }
+        else if (qualified_type_is(&true_pointee, TYPE_VOID))
+        {            
+            kind = CONDITIONAL_EXPRESSION_VOID_POINTER;
+        }
+        else if (qualified_type_is(&false_pointee, TYPE_VOID))
+        {
+            kind = CONDITIONAL_EXPRESSION_POINTER_VOID;
+        }
+        else
+        {
+            diagnostic_error_at(sc->dm, question,
+                    "pointer type mismatch in conditional expression");
+            return semantic_checker_handle_error_expression(sc, question);
+        }
+    }
+    else
+    {
+        diagnostic_error_at(sc->dm, question,
+                "incompatible operand types in conditional expression");
+        return semantic_checker_handle_error_expression(sc, question);
+    }
+
+    // Now we know that we have a valid conditional we can finish the semantic 
+    // analysis of the conditional and determine it's result type
+    QualifiedType result_type;
+    bool void_lhs = false;
+    switch (kind)
+    {
+        // For arithmetic case usualy arithermetic conversions are performed
+        case CONDITIONAL_EXPRESSION_ARITHMETIC:
+            semantic_checker_do_usual_arithmetic_conversions(sc, &true_expr,
+                    &false_expr, false);
+            result_type = expression_get_qualified_type(true_expr);
+            break;
+
+        // For struct case, the result type is the struct/union type
+        case CONDITIONAL_EXPRESSION_STRUCT:
+            result_type = expression_get_qualified_type(true_expr);
+            break;
+        
+        // For void case, the result type is always void type
+        case CONDITIONAL_EXPRESSION_VOID:
+            result_type = semantic_checker_get_void_type(sc);
+            break;
+
+        case CONDITIONAL_EXPRESSION_NULL_LHS:
+            result_type = expression_get_qualified_type(false_expr);
+            break;
+
+        case CONDITIONAL_EXPRESSION_NULL_RHS:
+            result_type = expression_get_qualified_type(true_expr);
+            break;
+
+        case CONDITIONAL_EXPRESSION_POINTER:
+        {
+            // We want to combine the type qualifiers of the pointed to type for
+            // this case so get the type pointed to its quals, then combine them
+            QualifiedType l_pointee = type_pointer_get_pointee(&real_true_type);
+            TypeQualifiers l_quals = qualified_type_get_quals(&l_pointee);
+
+            QualifiedType r_pointee = type_pointer_get_pointee(&real_false_type);
+            TypeQualifiers r_quals = qualified_type_get_quals(&r_pointee);
+
+            TypeQualifiers combined = type_qualifier_combine(l_quals, r_quals);
+            
+            result_type = qualified_type_add_quals(&real_true_type, combined);
+            break;
+        }
+
+        case CONDITIONAL_EXPRESSION_VOID_POINTER:
+        case CONDITIONAL_EXPRESSION_POINTER_VOID:
+        {
+            Expression* void_side;
+            if (kind == CONDITIONAL_EXPRESSION_VOID_POINTER)
+            {
+                void_side = true_expr;
+            }
+            else
+            {
+                void_side = false_expr;
+            }
+            
+            result_type = expression_get_qualified_type(void_side);
+            result_type = qualified_type_remove_quals(&result_type);
+            break;
+        }
+
+        default:
+            panic("unhandled conditional expression type");
+            return semantic_checker_handle_error_expression(sc, question);
+    }
+    
+    // Finally create the conditional expression now that we have sucessfully
+    // determined the type of the expression.
+    return expression_create_conditional(&sc->ast->ast_allocator, condition,
+            question, true_expr, colon, false_expr, result_type);
+}
+
+// This is a very specific function made to undo a very specific situation for
+// parenthesised expresssion. For example if we have the below.
+// 
+// const int var;
+// (var) = 3; we would not get the most ideal error message. So we would like to
+// mention that 'var' is the problematic variable. So we undo the parens and
+// lvalue to rvalue cast.
+static Expression* semantic_checker_undo_parenthesis_lvalue_cast(
+        SemanticChecker* sc, Expression* expresison)
+{
+    // Don't touch the expression if it's not parenthesised
+    if (!expression_is(expresison, EXPRESSION_PARENTHESISED))
+    {
+        return expresison;
+    }
+
+    // Undo the parenthesis and if the expression isn't an lvalue cast (which
+    // would be forced in due to how the parser works, then return the orginal
+    // expression)
+    // Note: if there was an error in converting the expression then the 
+    // expression would be of error type. e.g. register int arr[3] -> ERROR
+    Expression* undone = expression_ignore_parenthesis(expresison);
+    if (!expression_is(undone, EXPRESSION_LVALUE_CAST))
+    {
+        return expresison;
+    }
+
+    Expression* inner = expression_lvalue_cast_get_inner(undone);
+
+    // an lvalue cast should only ever be applied to a reference expression.
+    assert(expression_is(inner, EXPRESSION_REFERENCE));
+
+    return inner;
+}
+
+// Enum to help us determine the type of simple assignment that we are dealing
+// with. Like other enums, this is really only used by the function below.
+typedef enum SimpleAssignmentExpressionType {
+    SIMPLE_ASSIGNMENT_ARITHMETIC,
+    SIMPLE_ASSIGNMENT_STRUCT,
+    SIMPLE_ASSIGNMENT_POINTERS_COMPATIBLE,
+    SIMPLE_ASSIGNMENT_POINTERS_INCOMPLETE,
+    SIMPLE_ASSIGNMENT_POINTER_NULL,
+    SIMPLE_ASSIGNMENT_BOOL_POINTER
+} SimpleAssignmentExpressionType;
+
+static Expression* semantic_checker_handle_simple_assigment(SemanticChecker* sc,
+        Expression* lhs, Location operator_loc, Expression* rhs)
+{
+    assert(expression_is_valid(lhs) && expression_is_valid(rhs));
+
+    QualifiedType lhs_type = expression_get_qualified_type(lhs);
+    QualifiedType rhs_type = expression_get_qualified_type(rhs);
+
+    QualifiedType real_lhs_type = qualified_type_get_canonical(&lhs_type);
+
+    // Pre-compute if the types are compatible
+    bool compaitable = qualified_type_is_compatible_no_quals(&lhs_type,
+            &rhs_type);
+
+    SimpleAssignmentExpressionType type;
+    if (qualified_type_is_arithmetic(&lhs_type)
+            && qualified_type_is_arithmetic(&rhs_type))
+    {
+        type = SIMPLE_ASSIGNMENT_ARITHMETIC;
+    }
+    else if (compaitable && qualified_type_is_compound(&lhs_type))
+    {
+        assert(qualified_type_is_compound(&rhs_type));
+        type = SIMPLE_ASSIGNMENT_STRUCT;
+    }
+    else if (qualified_type_is_pointer(&lhs_type)
+            && semantic_checker_is_null_pointer(sc, rhs))
+    {
+        type = SIMPLE_ASSIGNMENT_POINTER_NULL;
+    }
+    else if (qualified_type_is_pointer(&lhs_type)
+            && qualified_type_is_pointer(&rhs_type))
+    {
+        // Get the types pointed to by both of the sides and get their 
+        // qualifiers so we can test if they have the same qualifiers
+        QualifiedType lhs_pointee = type_pointer_get_pointee(&lhs_type);
+        QualifiedType rhs_pointee = type_pointer_get_pointee(&rhs_type);
+
+        TypeQualifiers lhs_quals = qualified_type_get_quals(&lhs_pointee);
+        TypeQualifiers rhs_quals = qualified_type_get_quals(&rhs_pointee);
+
+        if (compaitable)
+        {
+            // TODO: standard says the qualifiers must be the same but both GCC,
+            // TODO: and clang say that it is okay if the qualifiers don't match
+            if (lhs_quals != rhs_quals)
+            {
+                diagnostic_error_at(sc->dm, operator_loc,
+                        "assignment discards qualifier from pointer type");
+                return semantic_checker_handle_error_expression(sc,
+                        operator_loc);
+            }
+
+            type = SIMPLE_ASSIGNMENT_POINTERS_COMPATIBLE;
+        }
+        else if (qualified_type_is(&lhs_pointee, TYPE_VOID)
+                || qualified_type_is(&rhs_pointee, TYPE_VOID))
+        {
+            if (lhs_quals != rhs_quals)
+            {
+                diagnostic_error_at(sc->dm, operator_loc,
+                        "assignment discards qualifier from pointer type");
+                return semantic_checker_handle_error_expression(sc,
+                        operator_loc);
+            }
+
+            type = SIMPLE_ASSIGNMENT_POINTERS_INCOMPLETE;
+        }
+        else
+        {
+            // Again, gcc and clang warn here and don't error
+            diagnostic_error_at(sc->dm, operator_loc,
+                    "incompatible pointer types");
+            return semantic_checker_handle_error_expression(sc, operator_loc);
+        }
+    }
+    else if (qualified_type_is(&real_lhs_type, TYPE_BOOL)
+            && qualified_type_is_pointer(&rhs_type))
+    {
+        type = SIMPLE_ASSIGNMENT_BOOL_POINTER;
+    }
+    else
+    {
+        // ERROR
+        diagnostic_error_at(sc->dm, operator_loc,
+                "assignment to incompatible type");
+        return semantic_checker_handle_error_expression(sc, operator_loc);
+    }
+
+    // Test if we have quals and remove them if so.
+    QualifiedType canonical_result = qualified_type_get_canonical(&lhs_type);
+    TypeQualifiers quals = qualified_type_get_quals(&canonical_result);
+
+    QualifiedType result_type;
+    if (quals != QUALIFIER_NONE)
+    {
+        result_type = qualified_type_remove_quals(&canonical_result);
+    }
+    else
+    {
+        result_type = lhs_type;
+    }
+
+    // Finally create the assignment expresison.
+    return expression_create_binary(&sc->ast->ast_allocator,
+            EXPRESSION_BINARY_ASSIGN, operator_loc, lhs, rhs, result_type);
+}
+
 Expression* semantic_checker_handle_assignment_expression(SemanticChecker* sc,
         ExpressionType type, Expression* lhs, Location operator_loc,
         Expression* rhs)
 {
-    return semantic_checker_handle_error_expression(sc, operator_loc);   
+    // If either side is invalid he have an error so leave this here
+    if (expression_is_invalid(lhs) || expression_is_invalid(rhs))
+    {
+        return semantic_checker_handle_error_expression(sc, operator_loc);
+    }
+
+    // Do a specific check for a cast like clang appears to do.
+    if (expression_is(lhs, EXPRESSION_CAST))
+    {
+        diagnostic_error_at(sc->dm, expression_get_location(lhs), "assignment "
+                "to cast is illegal, lvalue casts are not supported");
+        return semantic_checker_handle_error_expression(sc, operator_loc);
+    }
+
+    // Classify the expression so that we can give a nice diagnostic about the
+    // expression.
+    ExpressionValueKind kind = expression_classify(sc, lhs);
+    if (kind == VALUE_KIND_RVALUE)
+    {
+        diagnostic_error_at(sc->dm, operator_loc,
+                "expression is not assignable");
+        return semantic_checker_handle_error_expression(sc, operator_loc);
+    }
+    else if (kind == VALUE_KIND_FUNCTION_DESIGNATOR)
+    {
+        diagnostic_error_at(sc->dm, operator_loc,
+                "non-object type is not assignable");
+        return semantic_checker_handle_error_expression(sc, operator_loc);
+    }
+    else if (kind == VALUE_KIND_LVALUE)
+    {
+        // TODO: improve the error messages, clang and GCC both know when the
+        // expression is a member expression and will give a more appropriate
+        // message when needed.
+
+        // TODO: since this is a hard error we know it won't compile anyways,
+        // TODO: would it be worth it taking the time to make an even better
+        // TODO: error message we can use to get the best diagnostic possible.
+
+        Expression* error = semantic_checker_undo_parenthesis_lvalue_cast(sc,
+                lhs);
+
+        // If we are a reference expression give an error with the variable name
+        if (expression_is(error, EXPRESSION_REFERENCE))
+        {
+            Declaration* decl = expression_reference_get_decl(error);
+            diagnostic_error_at(sc->dm, operator_loc,
+                    "cannot assign to variable '%s' with const-qualified type",
+                    declaration_get_identifier(decl)->string.ptr);
+        }
+        else
+        {
+            diagnostic_error_at(sc->dm, operator_loc,
+                    "read-only variable is not assignable");
+        }
+
+        return semantic_checker_handle_error_expression(sc, operator_loc);
+    }
+
+    assert(kind == VALUE_KIND_MODIFIABLE_LVALUE);
+
+    // Okay we now know the left hand side is an lvalue and that it is also a
+    // modifiable lvalue as well. This means that we can start to see what type
+    // of assignment we have.
+    switch (type)
+    {
+        // This is a special case for expressions where we have 'simple' 
+        // assignment here which has a lot of different options for what it can
+        // be.
+        case EXPRESSION_BINARY_ASSIGN:
+            return semantic_checker_handle_simple_assigment(sc, lhs,
+                    operator_loc, rhs);
+
+        // TODO: i think we will have to modify the previous functions for
+        // TODO: tese binary operands to have a boolean checking output to
+        // TODO: check that the operands are valid instead of having it
+        // TODO: directly in the function for the binary operator itself
+        // 
+        // TODO: we could also do this for + and - by adding a flag into the
+        // TODO: function that it is an assignment operator.
+        case EXPRESSION_BINARY_TIMES_ASSIGN:
+        case EXPRESSION_BINARY_DIVIDE_ASSIGN:
+        case EXPRESSION_BINARY_MODULO_ASSIGN:
+            return semantic_checker_handle_mult_expression(sc, type, lhs,
+                    operator_loc, rhs);
+            
+        case EXPRESSION_BINARY_ADD_ASSIGN:
+        case EXPRESSION_BINARY_SUBTRACT_ASSIGN:
+            return semantic_checker_handle_add_expression(sc, type, lhs,
+                    operator_loc, rhs);
+            
+        case EXPRESSION_BINARY_SHIFT_LEFT_ASSIGN:
+        case EXPRESSION_BINARY_SHIFT_RIGHT_ASSIGN:
+            return semantic_checker_handle_shift_expression(sc, type, lhs,
+                    operator_loc, rhs);
+
+        case EXPRESSION_BINARY_AND_ASSIGN:
+        case EXPRESSION_BINARY_XOR_ASSIGN:
+        case EXPRESSION_BINARY_OR_ASSIGN:
+            return semantic_checker_handle_bitwise_expression(sc, type, lhs,
+                    operator_loc, rhs);
+
+        default:
+            panic("bad assignment expression type!");
+            return semantic_checker_handle_error_expression(sc, operator_loc);
+    }
 }
 
 Expression* semantic_checker_handle_comma_expression(SemanticChecker* sc,
         Expression* lhs, Location comma_location, Expression* rhs)
 {
-    // gg ez.
+    // The lhs side of the expression is considered a void expression. But 
+    // according to a dump of clang's ast it does not implicitly cast it to void
+    // so we will not do that either.
+
     QualifiedType expr_type = expression_get_qualified_type(rhs);
     return expression_create_binary(&sc->ast->ast_allocator, EXPRESSION_COMMA,
             comma_location, lhs, rhs, expr_type);
+}
+
+Expression* semantic_checker_expression_finalize(SemanticChecker* sc,
+        Expression* expression)
+{
+    // Will need to make sure reference expressions are valid since we don't
+    // automatically convert to lvalues since we would need to undo this in
+    // certain cases. So do this as the last thing we do. Otherwise it should
+    // already be done in all scenarious.
+    if (expression_is(expression, EXPRESSION_REFERENCE))
+    {
+        return semantic_checker_func_array_lvalue_convert(sc, expression);
+    }
+
+    return expression;
 }
 
 // -----------------------------------------------------------------------------
@@ -4605,6 +5371,36 @@ Expression* semantic_checker_handle_comma_expression(SemanticChecker* sc,
 // -----------------------------------------------------------------------------
 // Start functions for statements
 // -----------------------------------------------------------------------------
+
+Expression* semantic_checker_check_condition(SemanticChecker* sc,
+        Location kw_location, Expression* expression, bool is_switch,
+        const char* context)
+{
+    // Ignore any invalid expressions
+    if (expression_is_invalid(expression))
+    {
+        return expression;
+    }
+
+    // Get the checking function to see if this is a valid condition or not. For
+    // all expressions except switch we check if it's scalar, otherwise we check
+    // if it is integer.
+    bool (*checking_function)(const QualifiedType*) = is_switch
+            ? qualified_type_is_integer : qualified_type_is_scaler;
+
+    QualifiedType expr_type = expression_get_qualified_type(expression);
+    if (!checking_function(&expr_type))
+    {
+        diagnostic_error_at(sc->dm, kw_location,
+                "'%s' statement requires expression of %s type", context,
+                is_switch ? "integer" : "scalar");
+        expression_set_invalid(expression);
+        expression = semantic_checker_create_implicit_cast(sc, expression,
+                semantic_checker_get_int_type(sc));
+    }
+
+    return expression;
+}
 
 Statement* semantic_checker_handle_compound_statement(SemanticChecker* sc,
         Location lcurly, Statement* first, Location rcurly)
@@ -4666,24 +5462,6 @@ Statement* semantic_checker_handle_if_statement(SemanticChecker* sc,
         Location rparen_location, Statement* if_body, Location else_location,
         Statement* else_body)
 {
-    // TODO: I also want to move this check to be earlier, since, with nested if
-    // TODO: statements, this ends up building the inward to outwards meaning
-    // TODO: diagnostics occur in the opposite order to what they should be.
-
-    // TODO: should if expression type be 'int' or '_Bool'
-
-    // If the expression if not scalar type error and implicitly cast it to
-    // an int
-    QualifiedType expr_type = expression_get_qualified_type(expression);
-    if (!qualified_type_is_scaler(&expr_type))
-    {
-        diagnostic_error_at(sc->dm, if_locatoin,
-                "statement requires expression of scalar type");
-        expression_set_invalid(expression);
-        expression = semantic_checker_create_implicit_cast(sc, expression,
-                semantic_checker_get_int_type(sc));
-    }
-
     // I believe that is the only thing that needs to be checked.
     return statement_create_if(&sc->ast->ast_allocator, if_locatoin,
             lparen_location, rparen_location, else_location, expression,

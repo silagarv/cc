@@ -243,6 +243,7 @@ bool type_qualifier_is_const(TypeQualifiers qualifiers);
 bool type_qualifier_is_restrict(TypeQualifiers qualifiers);
 bool type_qualifier_is_volatile(TypeQualifiers qualifiers);
 bool type_qualifier_already_has(TypeQualifiers qualifiers, TypeQualifiers has);
+TypeQualifiers type_qualifier_combine(TypeQualifiers this, TypeQualifiers that);
 
 TypeBuiltins type_builtins_initialise(AstAllocator* allocator);
 
@@ -271,6 +272,8 @@ QualifiedType type_function_get_return(const QualifiedType* function);
 
 TypeQualifiers qualified_type_get_quals(const QualifiedType* type);
 QualifiedType qualified_type_remove_quals(const QualifiedType* type);
+QualifiedType qualified_type_add_quals(const QualifiedType* type,
+        TypeQualifiers quals);
 
 QualifiedType type_create_enum(AstAllocator* allocator, Type* base);
 void type_enum_set_declaration(QualifiedType* enum_type,

@@ -233,6 +233,9 @@ typedef struct DeclarationVariable {
     // used if we are a declaration with linkage. Otherwise it is unused
     DeclarationList all_decls;
 
+    // The declaration of this variable that is the definition
+    Declaration* definition;
+
     // Is this a tentative definition
     bool tentative;
 
@@ -466,11 +469,16 @@ Declaration* declaration_create_error(AstAllocator* allocator,
 // variable that we can use within other places.
 Declaration* declaration_create_variable(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type, 
-        StorageSpecifier storage, DeclarationLinkage linkage);
+        StorageSpecifier storage, DeclarationLinkage linkage,
+        bool maybe_tentative);
 void declaration_variable_add_initializer(Declaration* declaration,
         Initializer* initializer);
 bool declaration_variable_has_initializer(const Declaration* declaration);
 bool declaration_variable_has_linkage(const Declaration* declaration);
+bool declaration_variable_is_tentative(const Declaration* declaration);
+void declaration_variable_set_definition(Declaration* decl, Declaration* defn);
+bool declaration_variable_has_definition(const Declaration* declaration);
+Declaration* declaration_variable_get_definition(const Declaration* decl);
 bool declaration_variable_is_extern(const Declaration* declaration);
 DeclarationLinkage declaration_variable_get_linkage(const Declaration* decl);
 void declaration_variable_add_decl(Declaration* prev, Declaration* new_var);
