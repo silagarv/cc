@@ -65,8 +65,10 @@ PARSE = src/parse/ast_allocator.c \
 	src/parse/type.c \
 	src/parse/literal_parser.c \
 	src/parse/expression.c \
+	src/parse/expression_eval.c \
 	src/parse/statement.c \
 	src/parse/declaration.c \
+	src/parse/initializer.c \
 	src/parse/symbol.c \
 	src/parse/scope.c \
 	src/parse/parser.c \

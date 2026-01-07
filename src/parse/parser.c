@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "parse/expression_eval.h"
 #include "util/panic.h"
 #include "util/ptr_set.h"
 #include "util/str.h"
@@ -372,9 +373,7 @@ static Statement* parse_statement(Parser* parser, bool declaration_allowed);
 
 // All of our functions for parsing declarations / definitions
 // TODO: maybe all of these don't need to return a declaration type???
-static Initializer* parse_designation(Parser* parser);
-static Initializer* parse_designator_list(Parser* parser);
-static Initializer* parse_designator(Parser* parser);
+static DesignatorList* parse_designator_list(Parser* parser);
 static Initializer* parse_initializer(Parser* parser);
 static Initializer* parse_initializer_list(Parser* parser);
 
@@ -566,7 +565,7 @@ static bool is_statement_start(Parser* parser, const Token* tok)
 
 static bool is_initializer_start(Parser* parser, const Token* tok)
 {
-    return is_expression_start(parser, tok) || tok->type == TOKEN_LCURLY;
+    return is_expression_start(parser, tok) || token_is_type(tok, TOKEN_LCURLY);
 }
 
 static bool is_string_token(Parser* parser, const Token* tok)
@@ -852,10 +851,6 @@ static Expression* parse_postfix_ending(Parser* parser, Expression* start)
 
 static Expression* parse_postfix_expression(Parser* parser)
 {
-    static const TokenType operators[] = {TOKEN_LBRACKET, TOKEN_LPAREN,
-            TOKEN_DOT, TOKEN_ARROW, TOKEN_PLUS_PLUS, TOKEN_MINUS_MINUS};
-    static const size_t num_operators = countof(operators);
-
     // How a handle compound literal is handled. Since the start of it looks
     // exactly like a cast expression we parse the cast first. Then since we see
     // a '{' we then parse the compound literal. After a compound literal we
@@ -975,6 +970,8 @@ static Expression* parse_compound_literal(Parser* parser, Location lparen_loc,
 {
     assert(is_match(parser, TOKEN_LCURLY));
 
+    bool file_scope = semantic_checker_current_scope_is(&parser->sc,
+            SCOPE_FILE);
     Initializer* initializer = parse_initializer(parser);
     
     // TODO: create the compound literal
@@ -1371,6 +1368,8 @@ static Expression* parse_assignment_expression(Parser* parser)
 static Expression* parse_constant_expression(Parser* parser)
 {
     Expression* expr = parse_conditional_expression(parser);
+
+    printf("is constant expression: %d\n", expression_is_integer_constant(expr));
 
     // TODO: handle folding the constant expression...
 
@@ -2051,101 +2050,148 @@ static Statement* parse_statement(Parser* parser, bool declaration_allowed)
 
 // Below is things for declarations
 
-static Initializer* parse_designation(Parser* parser)
+static bool is_designation_start(Parser* parser)
 {
-    parse_designator_list(parser);
-
-    Location equal_loc;
-    if (!try_match(parser, TOKEN_EQUAL, &equal_loc))
-    {
-        diagnostic_error_at(parser->dm, equal_loc,
-                "missing '=' in designated initializer");
-    }
- 
-    return NULL;
+    return has_match(parser, (TokenType[2]) {TOKEN_DOT, TOKEN_LBRACKET}, 2);
 }
 
-static Initializer* parse_designator_list(Parser* parser)
+static Designator* parse_member_designator(Parser* parser)
 {
-    while (has_match(parser, (TokenType[]) {TOKEN_LBRACKET, TOKEN_DOT}, 2))
+    assert(is_match(parser, TOKEN_DOT));
+
+    Location dot = consume(parser);
+
+    if (!is_match(parser, TOKEN_IDENTIFIER))
     {
-        parse_designator(parser);
+        diagnostic_error_at(parser->dm, current_token_location(parser),
+                "expected a field designator, such as '.field = 4'");
+        return NULL;
     }
- 
-    return NULL;
+
+    Identifier* identifier = current_token(parser)->data.identifier;
+    Location identifier_location = consume(parser);
+
+    return designator_create_member(&parser->ast.ast_allocator, dot,
+            identifier_location, identifier);
 }
 
-static Initializer* parse_designator(Parser* parser)
+static Designator* parse_array_designator(Parser* parser)
 {
-    if (is_match(parser, TOKEN_LBRACKET))
-    {
-        Location lbracket = consume(parser);
-        Expression* expr = parse_constant_expression(parser);
-        Location rbracket;
-        if (!try_match(parser, TOKEN_RBRACKET, &rbracket))
-        {
-            diagnostic_error_at(parser->dm, rbracket,
-                    "expected ']' after designator");
-        }
+    assert(is_match(parser, TOKEN_LBRACKET));
 
-        // TODO: create designator
-    }
-    else if (is_match(parser, TOKEN_DOT))
+    Location lbracket = consume(parser);
+    Expression* expr = parse_constant_expression(parser);
+    Location rbracket;
+    if (!try_match(parser, TOKEN_RBRACKET, &rbracket))
     {
-        Location dot = consume(parser);
-        if (!is_match(parser, TOKEN_IDENTIFIER))
+        diagnostic_error_at(parser->dm, rbracket,
+                "expected ']' after designator");
+        recover(parser, TOKEN_RBRACKET,
+                RECOVER_EAT_TOKEN | RECOVER_STOP_AT_SEMI);
+    }
+
+    // Create the array designator even if we didn't get the rbracket.
+    return designator_create_array(&parser->ast.ast_allocator, lbracket, expr,
+            rbracket);
+}
+
+static Designator* parse_designator(Parser* parser)
+{
+    assert(is_designation_start(parser));
+
+    if (is_match(parser, TOKEN_DOT))
+    {
+        return parse_member_designator(parser);
+    }
+    return parse_array_designator(parser);
+}
+
+static DesignatorList* parse_designator_list(Parser* parser)
+{
+    assert(is_designation_start(parser));
+
+    DesignatorList* start = NULL;
+    DesignatorList* current = NULL;
+    while (is_designation_start(parser))
+    {
+        // If parse designator fails to return a list, then recover to the 
+        // closing curly of the initializer, so that we can recover quickly.
+        Designator* designator = parse_designator(parser);
+        if (designator == NULL)
         {
-            diagnostic_error_at(parser->dm, current_token_location(parser),
-                    "expected a field designator, such as '.field = 4'");
-            recover(parser, TOKEN_RCURLY, RECOVER_NONE);
+            recover(parser, TOKEN_RCURLY, RECOVER_STOP_AT_SEMI);
             return NULL;
         }
 
-        Identifier* identifier = current_token(parser)->data.identifier;
-        Location location = consume(parser);
-    }
-    else
-    {
-        panic("parse_designator");
+        DesignatorList* list = designator_list_create(
+                &parser->ast.ast_allocator, designator);
+        
+        // Finally, build our designator list.
+        if (start == NULL)
+        {
+            start = list;
+        }
+        current = designator_list_set_next(current, list);
     }
  
-    return NULL;
+    return start;
 }
 
-static Initializer* parse_initializer(Parser* parser)
+static InitializerListMember* parse_initializer_list_member(Parser* parser)
 {
-    // If we see we have an empty initializer error and go on to parse it anyway
-    if (is_match(parser, TOKEN_LCURLY) && is_next_match(parser, TOKEN_RCURLY))
-    {
-        diagnostic_error_at(parser->dm, current_token_location(parser),
-                "use of empty initializer");
-    }
+    DesignatorList* list = NULL;
+    Location equal_loc = LOCATION_INVALID;
 
-    if (is_match(parser, TOKEN_LCURLY))
+    if (is_designation_start(parser))
     {
-        Location lcurly = consume(parser);
-        Initializer* initializer = parse_initializer_list(parser);
-        Location rcurly;
-        if (!try_match(parser, TOKEN_RCURLY, &rcurly))
+        // If this fails, recovery should have occured already.
+        list = parse_designator_list(parser);
+        if (list == NULL)
         {
-            diagnostic_error_at(parser->dm, rcurly,
-                    "expected '}' after initializer");
-            recover(parser, TOKEN_RCURLY,
-                    RECOVER_EAT_TOKEN | RECOVER_STOP_AT_SEMI);
+            return NULL;
         }
-        // TODO: create initializer
-    }
-    else
-    {
-        Expression* expr = parse_assignment_expression(parser);
-        // TODO: create initializer
+
+        if (!try_match(parser, TOKEN_EQUAL, &equal_loc))
+        {
+            diagnostic_error_at(parser->dm, equal_loc,
+                    "expected '=' or another designator");
+            equal_loc = LOCATION_INVALID;
+        }
     }
 
-    return NULL;
+    // Finally, parse the initializer for either the member or just in general
+    // to build our initializer list member.
+    Initializer* init = parse_initializer(parser);
+    if (init == NULL)
+    {
+        return NULL;
+    }
+
+    // Finally, create the initializer list member. And Return this to caller.
+    return initializer_list_member_create(&parser->ast.ast_allocator, list,
+            equal_loc, init);
 }
 
 static Initializer* parse_initializer_list(Parser* parser)
-{
+{   
+    assert(is_match(parser, TOKEN_LCURLY));
+
+    Location lcurly = consume(parser);
+    Location rcurly;
+
+    // See if we match an empty initializer list, and if it is then create and
+    // empty list returning from the function early.
+    if (try_match(parser, TOKEN_RCURLY, &rcurly))
+    {
+        diagnostic_warning_at(parser->dm, lcurly,
+                "use of an empty initializer is a C23 extension");
+        return semantic_checker_initializer_from_list(&parser->sc, lcurly,
+                NULL, rcurly);
+    }
+
+    bool list_okay = true;
+    InitializerListMember* first_member = NULL;
+    InitializerListMember* current_member = NULL;
     do
     {
         // If we see the end of an initializer list then we are simply done.
@@ -2155,17 +2201,64 @@ static Initializer* parse_initializer_list(Parser* parser)
         }
 
         // If we can match a designation do that...
-        if (has_match(parser, (TokenType[]) {TOKEN_DOT, TOKEN_LBRACKET}, 2))
+        InitializerListMember* next = parse_initializer_list_member(parser);
+
+        // If the list member had an error, continue to the next iteration.
+        if (next == NULL)
         {
-            parse_designation(parser);
+            list_okay = false;
+            continue;
         }
 
-        // Then get the initializer
-        parse_initializer(parser);
+        // Finally build our initializer list, adding the member onto the end
+        // or the list.
+        if (first_member == NULL)
+        {
+            first_member = next;
+        }
+        current_member = initializer_list_member_set_next(current_member, next);
     }
     while (try_match(parser, TOKEN_COMMA, NULL));
 
-    return NULL;
+    // Try to match the end of the initializer
+    if (!try_match(parser, TOKEN_RCURLY, &rcurly))
+    {
+        diagnostic_error_at(parser->dm, rcurly,
+                "expected '}' after initializer");
+        recover(parser, TOKEN_RCURLY, RECOVER_EAT_TOKEN | RECOVER_STOP_AT_SEMI);
+        rcurly = LOCATION_INVALID;
+    }
+
+    if (list_okay)
+    {
+        return semantic_checker_initializer_from_list(&parser->sc, lcurly,
+            first_member, rcurly);
+    }
+    else
+    {
+        return NULL;
+    }
+}
+
+static Initializer* parse_initializer_assignment_expression(Parser* parser)
+{
+    Expression* expression = parse_assignment_expression(parser);
+    if (expression_is_invalid(expression))
+    {
+        return NULL;
+    }
+
+    return semantic_checker_initializer_from_expression(&parser->sc,
+            expression);
+}
+
+static Initializer* parse_initializer(Parser* parser)
+{
+    if (is_match(parser, TOKEN_LCURLY))
+    {
+        return parse_initializer_list(parser);
+    }
+    return parse_initializer_assignment_expression(parser);
 }
 
 static void parse_declarator_internal(Parser* parser, Declarator* declarator)
@@ -2348,6 +2441,7 @@ static void parse_initializer_after_declarator(Parser* parser,
 
     // Finally, we know we can parse the initializer and try to add it to the
     // declaration of our choice.
+    QualifiedType type = declaration_get_type(declaration);
     Initializer* initializer = parse_initializer(parser);
     semantic_checker_declaration_add_initializer(&parser->sc, declaration, 
             context, equal_loc, initializer);
@@ -3072,11 +3166,12 @@ static void parse_enumerator_list(Parser* parser, Declaration* enum_decl)
         {
             diagnostic_error_at(parser->dm, current_token_location(parser),
                     "expected identifier");
-            recover_three(parser, TOKEN_COMMA, TOKEN_IDENTIFIER, TOKEN_RCURLY,
+            recover_three(parser, TOKEN_COMMA, TOKEN_RCURLY, TOKEN_IDENTIFIER,
                     RECOVER_STOP_AT_SEMI);
 
             if (is_match(parser, TOKEN_COMMA))
             {
+                consume(parser);
                 continue;
             }
                 
@@ -3723,10 +3818,10 @@ static void parse_translation_unit_internal(Parser* parser)
 
 void parse_translation_unit(DiagnosticManager* dm, Preprocessor* pp)
 {
-    Parser parser;
+    Parser parser = {0};
     parser.dm = dm;
     parser.pp = pp;
-    preprocessor_advance_token(pp, &parser.token);
+    preprocessor_advance_token(parser.pp, &parser.token);
     parser.ast = ast_create();
     parser.sc = sematic_checker_create(dm, &pp->identifiers, &parser.ast);
     parser.paren_count = 0;

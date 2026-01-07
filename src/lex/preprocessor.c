@@ -46,19 +46,18 @@ static void preprocessor_add_defines(Preprocessor* pp)
 }
 
 
-Preprocessor preprocessor_create(DiagnosticManager* dm, SourceManager* sm,
-        SourceFile* starting_file)
+// TODO: this was a weird fix to need to make? Should I file a bug report or 
+// TODO: even determine if this was a gcc bug.
+void preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
+        SourceManager* sm, SourceFile* starting_file)
 {
-    Preprocessor pp;
-    pp.dm = dm;
-    pp.sm = sm;
-    pp.identifiers = identifier_table_create();
-    pp.literal_arena = arena_new(ARENA_DEFAULT_CHUNK_SIZE,
+    pp->dm = dm;
+    pp->sm = sm;
+    pp->identifiers = identifier_table_create();
+    pp->literal_arena = arena_new(ARENA_DEFAULT_CHUNK_SIZE,
             ARENA_DEFAULT_ALIGNMENT);
-    pp.lexer = lexer_create(dm, &pp.literal_arena, &pp.identifiers,
+    pp->lexer = lexer_create(dm, &pp->literal_arena, &pp->identifiers,
             starting_file);
-
-    return pp;
 }
 
 void preprocessor_delete(Preprocessor* pp)

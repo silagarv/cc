@@ -51,6 +51,7 @@ void semantic_checker_pop_externals(SemanticChecker* sc);
 void semantic_checker_push_scope(SemanticChecker* sc, Scope* scope);
 void semantic_checker_pop_scope(SemanticChecker* sc);
 Scope* semantic_checker_current_scope(SemanticChecker* sc);
+bool semantic_checker_current_scope_is(SemanticChecker* sc, ScopeFlags type);
 
 // A very important helper functions for handling if an identifier token should
 // be treated as a typename or not. Returns 'true' if it should and 'false' 
@@ -188,6 +189,18 @@ Expression* semantic_checker_handle_comma_expression(SemanticChecker* sc,
 
 Expression* semantic_checker_expression_finalize(SemanticChecker* sc,
         Expression* expression);
+
+// Below are functions for the semantic checker to try to convert and expression
+// into an initializer. We need to give some state into the semantic checker so
+// that we can accurately create the initializer.
+
+Initializer* semantic_checker_initializer_from_expression(SemanticChecker* sc,
+        Expression* expression);
+Initializer* semantic_checker_initializer_from_list(SemanticChecker* sc,
+        Location lcurly, InitializerListMember* initializer, Location rcurly);
+
+bool semantic_checker_declaration_check_initializer(SemanticChecker* sc,
+        Declaration* declaration, DeclaratorContext context, Initializer* init);
 
 // Semantic checking functions for all of the statement types that we will exist
 // in C. These are for the most part very simple functions which do a few basic

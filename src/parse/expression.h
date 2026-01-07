@@ -325,10 +325,13 @@ Expression* expression_create_array(AstAllocator* allocator,
 Expression* expression_create_unary(AstAllocator* allocator, 
         ExpressionType type, Location op_loc, Expression* expression,
         QualifiedType expr_type);
+Expression* expression_unary_get_rhs(const Expression* expression);
 
 Expression* expression_create_binary(AstAllocator* allocator, 
         ExpressionType type, Location op_loc, Expression* lhs, Expression* rhs,
         QualifiedType expr_type);
+Expression* expression_binary_get_lhs(const Expression* expression);
+Expression* expression_binary_get_rhs(const Expression* expression);
 
 Expression* expression_create_member_access(AstAllocator* allocator,
         Location op_loc, Expression* lhs, union Declaration* member,
@@ -346,6 +349,9 @@ Expression* expression_cast_get_inner(const Expression* expression);
 Expression* expression_create_conditional(AstAllocator* allocator,
         Expression* condition, Location question, Expression* true_expr,
         Location colon, Expression* false_expr, QualifiedType type);
+Expression* expression_conditional_get_cond(const Expression* expr);
+Expression* expression_conditional_get_true(const Expression* expr);
+Expression* expression_conditional_get_false(const Expression* expr);
 
 // TODO: somehow we will need to be able to fold expressions...
 // TODO: so we will need to set up some stuff here to do that. This will also

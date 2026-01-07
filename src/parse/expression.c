@@ -60,9 +60,7 @@ Location expression_get_location(const Expression* expr)
             return expr->reference.identifier_loc;
 
         case EXPRESSION_ENUMERATION_CONSTANT:
-            // return expr->reference.identifier_loc;
-            panic("need to get location of enumeration constant");
-            return (Location) 1;
+            return expr->reference.identifier_loc;
 
         case EXPRESSION_INTEGER_CONSTANT:
             return expr->integer.num_location;
@@ -413,17 +411,32 @@ Expression* expression_create_unary(AstAllocator* allocator,
     return expr;
 }
 
+Expression* expression_unary_get_rhs(const Expression* expression)
+{
+    return expression->unary.rhs;
+}
+
 Expression* expression_create_binary(AstAllocator* allocator, 
         ExpressionType type, Location op_loc, Expression* lhs, Expression* rhs,
         QualifiedType expr_type)
 {
     Expression* expr = expression_create_base(allocator,
-            sizeof(ExpressionUnary), type, expr_type);
+            sizeof(ExpressionBinary), type, expr_type);
     expr->binary.lhs = lhs;
     expr->binary.op_loc = op_loc;
     expr->binary.rhs = rhs;
             
     return expr;
+}
+
+Expression* expression_binary_get_lhs(const Expression* expression)
+{
+    return expression->binary.lhs;
+}
+
+Expression* expression_binary_get_rhs(const Expression* expression)
+{
+    return expression->binary.rhs;
 }
 
 Expression* expression_create_member_access(AstAllocator* allocator,
@@ -527,4 +540,25 @@ Expression* expression_create_conditional(AstAllocator* allocator,
     expr->conditional.false_part = false_expr;
 
     return expr;
+}
+
+Expression* expression_conditional_get_cond(const Expression* expr)
+{
+    assert(expression_is(expr, EXPRESSION_CONDITIONAL));
+
+    return expr->conditional.condition;
+}
+
+Expression* expression_conditional_get_true(const Expression* expr)
+{
+    assert(expression_is(expr, EXPRESSION_CONDITIONAL));
+
+    return expr->conditional.true_part;
+}
+
+Expression* expression_conditional_get_false(const Expression* expr)
+{
+    assert(expression_is(expr, EXPRESSION_CONDITIONAL));
+
+    return expr->conditional.false_part;
 }

@@ -48,7 +48,8 @@ int compiler_main(int argc, char** argv)
         goto no_input;
     }
 
-    Preprocessor pp = preprocessor_create(&dm, &sm, source);
+    Preprocessor pp;
+    preprocessor_create(&pp, &dm, &sm, source);
     parse_translation_unit(&dm, &pp);
     diagnostic_emit_count(&dm);
 

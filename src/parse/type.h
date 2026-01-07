@@ -4,9 +4,13 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "parse/ast_allocator.h"
 #include "files/location.h"
+
 #include "lex/identifier_table.h"
+
+#include "parse/ast_allocator.h"
+
+union Expression;
 
 typedef enum TypeKind {
     TYPE_VOID,
@@ -127,6 +131,9 @@ typedef struct TypeUnreal {
 typedef struct TypeArray {
     TypeBase base;
     QualifiedType element_type; // the individual element type
+
+    union Expression* expression; // the array size expression
+
     size_t length; // Set if known otherwise 0
 
     bool is_static; // is it declared with [static a] for example
@@ -253,9 +260,12 @@ QualifiedType type_create_pointer(AstAllocator* allocator,
 QualifiedType type_pointer_get_pointee(const QualifiedType* pointer);
 
 QualifiedType type_create_array(AstAllocator* allocator,
-        QualifiedType element_type, size_t length, bool is_static,
-        bool is_star, bool is_vla);
+        QualifiedType element_type, union Expression* expression, size_t length,
+        bool is_static, bool is_star, bool is_vla);
 QualifiedType type_array_get_element_type(const QualifiedType* type);
+size_t type_array_get_length(const QualifiedType* type);
+union Expression* type_array_get_expression(const QualifiedType* type);
+bool type_array_is_complete(const QualifiedType* type);
 
 TypeFunctionParameter* type_create_function_parameter(AstAllocator* allocator,
         QualifiedType type);

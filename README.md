@@ -15,7 +15,7 @@ he project and is originally my own work. Additionally, it should be noted that 
 
 ## Building
 Requirements
-- clang
+- c99 compiler
 - make
 
 To building, run 'make' in the cc directory and it wll output an executable named 'cc'
@@ -41,6 +41,3 @@ To building, run 'make' in the cc directory and it wll output an executable name
 - Tuning and naming of warning options
 - Printing of source in diagnostics where relavent
 - Preprocessor support
-
-## Current Known Issues
-- Compiles on GCC but will segfault at runtime

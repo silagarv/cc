@@ -5,6 +5,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "parse/ast_allocator.h"
 #include "util/panic.h"
 
 #include "files/location.h"
@@ -67,6 +68,13 @@ void semantic_checker_pop_scope(SemanticChecker* sc)
 Scope* semantic_checker_current_scope(SemanticChecker* sc)
 {
     return sc->scope;
+}
+
+bool semantic_checker_current_scope_is(SemanticChecker* sc, ScopeFlags type)
+{
+    Scope* current = semantic_checker_current_scope(sc);
+
+    return scope_is(current, type);
 }
 
 Declaration* semantic_checker_lookup_ordinairy(SemanticChecker* sc,
@@ -213,11 +221,11 @@ static QualifiedType semantic_checker_get_size_type(SemanticChecker* sc)
 }
 
 static QualifiedType semantic_checker_create_array(SemanticChecker* sc,
-        QualifiedType element_type, size_t length, bool is_static, bool is_star,
-        bool is_vla)
+        QualifiedType element_type, Expression* expression, size_t length,
+        bool is_static, bool is_star, bool is_vla)
 {
-    return type_create_array(&sc->ast->ast_allocator, element_type, length,
-            is_static, is_star, is_vla);
+    return type_create_array(&sc->ast->ast_allocator, element_type, expression,
+            length, is_static, is_star, is_vla);
 }
 
 static QualifiedType semantic_checker_create_pointer(SemanticChecker* sc,
@@ -846,8 +854,8 @@ static QualifiedType process_array_type(SemanticChecker* sc, Declarator* d,
     }
 
     // Finally create and return the new type
-    return semantic_checker_create_array(sc, current, length, is_static,
-            is_star, is_vla);
+    return semantic_checker_create_array(sc, current, expression, length,
+            is_static, is_star, is_vla);
 }
 
 static QualifiedType process_pointer_type(SemanticChecker* sc, Declarator* d,
@@ -2112,6 +2120,13 @@ void semantic_checker_declaration_add_initializer(SemanticChecker* sc,
         Declaration* declaration, DeclaratorContext context, Location equals,
         Initializer* initializer)
 {
+    // In the case of a bad initializer we don't want to check anything. (will
+    // only occur if initializer is NULL)
+    if (initializer == NULL)
+    {
+        return;
+    }
+
     // If we find out an initializer isnt allowed bail so we don't produce any
     // more errors.
     if (!semantic_checker_check_initializer_allowed(sc, declaration, context))
@@ -2127,6 +2142,19 @@ void semantic_checker_declaration_add_initializer(SemanticChecker* sc,
     {
         return;
     }
+
+    // Now we need to use the semantic checker to check if the initializer we
+    // are about to use of the declaration is valid. And if so create the valid
+    // initializer and adjust anything relavent that we need to in the 
+    // declaration
+    if (!semantic_checker_declaration_check_initializer(sc, declaration,
+            context, initializer))
+    {
+        return;
+    }
+
+    // TODO: will need to do some checking and determine that the initializer
+    // TODO: is valid for the object type given. This will all be done later
 
     // Otherwise add the initializer to the declaration
     declaration_variable_add_initializer(declaration, initializer);
@@ -5366,6 +5394,229 @@ Expression* semantic_checker_expression_finalize(SemanticChecker* sc,
 
 // -----------------------------------------------------------------------------
 // End functions for expressions
+// -----------------------------------------------------------------------------
+// =============================================================================
+// -----------------------------------------------------------------------------
+// Start functions for initializers
+// -----------------------------------------------------------------------------
+
+Initializer* semantic_checker_initializer_from_expression(SemanticChecker* sc,
+        Expression* expression)
+{
+    return initializer_create_expression(&sc->ast->ast_allocator, expression);
+}
+
+Initializer* semantic_checker_initializer_from_list(SemanticChecker* sc,
+        Location lcurly, InitializerListMember* initializer, Location rcurly)
+{
+    return initializer_create_list(&sc->ast->ast_allocator, lcurly, initializer,
+            rcurly);
+}
+
+// Nested is true if this function tail recursively calls itself!!!
+static bool semantic_checker_check_scalar_initialization(SemanticChecker* sc,
+        Initializer* init, QualifiedType type, bool constant, bool nested)
+{
+    // This is the simplest type, sclar initializer with expression initializer.
+    // All we need to do is check that the assignment is compatible.
+    if (initializer_is(init, INITIALIZER_EXPRESSION))
+    {
+        // Get the expression and its canonical type.
+        Expression* expr = initializer_expression_get(init);
+        QualifiedType expr_type = expression_get_qualified_type(expr);
+        expr_type = qualified_type_get_canonical(&expr_type);
+
+        // TODO: check the assignment is compatible at all.
+        return false;
+    }
+    
+    // Otherwise we must have an 'initializer list'. Note that since we are only
+    // wanting sclar initialization, we want this list to only contain list
+    // members with no designators (at all) and that these should only be at 
+    // most one member. Otherwise we can safely ignore, the rest of the members
+    // (only if the first condition is true though)
+    assert(initializer_is(init, INITIALIZER_LIST));
+
+    // If we are nested (calling ourselves) we warn about excess braces.
+    if (nested)
+    {
+        diagnostic_warning_at(sc->dm, initializer_list_lcurly(init),
+                "too many braces around scalar initializer");
+    }
+    
+    // If it does have a designator that can't be right since we are trying to
+    // initialize a scalar. So error. Note, like clang this ignores, 
+    // sub-initializers (incorrectly???)
+    if (initializer_list_has_designator(init))
+    {
+        diagnostic_error_at(sc->dm, initializer_list_lcurly(init),
+                "initialization of non-aggregate type with a designated "
+                "initializer list");
+        return false;
+    }
+
+    // Empty initializers are always okay...
+    if (initializer_is_empty(init))
+    {
+        return true;
+    }
+
+    // Get the sub initializer and check if that is okay. This function 
+    // recursively calls itself until we find that out...
+    InitializerListMember* first = initializer_list_member_get(init);
+        Initializer* subinit = initializer_list_member_get_initializer(first);
+    bool okay = semantic_checker_check_scalar_initialization(sc, subinit, type,
+            constant, true);
+
+    // Now, we know if we are all good or not so now check for excess memebrs,
+    // but only if we're not nested (this is what clang seems to do????????)
+    if (nested)
+    {
+        return okay;
+    }
+
+    assert(!nested);
+    InitializerListMember* second = initializer_list_member_get_next(first);
+    if (second != NULL)
+    {
+        Initializer* second_init = initializer_list_member_get_initializer(
+                second);
+        diagnostic_warning_at(sc->dm, initializer_list_lcurly(second_init),
+                "excess elements in scalar initializer");
+    }
+    
+    return okay;
+}
+
+static bool semantic_checker_check_compound_initialization(SemanticChecker* sc,
+        Initializer* init, QualifiedType type, bool constant)
+{
+    assert(qualified_type_is_compound(&type));
+    assert(init);
+
+    // Check that we actually get an initializer list for the array 
+    // initialization. Otherwise we cannot perform it.
+    if (initializer_is(init, INITIALIZER_EXPRESSION))
+    {
+        Expression* expr = initializer_expression_get(init);
+        Location location = expression_get_location(expr);
+
+        diagnostic_error_at(sc->dm, location,
+                "compound initializer must be an initializer list");
+        return false;
+    }
+
+    // Check if we have and empty of zero initializer. In both cases, we get the
+    // same initialization.
+    if (initializer_is_empty(init))
+    {
+        return true;
+    }
+
+    return false;
+}
+
+static bool semantic_checker_check_array_initialization(SemanticChecker* sc,
+        Initializer* init, QualifiedType type, bool constant)
+{
+    assert(qualified_type_is(&type, TYPE_ARRAY));
+    assert(init);
+
+    // Check that we actually get an initializer list for the array 
+    // initialization. Otherwise we cannot perform it.
+    if (initializer_is(init, INITIALIZER_EXPRESSION))
+    {
+        Expression* expr = initializer_expression_get(init);
+        Location location = expression_get_location(expr);
+
+        diagnostic_error_at(sc->dm, location,
+                "array initializer must be an initializer list");
+        return false;
+    }
+
+    assert(initializer_is(init, INITIALIZER_LIST));
+
+    // now we know we have an initializer list we can start checking it's 
+    // initialization. How we do this will depend on if the array is a complete
+    // type or not. If it is complete we will know exactly how many elements it
+    // has.
+    bool complete_type = (type_array_get_expression(&type) != NULL);
+    size_t length = type_array_get_length(&type);
+
+    // An empty array initializer is a zero length array for our purposes. Also
+    // note though that is is always valid as an initalizer.
+    if (initializer_is_empty(init))
+    {
+        return true;
+    }
+
+    // Otherwise we need to go figure out where all of our elements go. It is 
+    // not as simple as doing recursion since we can initialize multidimensional
+    // arrays like so.
+    // int arr[][3][2] = {1,2,3,4,5,6}; -> int[1][3][2]
+    // int arr[][3][2] = {1,2,3,4,5,6,7}; -> int[2][3][2]
+
+    return false;
+}
+
+static bool semantic_checker_check_aggregate_initialization(SemanticChecker* sc,
+        Initializer* init, QualifiedType type, bool constant)
+{
+    // We have a few cases here, we can either have a struct or union 
+    // initializer, or an array of known size initializer, or an array of 
+    // unknown size.
+
+    // Determine what type of initialization we have and perform it.
+    if (qualified_type_is_compound(&type))
+    {
+        return semantic_checker_check_compound_initialization(sc, init, type,
+                constant);
+    }
+    return semantic_checker_check_array_initialization(sc, init, type,
+            constant);
+}
+
+bool semantic_checker_declaration_check_initializer(SemanticChecker* sc,
+        Declaration* declaration, DeclaratorContext context, Initializer* init)
+{
+    assert(declaration_is(declaration, DECLARATION_VARIABLE));
+    assert(context == DECL_CTX_FILE || context == DECL_CTX_BLOCK);
+    assert(init != NULL);
+
+    // Don't bother doing anythiing if the declaration is invalid.
+    if (!declaration_is_valid(declaration))
+    {
+        return false;
+    }
+
+    // We need to know if the initializer needs to be constant, and also the 
+    // type that we are trying to initialize.
+    QualifiedType type = declaration_get_type(declaration);
+    QualifiedType true_type = qualified_type_get_canonical(&type);
+
+    // Only, needs to be constant if at file scope, or a static local variable.
+    bool constant = false;
+    if (context == DECL_CTX_FILE
+            || declaration_get_storage_class(declaration) == STORAGE_STATIC)
+    {
+        constant = true;
+    }
+
+    // Need to check that true_type, is either an object or array of incomplete
+    // type. So that we know if initialization is even allowed or not...
+
+    // Now we will need to go an check the initializer.
+    if (qualified_type_is_scaler(&true_type))
+    {
+        return semantic_checker_check_scalar_initialization(sc, init, true_type,
+                constant, false);
+    }
+    return semantic_checker_check_aggregate_initialization(sc, init, true_type,
+            constant);
+}
+
+// -----------------------------------------------------------------------------
+// End functions for initializers
 // -----------------------------------------------------------------------------
 // =============================================================================
 // -----------------------------------------------------------------------------

@@ -212,19 +212,20 @@ QualifiedType type_pointer_get_pointee(const QualifiedType* pointer)
 }
 
 QualifiedType type_create_array(AstAllocator* allocator,
-        QualifiedType element_type, size_t length, bool is_static,
-        bool is_star, bool is_vla)
+        QualifiedType element_type, union Expression* expression, size_t length,
+        bool is_static, bool is_star, bool is_vla)
 {
     // Get the size of the array if the length if known
     size_t size = length * element_type.type->type_base.type_size;
 
     // Array of unknown length are incomplete types
-    bool is_complete = (length == 0) ? false : true;
+    bool is_complete = (expression != NULL);
 
     // Need to determine the size and align or the array.
     Type* type = type_create_base(allocator, sizeof(TypeArray), TYPE_ARRAY,
             size, element_type.type->type_base.type_alignment, is_complete);
     type->type_array.element_type = element_type;
+    type->type_array.expression = expression;
     type->type_array.length = length;
     type->type_array.is_static = is_static;
     type->type_array.is_star = is_star;
@@ -239,6 +240,31 @@ QualifiedType type_array_get_element_type(const QualifiedType* type)
     assert(qualified_type_is(type, TYPE_ARRAY));
 
     return type->type->type_array.element_type;
+}
+
+size_t type_array_get_length(const QualifiedType* type)
+{
+    assert(qualified_type_is(type, TYPE_ARRAY));
+
+    return type->type->type_array.length;
+}
+
+union Expression* type_array_get_expression(const QualifiedType* type)
+{
+    assert(qualified_type_is(type, TYPE_ARRAY));
+
+    return type->type->type_array.expression;
+}
+
+bool type_array_is_complete(const QualifiedType* type)
+{
+    assert(qualified_type_is(type, TYPE_ARRAY));
+
+    // TODO: this.
+
+    panic("TODO");
+
+    return false;
 }
 
 TypeFunctionParameter* type_create_function_parameter(AstAllocator* allocator,

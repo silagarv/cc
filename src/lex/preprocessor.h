@@ -36,8 +36,8 @@ typedef struct Preprocessor {
     Lexer lexer;
 } Preprocessor;
 
-Preprocessor preprocessor_create(DiagnosticManager* dm, SourceManager* sm,
-        SourceFile* starting_file);
+void preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
+        SourceManager* sm, SourceFile* starting_file);
 void preprocessor_delete(Preprocessor* pp);
 
 bool preprocessor_advance_token(Preprocessor* pp, Token* token);
