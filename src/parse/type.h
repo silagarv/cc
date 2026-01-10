@@ -73,7 +73,8 @@ typedef enum TypeSpecifierType {
     TYPE_SPECIFIER_ENUM,
     TYPE_SPECIFIER_STRUCT,
     TYPE_SPECIFIER_UNION,
-    TYPE_SPECIFIER_TYPENAME
+    TYPE_SPECIFIER_TYPENAME,
+    TYPE_SPECIFIER_ERROR
 } TypeSpecifierType;
 
 typedef enum TypeSpecifierWidth {

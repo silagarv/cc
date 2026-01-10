@@ -92,8 +92,9 @@ typedef struct StringLiteral {
     bool error;
 } StringLiteral;
 
-// bool parse_integer_literal(IntegerValue* value, const Token* token);
-// bool parse_floating_literal(FloatingValue* value, const Token* token);
+uint64_t integer_value_get_value(const IntegerValue* val);
+
+uint64_t char_value_get_value(const CharValue* val);
 
 ValueType literal_value_get_type(const LiteralValue* value);
 

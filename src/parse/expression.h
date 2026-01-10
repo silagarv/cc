@@ -298,6 +298,7 @@ Expression* expression_ignore_parenthesis(Expression* expr);
 Expression* expression_create_enum_constant(AstAllocator* allocator,
         Identifier* identifier, Location location,
         union Declaration* declaration, QualifiedType expr_type);
+int expression_enum_constant_get_value(const Expression* expr);
 
 Expression* expression_create_reference(AstAllocator* allocator,
         Identifier* identifier, Location location,
@@ -317,6 +318,7 @@ Expression* expression_create_float(AstAllocator* allocator, Location location,
 
 Expression* expression_create_character(AstAllocator* allocator,
         Location location, CharValue value, QualifiedType expr_type);
+CharValue expression_character_get_value(const Expression* expression);
 
 Expression* expression_create_array(AstAllocator* allocator, 
         Location lbracket_loc, Location rbracket_loc, Expression* lhs,
@@ -326,6 +328,17 @@ Expression* expression_create_unary(AstAllocator* allocator,
         ExpressionType type, Location op_loc, Expression* expression,
         QualifiedType expr_type);
 Expression* expression_unary_get_rhs(const Expression* expression);
+
+Expression* expression_create_sizeof_type(AstAllocator* allocator,
+        Location sizeof_location, Location lparen_loc, QualifiedType type,
+        Location rparen_loc, QualifiedType size_type);
+QualifiedType expression_sizeof_type_get_type(const Expression* expr);
+
+Expression* expression_create_sizeof_expression(AstAllocator* allocator,
+        Location sizeof_location, Expression* expression,
+        QualifiedType size_type);
+Expression* expression_sizeof_expression_get_expression(
+        const Expression* expr);
 
 Expression* expression_create_binary(AstAllocator* allocator, 
         ExpressionType type, Location op_loc, Expression* lhs, Expression* rhs,

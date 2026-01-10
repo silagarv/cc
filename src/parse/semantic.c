@@ -2,10 +2,12 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 #include <assert.h>
 
 #include "parse/ast_allocator.h"
+#include "parse/expression_eval.h"
 #include "util/panic.h"
 
 #include "files/location.h"
@@ -31,7 +33,8 @@ SemanticChecker sematic_checker_create(DiagnosticManager* dm,
         .identifiers = identifiers,
         .ast = ast,
         .scope = NULL,
-        .function = NULL
+        .function = NULL,
+        .switches = NULL
     };
 
     return sc;
@@ -75,6 +78,65 @@ bool semantic_checker_current_scope_is(SemanticChecker* sc, ScopeFlags type)
     Scope* current = semantic_checker_current_scope(sc);
 
     return scope_is(current, type);
+}
+
+void semantic_checker_push_switch_stack(SemanticChecker* sc)
+{
+    SwitchStack* new_switch = ast_allocator_alloc(&sc->ast->ast_allocator,
+            sizeof(SwitchStack));
+    new_switch->previous = sc->switches;
+    new_switch->first_label = NULL;
+    new_switch->previous_case = NULL;
+    new_switch->default_label = NULL;
+
+    sc->switches = new_switch;
+}
+
+void semantic_checker_pop_switch_stack(SemanticChecker* sc)
+{
+    assert(sc->switches);
+
+    sc->switches = sc->switches->previous;
+}
+
+Statement* semantic_checker_switch_stack_get_first(SemanticChecker* sc)
+{
+    assert(sc->switches);
+
+    return sc->switches->first_label;
+}
+
+Statement* semantic_checker_switch_stack_get_default(SemanticChecker* sc)
+{
+    assert(sc->switches);
+
+    return sc->switches->default_label;
+}
+
+void semantic_checker_switch_stack_add_case(SemanticChecker* sc,
+        Statement* case_label)
+{
+    assert(statement_is(case_label, STATEMENT_CASE));
+
+    // If we haven't had any normal cases yet set the first and previous and
+    // we are done.
+    if (sc->switches->first_label == NULL)
+    {
+        sc->switches->first_label = case_label;
+        sc->switches->previous_case = case_label;
+        return;
+    }
+
+    statement_case_set_next(sc->switches->previous_case, case_label);
+    sc->switches->previous_case = case_label;
+}
+
+void semantic_checker_switch_stack_add_default(SemanticChecker* sc,
+        Statement* default_label)
+{
+    assert(!semantic_checker_switch_stack_get_default(sc));
+
+    sc->switches->default_label = default_label;
 }
 
 Declaration* semantic_checker_lookup_ordinairy(SemanticChecker* sc,
@@ -466,6 +528,12 @@ Declaration* semantic_checker_get_typename(SemanticChecker* sc,
 void declaration_specifiers_finish(SemanticChecker* sc,
         DeclarationSpecifiers* specifiers)
 {
+    // Early return if we got some fatal errror.
+    if (specifiers->type_spec_type == TYPE_SPECIFIER_ERROR)
+    {
+        return;
+    }
+
     // Now we want to check the signedness is valid. signed or unsigned can only
     // be specified when the type is int.
     switch (specifiers->type_spec_sign)
@@ -843,14 +911,22 @@ static QualifiedType process_array_type(SemanticChecker* sc, Declarator* d,
 
     // TODO: will eventually need for work for vlas and other things.
 
-    // TODO: this will need to be changed later to properly fold the expr
-    if (expression && expression_is(expression, EXPRESSION_INTEGER_CONSTANT))
+    bool need_ice = (ctx == DECL_CTX_FILE || ctx == DECL_CTX_STRUCT);
+    bool is_ice = expression && expression_is_integer_constant(expression);
+
+    if (expression)
     {
-        length = expression->integer.value.value;   
-    }
-    else if (expression)
-    {
-        diagnostic_error_at(sc->dm, array->lbracket, "cannot fold expression");
+        QualifiedType expr_type = expression_get_qualified_type(expression);
+        if (!qualified_type_is_integer(&expr_type))
+        {
+            diagnostic_error_at(sc->dm, expression_get_location(expression), 
+                    "size of array has non-integer type");
+
+            // Abort making array type!
+            return current;
+        }
+
+        is_vla = !is_ice;
     }
 
     // Finally create and return the new type
@@ -1124,6 +1200,12 @@ static void semantic_checker_diagnose_inline(SemanticChecker* sc,
 Declaration* semantic_checker_process_specifiers(SemanticChecker* sc,
         DeclarationSpecifiers* specifiers)
 {
+    // Early return if we got some kind of fatal error
+    if (specifiers->type_spec_type == TYPE_SPECIFIER_ERROR)
+    {
+        return NULL;
+    }
+
     // Our warning location :)
     Location location = specifiers->location;
 
@@ -1538,7 +1620,7 @@ static void semantic_checker_check_variable_redeclaration(SemanticChecker* sc,
     if (!qualified_type_is_compatible(&new_type, &old_type))
     {
         diagnostic_error_at(sc->dm, location,
-                "redefinition of '%s' with a different type",
+                "redeclaration of '%s' with a different type",
                 identifier->string.ptr);
         declaration_set_invalid(variable);
         return;
@@ -1724,6 +1806,20 @@ Declaration* semantic_checker_process_variable(SemanticChecker* sc,
         invalid = true;
     }
 
+    // Variable length definitions we will only error about if we are still 
+    // valid, at file scope, HAVE AN EXPRESSION, but yet are an incomplete 
+    // array type. If no expression we can be tentative definition
+    QualifiedType canonical_type = qualified_type_get_canonical(&type);
+    if (!invalid && ctx == DECL_CTX_FILE 
+            && qualified_type_is(&canonical_type, TYPE_ARRAY)
+            && type_array_get_expression(&canonical_type)
+            && !qualified_type_is_complete(&canonical_type))
+    {
+        diagnostic_error_at(sc->dm, identifer_loc,
+                "variable length array declarations not allowed at file scope");
+        invalid = true;
+    }
+
     // Diagnose the use of the inline keyword on any variable declaration
     semantic_checker_diagnose_inline(sc, spec);
 
@@ -1734,7 +1830,7 @@ Declaration* semantic_checker_process_variable(SemanticChecker* sc,
     bool maybe_tentative = (linkage != DECLARATION_LINKAGE_NONE)
             && (storage != STORAGE_EXTERN)
             && !declarator_has_initializer(declarator);
-    assert(maybe_tentative
+    assert(maybe_tentative && !invalid
             ? (storage == STORAGE_NONE || storage == STORAGE_STATIC)
             : true);
 
@@ -1887,8 +1983,23 @@ Declaration* semantic_checker_process_struct_declarator(SemanticChecker* sc,
     // Track if we were given an invalid field so we can give nicer errors
     bool invalid = false;
 
-    // Check that the type is complete.
-    if (!qualified_type_is_complete(&type))
+    // TODO: this does not yet allow for flexible array members at the end ofs
+    // TODO: a struct. Note: we can check for an expression in the array type 
+    // to see if we have a flexible member or not.
+    QualifiedType canonical = qualified_type_get_canonical(&type);
+    if (qualified_type_is(&canonical, TYPE_ARRAY)
+            && !qualified_type_is_complete(&type))
+    {
+        diagnostic_error_at(sc->dm, identifier_loc,
+                "fields must have a constant size");
+
+        // Remove possible bitfield expression
+        colon_location = LOCATION_INVALID;
+        expression = NULL;
+
+        invalid = true;
+    }
+    else if (!qualified_type_is_complete(&type))
     {
         diagnostic_error_at(sc->dm, identifier_loc,
                 "field has incomplete type");
@@ -2350,56 +2461,68 @@ Declaration* semantic_checker_handle_enum_constant(SemanticChecker* sc,
         return declaration_create_error(&sc->ast->ast_allocator, location);
     }
 
-    // TODO: also need to determine the value of the enum
+    // Determine the value of the enumeration constant here.
     int value;
-    if (expression != NULL)
+    if (expression != NULL && !expression_is_integer_constant(expression))
     {
-        // Here we got given an expression that we want to fold
-        if (!expression_is(expression, EXPRESSION_INTEGER_CONSTANT))
+        // Only error, if it's not invalid to prevent too many errors from being
+        // generated.
+        if (!expression_is_invalid(expression))
         {
             diagnostic_error_at(sc->dm, expression_get_location(expression),
-                    "expression cannot be folded at this time");
+                "enumerator value for '%s' is not an integer constant "
+                "expression", identifier->string.ptr);
+        }
+
+        value = 0;
+    }
+    else if (expression != NULL)
+    {
+        ExpressionIntegerValue integer_value = {0};
+        bool success = expression_fold_to_integer_constant(expression,
+                &integer_value);
+        
+        // if conversion failed just give it the value of 0 and stop here.
+        if (!success)
+        {
             value = 0;
         }
         else
         {
-            IntegerValue int_value = expression->integer.value;
+            // Get the integer value
+            int64_t int_value = expression_integer_value_get(&integer_value);
 
-            if (int_value.value > INT_MAX)
+            // Check for overflow
+            if (int_value > INT_MAX || int_value < INT_MIN)
             {
                 diagnostic_error_at(sc->dm, location,
-                        "enumerator value '%s' not in range of int",
-                        identifier->string.ptr);
-                value = INT_MAX;
+                        "ISO C restricts enumerator values to range of 'int' "
+                        "(%ld is too large)", int_value);
             }
-            else
-            {
-                value = (int) int_value.value;
-            }
+
+            value = (int) int_value;
+        }
+    }
+    else if (last_decl != NULL)
+    {
+        value = declaration_enum_constant_get_value(last_decl);
+            
+        // Manually do 2's complement overflow if needed
+        if (value == INT_MAX)
+        {
+            diagnostic_warning_at(sc->dm, location,
+                    "overflow in enumeration value '%s'",
+                    identifier->string.ptr);
+            value = INT_MIN;
+        }
+        else
+        {
+            value++;
         }
     }
     else
     {
-        if (last_decl == NULL)
-        {
-            value = 0;
-        }
-        else
-        {
-            value = declaration_enum_constant_get_value(last_decl);
-    
-            if (value == INT_MAX)
-            {
-                diagnostic_error_at(sc->dm, location,
-                        "overflow in enumeration value '%s'",
-                        identifier->string.ptr);
-                value = 0;
-            }
-            else
-            {
-                value++;
-            }
-        }
+        value = 0;
     }
     
     // Create and add the declaration into the ordinairy namespace
@@ -3492,10 +3615,17 @@ Expression* semantic_checker_handle_call_expression(SemanticChecker* sc,
 
     // Get the return type of the function
     QualifiedType pointer = expression_get_qualified_type(lhs);
+    pointer = qualified_type_get_canonical(&pointer);
+
     QualifiedType function_type = type_pointer_get_pointee(&pointer);
     QualifiedType real_type = qualified_type_get_canonical(&function_type);
     
-    QualifiedType return_type = type_function_get_return(&function_type);
+    // Now we have the real type of the function we will need to check the 
+    // number, or arguments that we are given in the function and if they are
+    // compatible with the functions declaration.
+    // TODO: above
+
+    QualifiedType return_type = type_function_get_return(&real_type);
     return semantic_checker_handle_error_expression(sc, lparen_location);
 }
 
@@ -3944,10 +4074,16 @@ Expression* semantic_checker_handle_sizeof_type_expression(SemanticChecker* sc,
         return semantic_checker_handle_error_expression(sc, sizeof_location);
     }
 
+    // Also check if we got an incomplete array type
+    if (qualified_type_is(&real_type, TYPE_ARRAY))
+    {
+        return semantic_checker_handle_error_expression(sc, sizeof_location);
+    }
+
     // Get the standard size type for the value of the expression
     QualifiedType size_type = semantic_checker_get_size_type(sc);
-    
-    return NULL;
+    return expression_create_sizeof_type(&sc->ast->ast_allocator,
+            sizeof_location, lparen_loc, type, rparen_loc, size_type);
 }
 
 Expression* semantic_checker_handle_sizeof_expression(SemanticChecker* sc,
@@ -3969,8 +4105,8 @@ Expression* semantic_checker_handle_sizeof_expression(SemanticChecker* sc,
 
     // Get the standard size type for the value of the expression
     QualifiedType size_type = semantic_checker_get_size_type(sc);
-
-    return NULL;
+    return expression_create_sizeof_expression(&sc->ast->ast_allocator,
+            sizeof_location, expression, size_type);
 }
 
 Expression* semantic_checker_handle_cast_expression(SemanticChecker* sc,
@@ -4180,7 +4316,8 @@ Expression* semantic_checker_handle_bitwise_expression(SemanticChecker* sc,
             || type == EXPRESSION_BINARY_AND
             || type == EXPRESSION_BINARY_XOR_ASSIGN
             || type == EXPRESSION_BINARY_OR_ASSIGN
-            || type == EXPRESSION_BINARY_XOR_ASSIGN);
+            || type == EXPRESSION_BINARY_XOR_ASSIGN
+            || type == EXPRESSION_BINARY_AND_ASSIGN);
     assert(expression_is_valid(lhs) && expression_is_valid(rhs));
 
     // Check if the type of this bitwise expression is an assignment. Since 
@@ -5154,6 +5291,7 @@ static Expression* semantic_checker_handle_simple_assigment(SemanticChecker* sc,
     QualifiedType rhs_type = expression_get_qualified_type(rhs);
 
     QualifiedType real_lhs_type = qualified_type_get_canonical(&lhs_type);
+    QualifiedType real_rhs_type = qualified_type_get_canonical(&rhs_type);
 
     // Pre-compute if the types are compatible
     bool compaitable = qualified_type_is_compatible_no_quals(&lhs_type,
@@ -5180,8 +5318,8 @@ static Expression* semantic_checker_handle_simple_assigment(SemanticChecker* sc,
     {
         // Get the types pointed to by both of the sides and get their 
         // qualifiers so we can test if they have the same qualifiers
-        QualifiedType lhs_pointee = type_pointer_get_pointee(&lhs_type);
-        QualifiedType rhs_pointee = type_pointer_get_pointee(&rhs_type);
+        QualifiedType lhs_pointee = type_pointer_get_pointee(&real_lhs_type);
+        QualifiedType rhs_pointee = type_pointer_get_pointee(&real_rhs_type);
 
         TypeQualifiers lhs_quals = qualified_type_get_quals(&lhs_pointee);
         TypeQualifiers rhs_quals = qualified_type_get_quals(&rhs_pointee);
@@ -5660,12 +5798,41 @@ Statement* semantic_checker_handle_compound_statement(SemanticChecker* sc,
             first);
 }
 
+bool semantic_checker_check_case_expression(SemanticChecker* sc,
+        Expression** expression)
+{
+    // if we're not in a switch scope, don't produce more warnings and say that
+    // the expression is fine.
+    if (!scope_get_switch(sc->scope))
+    {
+        return true;
+    }
+
+    // If the expression is already known to be invalid, also claim this is fine
+    if (expression_is_invalid(*expression))
+    {
+        return true;
+    }
+
+    // Otherwise, check that we have a constant expression.
+    if (!expression_is_integer_constant(*expression))
+    {
+        diagnostic_error_at(sc->dm, expression_get_location(*expression),
+                "case expression is not an integer constant expression");
+        expression_set_invalid(*expression);
+        return false;
+    }
+
+    // If we have an integer constant expression we are all good to go. Note 
+    // that the only thing that needs to be checked that it is allowed is that
+    // we have case expressions in the range of the controlling expression type
+    return true;
+}
+
 bool semantic_checker_check_case_allowed(SemanticChecker* sc,
         Location case_location)
 {
-    Scope* switch_scope = scope_get_switch(sc->scope);
-
-    bool allowed = switch_scope != NULL;
+    bool allowed = scope_get_switch(sc->scope) != NULL;
 
     if (!allowed)
     {
@@ -5680,17 +5847,47 @@ Statement* semantic_checker_handle_case_statement(SemanticChecker* sc,
         Location case_location, Expression* expression,
         Location colon_location, Statement* stmt)
 {
-    // TODO: here fold and check the case
-    return statement_create_case(&sc->ast->ast_allocator, case_location,
-            colon_location, expression, (IntegerValue) {0}, stmt);
+    if (!expression_is_valid(expression))
+    {
+        return semantic_checker_handle_error_statement(sc);
+    }
+
+    ExpressionIntegerValue value = {0};
+    expression_fold_to_integer_constant(expression, &value);
+    // printf("%ld\n", value.value);
+
+    // TODO: will need to truncate the value possible.
+
+    // First before we add this case check for duplicate cases. Note: this has
+    // terrible time complexity as we check cases each time we actually add them
+    // which will result in quadratic complexity!
+    Statement* cases = semantic_checker_switch_stack_get_first(sc);
+    while (cases != NULL)
+    {
+        ExpressionIntegerValue other = statement_case_get_value(cases);
+        if (other.value == value.value)
+        {
+            diagnostic_error_at(sc->dm, expression_get_location(expression),
+                    "duplicate case value '%ld'", value.value);
+            return semantic_checker_handle_error_statement(sc);
+        }
+
+        cases = statement_case_get_next(cases);
+    }
+
+    // Create and push the new case statement so that we can error if we got
+    // the same value in our switch statement.
+    Statement* new_case =  statement_create_case(&sc->ast->ast_allocator,
+            case_location, colon_location, expression, value, stmt);
+    semantic_checker_switch_stack_add_case(sc, new_case);
+
+    return new_case;
 }
 
 bool semantic_checker_check_default_allowed(SemanticChecker* sc,
         Location default_location)
 {
-    Scope* switch_scope = scope_get_switch(sc->scope);
-
-    bool allowed = switch_scope != NULL;
+    bool allowed = scope_get_switch(sc->scope) != NULL;
 
     if (!allowed)
     {
@@ -5704,8 +5901,18 @@ bool semantic_checker_check_default_allowed(SemanticChecker* sc,
 Statement* semantic_checker_handle_default_statement(SemanticChecker* sc,
         Location default_location, Location colon_location, Statement* stmt)
 {
-    return statement_create_default(&sc->ast->ast_allocator, default_location,
-            colon_location, stmt);
+    if (semantic_checker_switch_stack_get_default(sc))
+    {
+        diagnostic_error_at(sc->dm, default_location,
+                "multiple default labels in one switch");
+        return semantic_checker_handle_error_statement(sc);
+    }
+
+    Statement* default_label = statement_create_default(&sc->ast->ast_allocator,
+            default_location, colon_location, stmt);
+    semantic_checker_switch_stack_add_default(sc, default_label);
+
+    return default_label;
 }
 
 Statement* semantic_checker_handle_if_statement(SemanticChecker* sc,
@@ -5718,6 +5925,8 @@ Statement* semantic_checker_handle_if_statement(SemanticChecker* sc,
             lparen_location, rparen_location, else_location, expression,
             if_body, else_body);
 }
+
+
 
 Statement* semantic_checker_handle_switch_statement(SemanticChecker* sc,
         Location switch_location, Location lparen_location,

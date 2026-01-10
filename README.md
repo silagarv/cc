@@ -27,9 +27,9 @@ To building, run 'make' in the cc directory and it wll output an executable name
 
 - Semantic
     - expressions
-        - make the final few expression types
-        - fix constant expressions
-        - fold constant expressions
+        - fix constant expressions -> some bugs to do with checking if one is a constant expression or not.
+        - fold constant expressions -> fix bugs which appear
+        - fix array subscript checking code -> register variable error not triggered in some cases.
     - initializers 
         - clean up the code for variable initializations to make it alot more clean so that it can easily be seen what is happening where.
         - also make the calculation of what is tentative and what is not tentative more clear so that we can do the above better

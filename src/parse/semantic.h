@@ -14,6 +14,13 @@
 #include "parse/type.h"
 #include "parse/scope.h"
 
+typedef struct SwitchStack {
+    struct SwitchStack* previous; // the previous switch stack
+    Statement* first_label; // the first case (if any)
+    Statement* previous_case; // the most recent case
+    Statement* default_label; // default label if currently present.
+} SwitchStack;
+
 typedef struct SemanticChecker {
     // The diagnostic manager for this semantic checker
     DiagnosticManager* dm;
@@ -34,6 +41,9 @@ typedef struct SemanticChecker {
 
     // The current function scope that we are using
     FunctionScope* function;
+
+    // The current swtich stack for building of switch statements.
+    SwitchStack* switches;
 } SemanticChecker;
 
 SemanticChecker sematic_checker_create(DiagnosticManager* dm,
@@ -52,6 +62,20 @@ void semantic_checker_push_scope(SemanticChecker* sc, Scope* scope);
 void semantic_checker_pop_scope(SemanticChecker* sc);
 Scope* semantic_checker_current_scope(SemanticChecker* sc);
 bool semantic_checker_current_scope_is(SemanticChecker* sc, ScopeFlags type);
+
+void semantic_checker_push_switch_stack(SemanticChecker* sc);
+void semantic_checker_pop_switch_stack(SemanticChecker* sc);
+
+Statement* semantic_checker_switch_stack_get_first(SemanticChecker* sc);
+Statement* semantic_checker_switch_stack_get_default(SemanticChecker* sc);
+
+// Note: these functions below don't check if we are allowed to or not they
+// simply do what they are told. So checking it is valid to add the cases should
+// be done first.
+void semantic_checker_switch_stack_add_case(SemanticChecker* sc,
+        Statement* case_label);
+void semantic_checker_switch_stack_add_default(SemanticChecker* sc,
+        Statement* default_label);
 
 // A very important helper functions for handling if an identifier token should
 // be treated as a typename or not. Returns 'true' if it should and 'false' 
@@ -212,6 +236,8 @@ Expression* semantic_checker_check_condition(SemanticChecker* sc,
 
 Statement* semantic_checker_handle_compound_statement(SemanticChecker* sc,
         Location lcurly, Statement* first, Location rcurly);
+bool semantic_checker_check_case_expression(SemanticChecker* sc,
+        Expression** expression);
 bool semantic_checker_check_case_allowed(SemanticChecker* sc,
         Location case_location);
 Statement* semantic_checker_handle_case_statement(SemanticChecker* sc,

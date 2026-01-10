@@ -48,7 +48,7 @@ Statement* statement_create_label(AstAllocator* allocator,
 
 Statement* statement_create_case(AstAllocator* allocator, 
         Location case_location, Location colon_location, Expression* expr,
-        IntegerValue value, Statement* body)
+        ExpressionIntegerValue value, Statement* body)
 {
     Statement* stmt = statement_create_base(allocator, sizeof(StatementCase),
             STATEMENT_CASE);
@@ -57,8 +57,32 @@ Statement* statement_create_case(AstAllocator* allocator,
     stmt->case_stmt.constant_expression = expr;
     stmt->case_stmt.expression_value = value;
     stmt->case_stmt.statement = body;
+    stmt->case_stmt.next_case = NULL;
 
     return stmt;
+}
+
+void statement_case_set_next(Statement* stmt, Statement* next)
+{
+    assert(statement_is(stmt, STATEMENT_CASE));
+    assert(statement_is(next, STATEMENT_CASE));
+    assert(stmt->case_stmt.next_case == NULL);
+
+    stmt->case_stmt.next_case = next;
+}
+
+Statement* statement_case_get_next(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_CASE));
+
+    return stmt->case_stmt.next_case;
+}
+
+ExpressionIntegerValue statement_case_get_value(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_CASE));
+
+    return stmt->case_stmt.expression_value;
 }
 
 Statement* statement_create_default(AstAllocator* allocator,

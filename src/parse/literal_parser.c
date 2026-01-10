@@ -28,6 +28,16 @@ typedef enum EscapeSequenceResult {
     ESCAPE_SEQUENCE_RESULT_FATAL
 } EscapeSequenceResult;
 
+uint64_t integer_value_get_value(const IntegerValue* val)
+{
+    return val->value;
+}
+
+uint64_t char_value_get_value(const CharValue* val)
+{
+    return val->value;
+}
+
 ValueType literal_value_get_type(const LiteralValue* value)
 {
     return value->type;
@@ -1039,6 +1049,12 @@ bool parse_char_literal(CharValue* value, DiagnosticManager* dm,
         diagnostic_error_at(dm, loc, "wide character literals may not contain "
                 "multiple characters");
         fatal_error = true;
+    }
+
+    if (!wide && val > INT_MAX)
+    {
+        diagnostic_warning_at(dm, loc,
+                "character constant too long for its type");
     }
 
     if (fatal_error)

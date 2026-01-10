@@ -1,6 +1,7 @@
 #ifndef STATEMENT_H
 #define STATEMENT_H
 
+#include "parse/expression_eval.h"
 #include "util/vec.h"
 
 #include "files/location.h"
@@ -85,7 +86,7 @@ struct StatementCase {
     Location case_location;
     Location colon_location;
     Expression* constant_expression;
-    IntegerValue expression_value;
+    ExpressionIntegerValue expression_value;
     Statement* statement;
 
     Statement* next_case; // Since the next field in base is used
@@ -260,11 +261,13 @@ Statement* statement_create_label(AstAllocator* allocator,
 
 Statement* statement_create_case(AstAllocator* allocator, 
         Location case_location, Location colon_location, Expression* expr,
-        IntegerValue value, Statement* body);
+        ExpressionIntegerValue value, Statement* body);
+void statement_case_set_next(Statement* stmt, Statement* next);
+Statement* statement_case_get_next(const Statement* stmt);
+ExpressionIntegerValue statement_case_get_value(const Statement* stmt);
 
 Statement* statement_create_default(AstAllocator* allocator,
-        Location default_location, Location colon_location, 
-        Statement* body);
+        Location default_location, Location colon_location, Statement* body);
 
 Statement* statement_create_compound(AstAllocator* allocator,
         Location opening_curly, Location closing_curly, Statement* first);

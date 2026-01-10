@@ -317,7 +317,8 @@ Expression* expression_create_reference(AstAllocator* allocator,
 
 union Declaration* expression_reference_get_decl(const Expression* expression)
 {
-    assert(expression_is(expression, EXPRESSION_REFERENCE));
+    assert(expression_is(expression, EXPRESSION_REFERENCE)
+        || expression_is(expression, EXPRESSION_ENUMERATION_CONSTANT));
 
     return expression->reference.declaration;
 }
@@ -384,6 +385,13 @@ Expression* expression_create_character(AstAllocator* allocator,
     return expr;
 }
 
+CharValue expression_character_get_value(const Expression* expression)
+{
+    assert(expression_is(expression, EXPRESSION_CHARACTER_CONSTANT));
+
+    return expression->character.value;
+}
+
 Expression* expression_create_array(AstAllocator* allocator, 
         Location lbracket_loc, Location rbracket_loc, Expression* lhs,
         Expression* member, QualifiedType expr_type, bool lhs_is_array)
@@ -414,6 +422,48 @@ Expression* expression_create_unary(AstAllocator* allocator,
 Expression* expression_unary_get_rhs(const Expression* expression)
 {
     return expression->unary.rhs;
+}
+
+Expression* expression_create_sizeof_type(AstAllocator* allocator,
+        Location sizeof_location, Location lparen_loc, QualifiedType type,
+        Location rparen_loc, QualifiedType size_type)
+{
+    Expression* expr = expression_create_base(allocator,
+            sizeof(ExpressionSizeofType), EXPRESSION_SIZEOF_TYPE, size_type);
+    expr->sizeof_type.sizeof_loc = sizeof_location;
+    expr->sizeof_type.lparen_loc = lparen_loc;
+    expr->sizeof_type.rparen_loc = rparen_loc;
+    expr->sizeof_type.target_type = type;
+
+    return expr;
+}
+
+QualifiedType expression_sizeof_type_get_type(const Expression* expr)
+{
+    assert(expression_is(expr, EXPRESSION_SIZEOF_TYPE));
+
+    return expr->sizeof_type.target_type;
+}
+
+Expression* expression_create_sizeof_expression(AstAllocator* allocator,
+        Location sizeof_location, Expression* expression,
+        QualifiedType size_type)
+{
+    Expression* expr = expression_create_base(allocator,
+            sizeof(ExpressionSizeofExpression), EXPRESSION_SIZEOF_EXPRESSION,
+            size_type);
+    expr->sizeof_expression.sizeof_loc = sizeof_location;
+    expr->sizeof_expression.expression = expression;
+
+    return expr;
+}
+
+Expression* expression_sizeof_expression_get_expression(
+        const Expression* expr)
+{
+    assert(expression_is(expr, EXPRESSION_SIZEOF_EXPRESSION));
+
+    return expr->sizeof_expression.expression;
 }
 
 Expression* expression_create_binary(AstAllocator* allocator, 

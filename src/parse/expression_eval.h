@@ -10,13 +10,11 @@
 // constant expression went, and if the current result is valid or not.
 typedef struct ExpressionIntegerValue {
     int64_t value; // the value stored itself
-    bool valid; // if this integer value valid
 } ExpressionIntegerValue;
 
-// An enum for expression classification used for 
+ExpressionIntegerValue expression_integer_value_create_zero(void);
 
 int64_t expression_integer_value_get(const ExpressionIntegerValue* value);
-bool expression_integer_value_valid(const ExpressionIntegerValue* value);
 
 // TODO: add some functions for if the value is in int range etc...
 
@@ -28,7 +26,7 @@ bool expression_is_integer_constant(const Expression* expression);
 // Fold the integer constant expression expression to the expression integer
 // value given by 'value'. Returns 'false' if any errors occured e.g. division
 // by 0, and 'true' otherwise.
-bool expression_fold_to_integer_constant(DiagnosticManager* dm,
-        const Expression* expression, ExpressionIntegerValue* value);
+bool expression_fold_to_integer_constant(const Expression* expression,
+        ExpressionIntegerValue* value);
 
 #endif /* EXPRESSION_EVAL_H */

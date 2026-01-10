@@ -93,6 +93,7 @@ const char* type_specifier_to_name(TypeSpecifierType type)
         case TYPE_SPECIFIER_STRUCT: return "struct";
         case TYPE_SPECIFIER_UNION: return "union";
         case TYPE_SPECIFIER_TYPENAME: return "type-name";
+        case TYPE_SPECIFIER_ERROR: return "<internal-error>";
     }
 }
 
@@ -219,7 +220,7 @@ QualifiedType type_create_array(AstAllocator* allocator,
     size_t size = length * element_type.type->type_base.type_size;
 
     // Array of unknown length are incomplete types
-    bool is_complete = (expression != NULL);
+    bool is_complete = (expression != NULL) && !is_vla && !is_star;
 
     // Need to determine the size and align or the array.
     Type* type = type_create_base(allocator, sizeof(TypeArray), TYPE_ARRAY,
@@ -260,11 +261,7 @@ bool type_array_is_complete(const QualifiedType* type)
 {
     assert(qualified_type_is(type, TYPE_ARRAY));
 
-    // TODO: this.
-
-    panic("TODO");
-
-    return false;
+    return type->type->type_base.is_complete;
 }
 
 TypeFunctionParameter* type_create_function_parameter(AstAllocator* allocator,

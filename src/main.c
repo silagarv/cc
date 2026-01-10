@@ -3,45 +3,51 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <assert.h>
+
+#include "files/filepath.h"
+#include "files/source_manager.h"
 
 #include "driver/diagnostic.h"
-#include "files/file_manager.h"
-#include "files/location.h"
-#include "files/source_manager.h"
-#include "parse/statement.h"
-#include "util/hash_map.h"
-#include "util/panic.h"
-#include "util/buffer.h"
-#include "util/str.h"
-#include "util/xmalloc.h"
-
-#include "lex/token.h"
-#include "files/line_map.h"
-
-#include "parse/parser.h"
-#include "lex/token.h"
-
-#include "util/arena.h"
-
-#include "lex/lexer.h"
-
-#include "driver/target.h"
 
 #include "lex/preprocessor.h"
 
-#include <assert.h>
-#include "files/filepath.h"
+#include "parse/parser.h"
 
-#include "lex/identifier_table.h"
+bool get_filepath(Filepath* path, const char* argv)
+{
+    if (argv == NULL)
+    {
+        return false;
+    }
+
+    size_t len = strlen(argv);
+    if (len >= FILENAME_MAX)
+    {
+        return false;
+    }
+
+    strcpy(path->path, argv);
+    path->len = len;
+
+    return true;
+}
 
 int compiler_main(int argc, char** argv)
 {
     SourceManager sm = source_manager();
     DiagnosticManager dm = diagnostic_manager_init(&sm);
 
-    Filepath path = FILEPATH_STATIC_INIT("test.c");
+    Filepath path;
+    bool file = get_filepath(&path, argv[1]);
+    if (!file)
+    {
+        diagnostic_error(&dm, "no input files");
+        goto no_input;
+    }
+
     SourceFile* source = source_manager_create_filepath(&sm, path);
-    
     if (!source)
     {
         diagnostic_error(&dm, "no such file '%s'", path.path);
