@@ -52,7 +52,7 @@ SemanticChecker sematic_checker_create(DiagnosticManager* dm,
 void declaration_specifiers_finish(SemanticChecker* sc,
         DeclarationSpecifiers* specifiers);
 QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
-        const DeclarationSpecifiers* specifiers);
+        const DeclarationSpecifiers* specifiers, Location location);
 
 // These are our functions for handling the scopes that the semantic checker
 // can see.
@@ -98,6 +98,10 @@ QualifiedType semantic_checker_process_typename(SemanticChecker* sc,
         Declarator* declarator);
 Declaration* semantic_checker_process_function_param(SemanticChecker* sc,
         Declarator* declarator);
+Declaration* semantic_checker_process_knr_param(SemanticChecker* sc,
+        Identifier* identifer, Location location);
+Declaration* semantic_checker_process_knr_param_defn(SemanticChecker* sc,
+        Declarator* declarator, const DeclaratorPiece* function_piece);
 Declaration* semantic_checker_process_struct_declarator(SemanticChecker* sc,
         Declaration* struct_decl, Declarator* declarator);
 Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
@@ -114,12 +118,12 @@ Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
 
 
 // For post declarator shenanigans
-void semantic_checker_handle_function_start(SemanticChecker* sc,
-        Declaration* function);
 void semantic_checker_handle_function_end(SemanticChecker* sc,
         Declaration* function, Statement* body);
 void semantic_checker_add_function_parameters(SemanticChecker* sc,
         Declaration* declaration);
+void semantic_checker_handle_end_of_knr_parameters(SemanticChecker* sc,
+        DeclarationList* decls, const DeclaratorPiece* identifiers);
 
 void semantic_checker_declaration_add_initializer(SemanticChecker* sc,
         Declaration* declaration, DeclaratorContext context, Location equals,

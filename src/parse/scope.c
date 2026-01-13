@@ -22,7 +22,7 @@ bool scope_is(const Scope* scope, ScopeFlags flags)
     return (scope->flags & flags) != 0;
 }
 
-Scope scope_new_extern(AstAllocator* allocator)
+Scope scope_extern(AstAllocator* allocator)
 {
     // extern scope should only have the normal namespcae
     Scope scope = (Scope)
@@ -40,7 +40,7 @@ Scope scope_new_extern(AstAllocator* allocator)
     return scope;
 }
 
-Scope scope_new_file(AstAllocator* allocator)
+Scope scope_file(AstAllocator* allocator)
 {
     // File scope should only have the normal namespcae and the tag namespace.
     Scope scope = (Scope)
@@ -58,7 +58,7 @@ Scope scope_new_file(AstAllocator* allocator)
     return scope;
 }
 
-Scope scope_new_block(AstAllocator* allocator)
+Scope scope_block(AstAllocator* allocator)
 {
     Scope scope = (Scope)
     {
@@ -76,7 +76,7 @@ Scope scope_new_block(AstAllocator* allocator)
     return scope;
 }
 
-Scope scope_new_function_prototype(AstAllocator* allocator)
+Scope scope_function_prototype(AstAllocator* allocator)
 {
     Scope scope = (Scope)
     {
@@ -94,7 +94,7 @@ Scope scope_new_function_prototype(AstAllocator* allocator)
     return scope;
 }
 
-Scope scope_new_member(AstAllocator* allocator)
+Scope scope_member(AstAllocator* allocator)
 {
     Scope scope = (Scope)
     {
@@ -112,7 +112,25 @@ Scope scope_new_member(AstAllocator* allocator)
     return scope;
 }
 
-Scope scope_new_for(AstAllocator* allocator)
+Scope scope_if(AstAllocator* allocator)
+{
+    Scope scope = (Scope)
+    {
+        .flags = SCOPE_IF,
+        .parent = NULL,
+        .ordinairy = symbol_table_create(),
+        .tag = symbol_table_create(),
+        .members = {0},
+        .has_ordinairy = true,
+        .has_tag = true,
+        .has_members = false,
+        .all_decls = declaration_list_create(allocator)
+    };
+
+    return scope;
+}
+
+Scope scope_for(AstAllocator* allocator)
 {
     Scope scope = (Scope)
     {
@@ -130,52 +148,55 @@ Scope scope_new_for(AstAllocator* allocator)
     return scope;
 }
 
-Scope scope_new_while(void)
+Scope scope_while(AstAllocator* allocator)
 {
     Scope scope = (Scope)
     {
         .flags = SCOPE_WHILE,
         .parent = NULL,
-        .ordinairy = {0},
-        .tag = {0},
+        .ordinairy = symbol_table_create(),
+        .tag = symbol_table_create(),
         .members = {0},
-        .has_ordinairy = false,
-        .has_tag = false,
-        .has_members = false
+        .has_ordinairy = true,
+        .has_tag = true,
+        .has_members = false,
+        .all_decls = declaration_list_create(allocator)
     };
 
     return scope;
 }
 
-Scope scope_new_do_while(void)
+Scope scope_do_while(AstAllocator* allocator)
 {
     Scope scope = (Scope)
     {
         .flags = SCOPE_DO_WHILE,
         .parent = NULL,
-        .ordinairy = {0},
-        .tag = {0},
+        .ordinairy = symbol_table_create(),
+        .tag = symbol_table_create(),
         .members = {0},
-        .has_ordinairy = false,
-        .has_tag = false,
-        .has_members = false
+        .has_ordinairy = true,
+        .has_tag = true,
+        .has_members = false,
+        .all_decls = declaration_list_create(allocator)
     };
 
     return scope;
 }
 
-Scope scope_new_switch(void)
+Scope scope_switch(AstAllocator* allocator)
 {
     Scope scope = (Scope)
     {
         .flags = SCOPE_SWITCH,
         .parent = NULL,
-        .ordinairy = {0},
-        .tag = {0},
+        .ordinairy = symbol_table_create(),
+        .tag = symbol_table_create(),
         .members = {0},
-        .has_ordinairy = false,
-        .has_tag = false,
-        .has_members = false
+        .has_ordinairy = true,
+        .has_tag = true,
+        .has_members = false,
+        .all_decls = declaration_list_create(allocator)
     };
 
     return scope;
@@ -229,7 +250,8 @@ static bool scope_allows_common(const Scope* scope, const ScopeFlags* flags,
 static bool scope_allows_declaration(const Scope* scope)
 {
     static const ScopeFlags decl_scopes[] = {SCOPE_EXTERN, SCOPE_FILE,
-            SCOPE_FUNCTION, SCOPE_BLOCK, SCOPE_FOR};
+            SCOPE_BLOCK, SCOPE_FUNCTION, SCOPE_IF, SCOPE_FOR, SCOPE_WHILE,
+            SCOPE_DO_WHILE, SCOPE_SWITCH};
     static const size_t num_scopes = 
             sizeof(decl_scopes) / sizeof(decl_scopes[0]);
 

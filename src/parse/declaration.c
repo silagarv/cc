@@ -58,6 +58,9 @@ char* declarator_context_to_name(DeclaratorContext context)
 
         case DECL_CTX_STRUCT:
             return "struct";
+
+        case DECL_CTX_KNR:
+            return "knr";
     }
 }
 
@@ -175,6 +178,7 @@ bool declarator_identifier_allowed(const Declarator* declarator)
         case DECL_CTX_BLOCK:
         case DECL_CTX_FILE:
         case DECL_CTX_STRUCT:
+        case DECL_CTX_KNR:
             return true;
 
         default:
@@ -194,6 +198,7 @@ bool declarator_identifier_required(const Declarator* declarator)
         case DECL_CTX_BLOCK:
         case DECL_CTX_FILE:
         case DECL_CTX_STRUCT:
+        case DECL_CTX_KNR:
             return true;
 
         default:
@@ -290,11 +295,44 @@ DeclaratorPiece* declarator_get_function_piece(const Declarator* declarator)
     return lowest;
 }
 
-DeclarationList declarator_function_piece_get_decls(const DeclaratorPiece* piece)
+bool declarator_piece_is_knr_function(const DeclaratorPiece* piece)
+{
+    if (piece->base.type != DECLARATOR_PIECE_FUNCTION)
+    {
+        return false;
+    }
+
+    return piece->function.knr;
+}
+
+size_t declarator_piece_function_num_params(const DeclaratorPiece* piece)
+{
+    assert(piece->base.type == DECLARATOR_PIECE_FUNCTION);
+    
+    return piece->function.num_paramaters;
+}
+
+Location declarator_piece_function_get_lparen(const DeclaratorPiece* piece)
+{
+    assert(piece->base.type == DECLARATOR_PIECE_FUNCTION);
+
+    return piece->function.lparen_loc;
+}
+
+DeclarationList declarator_function_piece_get_all_decls(
+        const DeclaratorPiece* piece)
 {
     assert(piece->base.type == DECLARATOR_PIECE_FUNCTION);
 
     return piece->function.all_decls;
+}
+
+void declarator_function_piece_set_all_decls(DeclaratorPiece* piece,
+        DeclarationList decls)
+{
+    assert(piece->base.type == DECLARATOR_PIECE_FUNCTION);
+
+    piece->function.all_decls = decls;
 }
 
 bool declarator_has_function(const Declarator* declarator)
@@ -334,7 +372,7 @@ void declarator_push_array(Declarator* declarator, Location lbracket,
 
 void declarator_push_function(Declarator* declarator, Location lparen_loc,
         Location rparen_loc, DeclarationList params, size_t num_params,
-        DeclarationList all_decls, Location dots)
+        DeclarationList all_decls, Location dots, bool knr)
 {   
 
     DeclaratorPiece* piece = ast_allocator_alloc(declarator->allocator,
@@ -348,6 +386,7 @@ void declarator_push_function(Declarator* declarator, Location lparen_loc,
     piece->function.num_paramaters = num_params;
     piece->function.all_decls = all_decls;
     piece->function.is_variadic = dots != LOCATION_INVALID;
+    piece->function.knr = knr;
 
     declarator->piece_stack = piece;
 }
@@ -403,6 +442,22 @@ DeclarationListEntry* declaration_list_iter(const DeclarationList* list)
 DeclarationListEntry* declaration_list_next(const DeclarationListEntry* curr)
 {
     return curr->next;
+}
+
+bool declaration_list_has_identifier(const DeclarationList* list,
+        const Identifier* identifier)
+{
+    DeclarationListEntry* entry = declaration_list_iter(list);
+    for  ( ; entry != NULL; entry = declaration_list_next(entry))
+    {
+        Declaration* decl = declaration_list_entry_get(entry);
+        if (declaration_get_identifier(decl) == identifier)
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 DeclarationType declaration_get_kind(const Declaration *decl)
@@ -845,6 +900,12 @@ bool declaration_function_has_definition(Declaration* declaration)
     assert(declaration_is(declaration, DECLARATION_FUNCTION));
 
     return declaration->function.definition != NULL;
+}
+
+bool declaration_function_is_knr(const Declaration* declaration)
+{
+    QualifiedType type = declaration_get_type(declaration);
+    return type_function_get_knr(&type);
 }
 
 DeclarationList declaration_function_get_paramaters(const Declaration* function)

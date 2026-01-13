@@ -366,7 +366,7 @@ Expression* expression_create_float(AstAllocator* allocator, Location location,
         FloatingValue value, QualifiedType type)
 {
     Expression* expr = expression_create_base(allocator,
-            sizeof(ExpressionInteger), EXPRESSION_FLOATING_CONSTANT, type);
+            sizeof(ExpressionFloating), EXPRESSION_FLOATING_CONSTANT, type);
     expr->floating.num_location = location;
     expr->floating.value = value;
 
@@ -575,6 +575,13 @@ Expression* expression_cast_get_inner(const Expression* expression)
     assert(expression_is(expression, EXPRESSION_CAST));
 
     return expression->cast.rhs;
+}
+
+Expression* expression_implicit_cast_get_inner(const Expression* expression)
+{
+    assert(expression_is(expression, EXPRESSION_CAST_IMPLICIT));
+
+    return expression->cast.rhs;   
 }
 
 Expression* expression_create_conditional(AstAllocator* allocator,

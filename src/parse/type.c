@@ -330,6 +330,11 @@ QualifiedType type_function_get_return(const QualifiedType* function)
     return function->type->type_function.return_type;
 }
 
+bool type_function_get_knr(const QualifiedType* type)
+{
+    return type->type->type_function.unspecified_paramters;
+}
+
 QualifiedType type_create_enum(AstAllocator* allocator, Type* base)
 {
     size_t base_size = base->type_base.type_size;

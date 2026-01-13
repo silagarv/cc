@@ -152,7 +152,6 @@ bool expression_is_integer_constant(const Expression* expression)
                 // division by zero error.
                 ExpressionIntegerValue value = {0};
                 rhs_okay = expression_fold_to_integer_constant(rhs, &value);
-
                 if (rhs_okay && value.value == 0)
                 {
                     rhs_okay = false;
@@ -171,6 +170,13 @@ bool expression_is_integer_constant(const Expression* expression)
             return expression_is_integer_constant(cond)
                     && expression_is_integer_constant(t)
                     && expression_is_integer_constant(f);
+        }
+
+        // Remove the implicit cast
+        case EXPRESSION_CAST_IMPLICIT:
+        {
+            Expression* inner = expression_implicit_cast_get_inner(expression);
+            return expression_is_integer_constant(inner);
         }
 
         // Definitely never be ICE's
@@ -206,7 +212,6 @@ bool expression_is_integer_constant(const Expression* expression)
             return false;
 
         // These are all definitely not ICE's
-        case EXPRESSION_CAST_IMPLICIT:
         case EXPRESSION_ARRAY_DECAY:
         case EXPRESSION_LVALUE_CAST:
         case EXPRESSION_REFERENCE:
@@ -306,14 +311,16 @@ bool expression_fold_to_integer_constant(const Expression* expression,
             // integer type.
             if (expression_is(castee, EXPRESSION_FLOATING_CONSTANT))
             {
-
-
+                value->value = (int64_t) castee->floating.value.value;
                 return true;
             }
 
             // Do an integer to integer cast.
+            ExpressionIntegerValue rhs_value = {0};
+            expression_fold_to_integer_constant(castee, &rhs_value);
 
-
+            // TODO: we will need to actually perform the integer cast here!!!
+            value->value = rhs_value.value;
             return true;
         }
 
@@ -495,6 +502,13 @@ bool expression_fold_to_integer_constant(const Expression* expression,
             return expression_fold_to_integer_constant(f, value);
         }
 
+        // Remove the implicit cast and evaluate the inner
+        case EXPRESSION_CAST_IMPLICIT:
+        {
+            Expression* inner = expression_implicit_cast_get_inner(expression);
+            return expression_fold_to_integer_constant(inner, value);
+        }
+
         // If any of these expressions appear something has gone wrong.
         case EXPRESSION_FLOATING_CONSTANT:
         case EXPRESSION_STRING_LITERAL:
@@ -521,7 +535,6 @@ bool expression_fold_to_integer_constant(const Expression* expression,
         case EXPRESSION_BINARY_XOR_ASSIGN:
         case EXPRESSION_BINARY_OR_ASSIGN:
         case EXPRESSION_COMMA:
-        case EXPRESSION_CAST_IMPLICIT:
         case EXPRESSION_ARRAY_DECAY:
         case EXPRESSION_LVALUE_CAST:
         case EXPRESSION_REFERENCE:

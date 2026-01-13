@@ -9,7 +9,6 @@
 #include "parse/ast_allocator.h"
 #include "parse/expression.h"
 #include "parse/declaration.h"
-#include "parse/literal_parser.h"
 
 enum StatementType {
     STATEMENT_ERROR = -1,

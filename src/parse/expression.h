@@ -358,6 +358,7 @@ Expression* expression_create_cast(AstAllocator* allocator, Location lparen_loc,
 Expression* expression_create_implicit_cast(AstAllocator* allocator,
         QualifiedType cast_to, Expression* expression);
 Expression* expression_cast_get_inner(const Expression* expression);
+Expression* expression_implicit_cast_get_inner(const Expression* expression);
 
 Expression* expression_create_conditional(AstAllocator* allocator,
         Expression* condition, Location question, Expression* true_expr,

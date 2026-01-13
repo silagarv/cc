@@ -62,8 +62,7 @@ typedef struct DeclarationSpecifiers {
 typedef enum DeclaratorPieceType {
     DECLARATOR_PIECE_POINTER,
     DECLARATOR_PIECE_ARRAY,
-    DECLARATOR_PIECE_FUNCTION,
-    DECLARATOR_PIECE_KNR_FUNCTION
+    DECLARATOR_PIECE_FUNCTION
 } DeclaratorPieceType;
 
 typedef struct DeclaratorPieceBase {
@@ -99,20 +98,14 @@ typedef struct DeclaratorPieceFunction {
     size_t num_paramaters;
     DeclarationList all_decls;
     bool is_variadic;
+    bool knr;
 } DeclaratorPieceFunction;
-
-typedef struct DeclaratorPieceKnrFunction {
-    DeclaratorPieceBase base;
-    Identifier** identifiers;
-    size_t num_identifiers;
-} DeclaratorPieceKnrFunction;
 
 typedef union DeclaratorPiece {
     DeclaratorPieceBase base;
     DeclaratorPiecePointer pointer;
     DeclaratorPieceArray array;
     DeclaratorPieceFunction function;
-    DeclaratorPieceKnrFunction knr_function;
 } DeclaratorPiece;
 
 // Where is this declaration trying to be definied
@@ -121,7 +114,8 @@ typedef enum DeclaratorContext {
     DECL_CTX_STRUCT,
     DECL_CTX_PARAM,
     DECL_CTX_BLOCK,
-    DECL_CTX_TYPE_NAME
+    DECL_CTX_TYPE_NAME,
+    DECL_CTX_KNR
 } DeclaratorContext;
 
 // Here is our declarator vector that we are going to use to help us parse
@@ -420,7 +414,13 @@ Location declarator_get_colon_location(Declarator* declarator);
 Expression* declarator_get_bitfield_expression(Declarator* declarator);
 
 DeclaratorPiece* declarator_get_function_piece(const Declarator* declarator);
-DeclarationList declarator_function_piece_get_decls(const DeclaratorPiece* piece);
+bool declarator_piece_is_knr_function(const DeclaratorPiece* piece);
+size_t declarator_piece_function_num_params(const DeclaratorPiece* piece);
+Location declarator_piece_function_get_lparen(const DeclaratorPiece* piece);
+DeclarationList declarator_function_piece_get_all_decls(
+        const DeclaratorPiece* piece);
+void declarator_function_piece_set_all_decls(DeclaratorPiece* piece,
+        DeclarationList decls);
 bool declarator_has_function(const Declarator* declarator);
 
 void declarator_push_pointer(Declarator* declarator, TypeQualifiers qualifiers);
@@ -429,13 +429,9 @@ void declarator_push_array(Declarator* declarator, Location lbracket,
         Expression* expression, bool is_static, bool is_star);
 void declarator_push_function(Declarator* declarator, Location lparen_loc,
         Location rparen_loc, DeclarationList params, size_t num_params,
-        DeclarationList all_decls, Location dots);
+        DeclarationList all_decls, Location dots, bool knr);
 void declarator_add_bitfield(Declarator* declarator, Location colon_location,
         Expression* expression);
-
-void declarator_push_function_empty(Declarator* declarator, Location lparen_loc,
-        Location rparen_loc);
-void declarator_push_function_knr(Declarator* declarator, ...);
 
 // Functions for our declaration list
 DeclarationList declaration_list_create(AstAllocator* allocator);
@@ -443,6 +439,8 @@ void declaration_list_push(DeclarationList* list, Declaration* decl);
 Declaration* declaration_list_entry_get(const DeclarationListEntry* entry);
 DeclarationListEntry* declaration_list_iter(const DeclarationList* list);
 DeclarationListEntry* declaration_list_next(const DeclarationListEntry* curr);
+bool declaration_list_has_identifier(const DeclarationList* list,
+        const Identifier* identifier);
 
 // Functions for declarations
 DeclarationType declaration_get_kind(const Declaration *decl);
@@ -531,6 +529,7 @@ void declaration_function_set_definition(Declaration* declaration,
         Declaration* definition);
 Declaration* declaration_function_get_definition(Declaration* declaration);
 bool declaration_function_has_definition(Declaration* declaration);
+bool declaration_function_is_knr(const Declaration* declaration);
 DeclarationList declaration_function_get_paramaters(const Declaration* func);
 
 // Create a declaration of label identifier at the given location, and indicate

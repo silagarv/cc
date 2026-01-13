@@ -21,10 +21,11 @@ typedef enum ScopeFlags {
     SCOPE_BLOCK = 1 << 2, // Block scope
     SCOPE_FUNCTION = 1 << 3, // Function declaration
     SCOPE_MEMBER = 1 << 4, // structs / unions
-    SCOPE_FOR = 1 << 5, // for loop statements (AND declarations)
-    SCOPE_WHILE = 1 << 6, // while loop statments
-    SCOPE_DO_WHILE = 1 << 7, // do/while loop statements
-    SCOPE_SWITCH = 1 << 8, // switch scope
+    SCOPE_IF = 1 << 5, // for if statements
+    SCOPE_FOR = 1 << 6, // for loop statements (AND declarations)
+    SCOPE_WHILE = 1 << 7, // while loop statments
+    SCOPE_DO_WHILE = 1 << 8, // do/while loop statements
+    SCOPE_SWITCH = 1 << 9, // switch scope
 } ScopeFlags;
 
 // Add some sort of a symbol table in here
@@ -72,15 +73,17 @@ typedef struct FunctionScope {
 
 bool scope_is(const Scope* scope, ScopeFlags flags);
 
-Scope scope_new_extern(AstAllocator* allocator);
-Scope scope_new_file(AstAllocator* allocator);
-Scope scope_new_block(AstAllocator* allocator);
-Scope scope_new_function_prototype(AstAllocator* allocator);
-Scope scope_new_member(AstAllocator* allocator);
-Scope scope_new_for(AstAllocator* allocator);
-Scope scope_new_while(void);
-Scope scope_new_do_while(void);
-Scope scope_new_switch(void);
+Scope scope(AstAllocator* allocator, ScopeFlags flags);
+Scope scope_extern(AstAllocator* allocator);
+Scope scope_file(AstAllocator* allocator);
+Scope scope_block(AstAllocator* allocator);
+Scope scope_function_prototype(AstAllocator* allocator);
+Scope scope_member(AstAllocator* allocator);
+Scope scope_if(AstAllocator* allocator);
+Scope scope_for(AstAllocator* allocator);
+Scope scope_while(AstAllocator* allocator);
+Scope scope_do_while(AstAllocator* allocator);
+Scope scope_switch(AstAllocator* allocator);
 
 void scope_delete(Scope* scope);
 

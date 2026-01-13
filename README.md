@@ -22,14 +22,13 @@ To building, run 'make' in the cc directory and it wll output an executable name
 
 ## Current TODO
 - Declaration parsing
-    - complete the building of the function types (knr type left only)
-    - complete struct / union building including sizeof and offsets...
+    - complete struct / union building for sizeof and offsets
 
 - Semantic
     - expressions
-        - fix constant expressions -> some bugs to do with checking if one is a constant expression or not.
-        - fold constant expressions -> fix bugs which appear
         - fix array subscript checking code -> register variable error not triggered in some cases.
+        - Finish creating compound initializers
+        - Create code for casting when folding constant expressions
     - initializers 
         - clean up the code for variable initializations to make it alot more clean so that it can easily be seen what is happening where.
         - also make the calculation of what is tentative and what is not tentative more clear so that we can do the above better
