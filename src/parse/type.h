@@ -280,6 +280,7 @@ QualifiedType type_create_function(AstAllocator* allocator,
         QualifiedType return_type, TypeFunctionParameter* paramaters,
         size_t num_paramaters, bool unspecified_paramters, bool variadic);
 QualifiedType type_function_get_return(const QualifiedType* function);
+size_t type_function_get_param_count(const QualifiedType* function);
 bool type_function_get_knr(const QualifiedType* type);
 
 TypeQualifiers qualified_type_get_quals(const QualifiedType* type);

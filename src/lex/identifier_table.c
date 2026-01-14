@@ -33,7 +33,8 @@ Identifier* identifier_create(String str)
 }
 
 // Create a malloced identifier from the string with the given token type.
-Identifier* identifier_create_keyword(const char* kw, TokenType type)
+Identifier* identifier_create_keyword(const char* kw, TokenType type,
+        TokenType pp_type)
 {
     String str;
     string_init_copy(&str, kw);
@@ -43,7 +44,8 @@ Identifier* identifier_create_keyword(const char* kw, TokenType type)
     {
         .string = str,
         .hash = string_get_hash(&str),
-        .type = type
+        .type = type,
+        .pp_type = pp_type
     };
 
     return ident;
@@ -101,6 +103,11 @@ TokenType identifier_get_keyword(const Identifier* identifier)
     return identifier->type;
 }
 
+TokenType identifier_get_pp_keyword(const Identifier* identifier)
+{
+    return identifier->pp_type;
+}
+
 String* identifier_get_string(Identifier* identifier)
 {
     return &identifier->string;
@@ -127,9 +134,9 @@ void identifier_table_free(void* key, void* data)
 }
 
 static void identifier_table_insert_keyword(IdentifierTable* table, 
-        const char* kw, TokenType type)
+        const char* kw, TokenType type, TokenType pp_type)
 {
-    Identifier* ident = identifier_create_keyword(kw, type);
+    Identifier* ident = identifier_create_keyword(kw, type, pp_type);
     hash_map_insert(&table->ident_table, &ident->string, ident);
 }
 
@@ -144,46 +151,120 @@ IdentifierTable identifier_table_create(void)
                 identifier_table_compare_function, identifier_table_free)
     };
 
-    identifier_table_insert_keyword(&table, "auto", TOKEN_AUTO);
-    identifier_table_insert_keyword(&table, "break", TOKEN_BREAK);
-    identifier_table_insert_keyword(&table, "case", TOKEN_CASE);
-    identifier_table_insert_keyword(&table, "char", TOKEN_CHAR);
-    identifier_table_insert_keyword(&table, "const", TOKEN_CONST);
-    identifier_table_insert_keyword(&table, "continue", TOKEN_CONTINUE);
-    identifier_table_insert_keyword(&table, "default", TOKEN_DEFAULT);
-    identifier_table_insert_keyword(&table, "do", TOKEN_DO);
-    identifier_table_insert_keyword(&table, "double", TOKEN_DOUBLE);
-    identifier_table_insert_keyword(&table, "else", TOKEN_ELSE);
-    identifier_table_insert_keyword(&table, "enum", TOKEN_ENUM);
-    identifier_table_insert_keyword(&table, "extern", TOKEN_EXTERN);
-    identifier_table_insert_keyword(&table, "float", TOKEN_FLOAT);
-    identifier_table_insert_keyword(&table, "for", TOKEN_FOR);
-    identifier_table_insert_keyword(&table, "goto", TOKEN_GOTO);
-    identifier_table_insert_keyword(&table, "if", TOKEN_IF);
-    identifier_table_insert_keyword(&table, "inline", TOKEN_INLINE);
-    identifier_table_insert_keyword(&table, "int", TOKEN_INT);
-    identifier_table_insert_keyword(&table, "long", TOKEN_LONG);
-    identifier_table_insert_keyword(&table, "register", TOKEN_REGISTER);
-    identifier_table_insert_keyword(&table, "restrict", TOKEN_RESTRICT);
-    identifier_table_insert_keyword(&table, "return", TOKEN_RETURN);
-    identifier_table_insert_keyword(&table, "short", TOKEN_SHORT);
-    identifier_table_insert_keyword(&table, "signed", TOKEN_SIGNED);
-    identifier_table_insert_keyword(&table, "sizeof", TOKEN_SIZEOF);
-    identifier_table_insert_keyword(&table, "static", TOKEN_STATIC);
-    identifier_table_insert_keyword(&table, "struct", TOKEN_STRUCT);
-    identifier_table_insert_keyword(&table, "switch", TOKEN_SWITCH);
-    identifier_table_insert_keyword(&table, "typedef", TOKEN_TYPEDEF);
-    identifier_table_insert_keyword(&table, "union", TOKEN_UNION);
-    identifier_table_insert_keyword(&table, "unsigned", TOKEN_UNSIGNED);
-    identifier_table_insert_keyword(&table, "void", TOKEN_VOID);
-    identifier_table_insert_keyword(&table, "volatile", TOKEN_VOLATILE);
-    identifier_table_insert_keyword(&table, "while", TOKEN_WHILE);
-    identifier_table_insert_keyword(&table, "_Bool", TOKEN__BOOL);
-    identifier_table_insert_keyword(&table, "_Complex", TOKEN__COMPLEX);
-    identifier_table_insert_keyword(&table, "_Imaginary", TOKEN__IMAGINARY);
+    identifier_table_insert_keyword(&table, "auto", TOKEN_AUTO,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "break", TOKEN_BREAK,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "case", TOKEN_CASE,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "char", TOKEN_CHAR,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "const", TOKEN_CONST,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "continue", TOKEN_CONTINUE,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "default", TOKEN_DEFAULT,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "do", TOKEN_DO,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "double", TOKEN_DOUBLE,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "else", TOKEN_ELSE,
+            TOKEN_PP_ELSE);
+    identifier_table_insert_keyword(&table, "enum", TOKEN_ENUM,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "extern", TOKEN_EXTERN,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "float", TOKEN_FLOAT,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "for", TOKEN_FOR,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "goto", TOKEN_GOTO,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "if", TOKEN_IF,
+            TOKEN_PP_IF);
+    identifier_table_insert_keyword(&table, "inline", TOKEN_INLINE,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "int", TOKEN_INT,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "long", TOKEN_LONG,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "register", TOKEN_REGISTER,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "restrict", TOKEN_RESTRICT,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "return", TOKEN_RETURN,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "short", TOKEN_SHORT,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "signed", TOKEN_SIGNED,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "sizeof", TOKEN_SIZEOF,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "static", TOKEN_STATIC,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "struct", TOKEN_STRUCT,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "switch", TOKEN_SWITCH,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "typedef", TOKEN_TYPEDEF,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "union", TOKEN_UNION,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "unsigned", TOKEN_UNSIGNED,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "void", TOKEN_VOID,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "volatile", TOKEN_VOLATILE,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "while", TOKEN_WHILE,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "_Bool", TOKEN__BOOL,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "_Complex", TOKEN__COMPLEX,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "_Imaginary", TOKEN__IMAGINARY,
+            TOKEN_IDENTIFIER);
 
-    // Predefined __func__
-    identifier_table_insert_keyword(&table, "__func__", TOKEN___FUNC__);
+    // Predefined identifier for functions
+    identifier_table_insert_keyword(&table, "__func__", TOKEN___FUNC__,
+            TOKEN_IDENTIFIER);
+
+    // Tokens which are used for builtins / extensions to the language
+    identifier_table_insert_keyword(&table, "__attribute__",
+            TOKEN___ATTRIBUTE__, TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "__extension__",
+            TOKEN___EXTENSION__, TOKEN_IDENTIFIER);
+
+    // Different variations of 'asm' for embedded assembly
+    identifier_table_insert_keyword(&table, "asm", TOKEN_ASM,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "__asm", TOKEN_ASM,
+            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "__asm__", TOKEN_ASM,
+            TOKEN_IDENTIFIER);
+
+    // all of our pp tokens that haven't already been covered.
+    identifier_table_insert_keyword(&table, "define", TOKEN_IDENTIFIER,
+            TOKEN_PP_DEFINE);
+    identifier_table_insert_keyword(&table, "undef", TOKEN_IDENTIFIER,
+            TOKEN_PP_UNDEF);
+    identifier_table_insert_keyword(&table, "include", TOKEN_IDENTIFIER,
+            TOKEN_PP_INCLUDE);
+    identifier_table_insert_keyword(&table, "ifdef", TOKEN_IDENTIFIER,
+            TOKEN_PP_IFDEF);
+    identifier_table_insert_keyword(&table, "ifndef", TOKEN_IDENTIFIER,
+            TOKEN_PP_IFNDEF);
+    identifier_table_insert_keyword(&table, "elif", TOKEN_IDENTIFIER,
+            TOKEN_PP_ELIF);
+    identifier_table_insert_keyword(&table, "endif", TOKEN_IDENTIFIER,
+            TOKEN_PP_ENDIF);
+    identifier_table_insert_keyword(&table, "line", TOKEN_IDENTIFIER,
+            TOKEN_PP_LINE);
+    identifier_table_insert_keyword(&table, "error", TOKEN_IDENTIFIER,
+            TOKEN_PP_ERROR);
+    identifier_table_insert_keyword(&table, "pragma", TOKEN_IDENTIFIER,
+            TOKEN_PP_PRAGMA);
 
     return table;
 }

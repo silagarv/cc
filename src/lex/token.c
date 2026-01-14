@@ -54,7 +54,6 @@ bool token_is_identifier(const Token* token)
         case TOKEN_PP_ENDIF:
         case TOKEN_PP_LINE:
         case TOKEN_PP_ERROR:
-        case TOKEN_PP_PRAGMA:
 
         // Keywords
         case TOKEN_AUTO:
@@ -157,7 +156,6 @@ bool token_has_opt_value(Token* tok)
         case TOKEN_STRING:
         case TOKEN_WIDE_STRING:
         case TOKEN_PP_HEADER_NAME:
-        case TOKEN_PP_MACRO_PARAMATER:
             return true;
 
         default:
@@ -279,29 +277,31 @@ const char* token_type_get_name(TokenType type)
         case TOKEN__COMPLEX: return "_Complex";
         case TOKEN__IMAGINARY: return "_Imaginary";
         case TOKEN___FUNC__: return "__func__";
-        case TOKEN_IDENTIFIER: return "<identifier>";
-        case TOKEN_NUMBER: return "<preprocessing-number>";
-        case TOKEN_CHARACTER: return "<character-constant>";
-        case TOKEN_WIDE_CHARACTER: return "<wide-character-constant>";
-        case TOKEN_STRING: return "<string-literal>";
-        case TOKEN_WIDE_STRING: return "<wide-string-literal>";
-        case TOKEN_PP_HEADER_NAME: return "<<INTERNAL_HEADER_NAME>>"; 
-        case TOKEN_PP_MACRO_PARAMATER: return "<<INTERNAL_MACRO_PARAM>>"; 
-        case TOKEN_PP_EOD: return "<end-of-directive>";
-        case TOKEN_LAST: return "<<INTERNAL_TOKEN_LAST>>";
+        case TOKEN_IDENTIFIER: return "identifier";
+        case TOKEN_NUMBER: return "number";
+        case TOKEN_CHARACTER: return "character literal";
+        case TOKEN_WIDE_CHARACTER: return "wide character literal";
+        case TOKEN_STRING: return "string literal";
+        case TOKEN_WIDE_STRING: return "wide string literal";
+        case TOKEN___ATTRIBUTE__: return "__attribute__";
+        case TOKEN___EXTENSION__: return "__extension__";
+        case TOKEN_ASM: return "asm";
+
+        case TOKEN_PP_HEADER_NAME: return "header name"; 
+        case TOKEN_PP_EOD: return "end-of-directive";
         
-        case TOKEN_PP_DEFINE: return "<<TOKEN_PP_DEFINE>>";
-        case TOKEN_PP_UNDEF: return "<<TOKEN_PP_UNDEF>>";
-        case TOKEN_PP_INCLUDE: return "<<TOKEN_PP_INCLUDE>>";
-        case TOKEN_PP_IF: return "<<TOKEN_PP_IF>>";
-        case TOKEN_PP_IFDEF: return "<<TOKEN_PP_IFDEF>>";
-        case TOKEN_PP_IFNDEF: return "<<TOKEN_PP_IFNDEF>>";
-        case TOKEN_PP_ELSE: return "<<TOKEN_PP_ELSE>>";
-        case TOKEN_PP_ELIF: return "<<TOKEN_PP_ELIF>>";
-        case TOKEN_PP_ENDIF: return "<<TOKEN_PP_ENDIF>>";
-        case TOKEN_PP_LINE: return "<<TOKEN_PP_LINE>>";
-        case TOKEN_PP_ERROR: return "<<TOKEN_PP_ERROR>>";
-        case TOKEN_PP_PRAGMA: return "<<TOKEN_PP_PRAGMA>>";
+        case TOKEN_PP_DEFINE: return "define";
+        case TOKEN_PP_UNDEF: return "undef";
+        case TOKEN_PP_INCLUDE: return "include";
+        case TOKEN_PP_IF: return "if";
+        case TOKEN_PP_IFDEF: return "ifdef";
+        case TOKEN_PP_IFNDEF: return "ifndef";
+        case TOKEN_PP_ELSE: return "else";
+        case TOKEN_PP_ELIF: return "elif";
+        case TOKEN_PP_ENDIF: return "endif";
+        case TOKEN_PP_LINE: return "line";
+        case TOKEN_PP_ERROR: return "error";
+        case TOKEN_PP_PRAGMA: return "pragma";
     }
 
     panic("unable to get token type in token_get_name");
@@ -434,42 +434,3 @@ bool token_concatenate(Token* tok1, Token* tok2, Token* dest);
 bool token_stringize(Token* src, Token* dest);
 
 bool token_string_cat(Token* tok1, Token* tok2, Token* dest);
-
-TokenList token_list_allocate(void)
-{
-    TokenList tokens;
-
-    tokens.used = 0;
-    tokens.allocated = 1;
-    tokens.tokens = xmalloc(sizeof(Token));
-
-    return tokens;
-}
-
-void token_list_free(TokenList* list)
-{
-    for (size_t i = 0; i < list->used; i++)
-    {
-        Token* tok = &list->tokens[i];
-
-        token_free(tok);
-    }
-
-    free(list->tokens);
-}
-
-Token* token_list_next(TokenList* list)
-{
-    if (list->used == list->allocated)
-    {
-        list->allocated *= 2;
-        list->tokens = xrealloc(list->tokens, sizeof(Token) * list->allocated);
-    }
-
-    return &list->tokens[list->used++];
-}
-
-TokenStream token_list_to_stream(const TokenList* list)
-{
-    return (TokenStream) {.tokens = list->tokens, .count = list->used, .current_token = 0};
-}

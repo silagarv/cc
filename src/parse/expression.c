@@ -619,3 +619,46 @@ Expression* expression_conditional_get_false(const Expression* expr)
 
     return expr->conditional.false_part;
 }
+
+ExpressionListEntry* expression_list_entry_next(ExpressionListEntry* entry)
+{
+    return entry->next;
+}
+
+Expression* expression_list_entry_get(ExpressionListEntry* entry)
+{
+    return entry->expression;
+}
+
+ExpressionList expression_list_create(void)
+{
+    return (ExpressionList) {NULL, NULL, 0};
+}
+
+void expression_list_push(AstAllocator* allocator, ExpressionList* list,
+        Expression* expr)
+{
+    ExpressionListEntry* entry = ast_allocator_alloc(allocator,
+            sizeof(ExpressionListEntry));
+    entry->next = NULL;
+    entry->expression = expr;
+
+    if (list->tail == NULL)
+    {
+        list->first = entry;
+    }
+    else
+    {
+        list->tail->next = entry;
+        list->tail = entry;
+    }
+
+    list->tail = entry;
+
+    list->num_exprs++;
+}
+
+size_t expression_list_num_expr(const ExpressionList* list)
+{
+    return list->num_exprs;
+}

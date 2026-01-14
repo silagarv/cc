@@ -9,13 +9,13 @@ CFLAGS = -Wall \
 	-MMD \
 	-MP
 
-CFLAGS += -Wno-unused-parameter \
+CFLAGS += -Wshadow \
+	-Wvla \
+	-Wno-unused-parameter \
 	-Wno-unused-variable \
 	-Wno-unused-function \
 	-Wno-unused-but-set-variable \
 	-Wno-switch \
-	-Wshadow \
-	-Wvla \
 	-ferror-limit=0
 
 LFLAGS = -lm
@@ -46,6 +46,8 @@ FILES = src/files/filepath.c \
 	src/files/source_manager.c
 
 DRIVER = src/driver/diagnostic.c \
+	src/driver/lang.c \
+	src/driver/options.c \
 	#src/driver/target.c \
 	src/driver/options.c \
 	src/driver/command_line.c \

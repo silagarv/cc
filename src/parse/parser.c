@@ -41,23 +41,9 @@ typedef enum RecoverFlags {
 } RecoverFlags;
 
 // Below are the start set for some of the specifiers / qualifiers
-static const TokenType storage_class[] = {TOKEN_TYPEDEF, TOKEN_EXTERN, 
-        TOKEN_STATIC,TOKEN_AUTO,TOKEN_REGISTER};
-
-static const TokenType type_specifier[] = { TOKEN_VOID, TOKEN_CHAR, TOKEN_SHORT,
-        TOKEN_INT, TOKEN_LONG, TOKEN_FLOAT, TOKEN_DOUBLE, TOKEN_SIGNED,
-        TOKEN_UNSIGNED, TOKEN__BOOL, TOKEN__COMPLEX, TOKEN__IMAGINARY,
-        TOKEN_STRUCT, TOKEN_UNION, TOKEN_ENUM};
-
 static const TokenType type_qualifier[] = {TOKEN_CONST, TOKEN_RESTRICT,
         TOKEN_VOLATILE};
-
-static const TokenType function_specificer[] = {TOKEN_INLINE};
-
-static const size_t storage_class_count = countof(storage_class);
-static const size_t type_specifier_count = countof(type_specifier);
 static const size_t type_qualifier_count = countof(type_qualifier);
-static const size_t function_specificer_count = countof(function_specificer);
 
 // Parser methods for getting the current and next token. We aim to be a LL(1)
 // like parser so we should only ever need these in order to figure own the
@@ -338,7 +324,8 @@ static bool is_initializer_start(Parser* parser, const Token* tok);
 // enumeration and character constants
 static Expression* parse_primary_expression(Parser* parser);
 static Expression* parse_postfix_expression(Parser* parser);
-static Expression* parse_argument_expression_list(Parser* parser);
+static void parse_argument_expression_list(Parser* parser,
+        ExpressionList* list);
 static Expression* parse_unary_expression(Parser* parser);
 static Expression* parse_cast_expression(Parser* parser);
 static Expression* parse_multiplicative_expression(Parser* parser);
@@ -362,12 +349,8 @@ static Statement* parse_case_statement(Parser* parser);
 static Statement* parse_default_statement(Parser* parser);
 static Statement* parse_compound_statement(Parser* parser);
 static Statement* parse_expression_statement(Parser* parser);
-static Statement* parse_selection_statement(Parser* parser);
-static Statement* parse_iteration_statement(Parser* parser);
-static Statement* parse_jump_statement(Parser* parser);
 static Statement* parse_declaration_statement(Parser* parser);
 static Statement* parse_empty_statement(Parser* parser);
-static Statement* parse_error_statement(Parser* parser);
 static Statement* parse_statement(Parser* parser, bool declaration_allowed);
 
 // All of our functions for parsing declarations / definitions
@@ -383,20 +366,14 @@ static Declaration* parse_init_declarator_list(Parser* parser,
         DeclarationSpecifiers* specifiers, DeclaratorContext context);
 
 static void parse_enumerator_list(Parser* parser, Declaration* enum_decl);
-static Declaration* parse_enum_specificer(Parser* parser);
 
 static void parse_direct_declarator(Parser* parser, Declarator* declarator);
 
 static void parse_identifier_list(Parser* parser, Declarator* declarator);
 static Declaration* parse_paramater_declaration(Parser* parser);
 static void parse_paramater_type_list(Parser* parser, Declarator* declarator);
-static Declaration* parse_type_specificer(Parser* parser);
-
-// Functions for us getting our declaration specifiers
-static TypeQualifiers parse_type_qualifier(Parser* parser);
 
 // All of our declaration specifier parsing functions
-static bool has_declaration_specifier(Parser* parser, const Token* tok);
 static void declaration_specifiers_add_storage(Parser* parser,
         DeclarationSpecifiers* specifiers, StorageSpecifier storage,
         bool spec_qual_only, Location location);
@@ -424,8 +401,6 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser,
 static TypeQualifiers parse_type_qualifier_list(Parser* parser);
 static TypeQualifiers parse_type_qualifier_list_opt(Parser* parser);
 
-static Declaration* parse_struct_declarator(Parser* parser,
-        DeclarationSpecifiers* specifiers);
 static void parse_struct_declaration(Parser* parser, Declaration* decl);
 static void parse_struct_declaration_list(Parser* parser, Declaration* decl,
         bool is_struct);
@@ -725,15 +700,15 @@ static Expression* parse_primary_expression(Parser* parser)
     }
 }
 
-static Expression* parse_argument_expression_list(Parser* parser)
+static void parse_argument_expression_list(Parser* parser,
+        ExpressionList* list)
 {
     do
     {
         Expression* arg = parse_assignment_expression(parser);
+        expression_list_push(&parser->ast.ast_allocator, list, arg);
     }
     while (try_match(parser, TOKEN_COMMA, NULL));
-
-    return NULL;
 }
 
 static Expression* parse_postfix_ending(Parser* parser, Expression* start)
@@ -769,10 +744,10 @@ static Expression* parse_postfix_ending(Parser* parser, Expression* start)
             {
                 Location lparen_loc = consume(parser);
 
-                Expression* expr_list = NULL;
+                ExpressionList list = expression_list_create();
                 if  (!is_match(parser, TOKEN_RPAREN))
                 {
-                    expr_list = parse_argument_expression_list(parser);
+                    parse_argument_expression_list(parser, &list);
                 }
 
                 Location rparen_loc;
@@ -789,7 +764,7 @@ static Expression* parse_postfix_ending(Parser* parser, Expression* start)
                 }
                 
                 expr = semantic_checker_handle_call_expression(&parser->sc,
-                        expr, lparen_loc, expr_list, rparen_loc);
+                        expr, lparen_loc, &list, rparen_loc);
                 break;
             }
 
@@ -1647,7 +1622,7 @@ static Statement* parse_expression_statement(Parser* parser)
 
     Expression* expr = parse_expression(parser);
 
-    // Another clang special case error message
+    // Another clang special case error message which we support.
     if (is_match(parser, TOKEN_RPAREN) && is_next_match(parser, TOKEN_SEMI))
     {
         Location rparen = consume(parser);
@@ -2105,21 +2080,16 @@ static Statement* parse_statement(Parser* parser, bool declaration_allowed)
             /* FALLTHROUGH */
 
         default:
-        {
-            if (declaration_allowed 
-                    && is_typename_start(parser, current_token(parser)))
+            if (is_typename_start(parser, current_token(parser))
+                    && declaration_allowed)
             {
                 // Note: declarations are not considered statements all of the
                 // time in C. e.g. they are not allowed after labels.
                 return parse_declaration_statement(parser);
             }
-
             return parse_expression_statement(parser);
-        }
     }
 }
-
-// Below is things for declarations
 
 static bool is_designation_start(Parser* parser)
 {
@@ -2913,16 +2883,11 @@ static void parse_array_declarator(Parser* parser, Declarator* declarator)
     }
 
     Location rbracket_loc = LOCATION_INVALID;
-    if (!is_match(parser, TOKEN_RBRACKET))
+    if (!try_match(parser, TOKEN_RBRACKET, &rbracket_loc))
     {
-        diagnostic_error_at(parser->dm, current_token_location(parser),
-                "expected ']'");
+        diagnostic_error_at(parser->dm, rbracket_loc, "expected ']'");
         recover(parser, TOKEN_RBRACKET, RECOVER_STOP_AT_SEMI);
-        return;
-    }
-    else
-    {
-        rbracket_loc = consume(parser);
+        return; // ???
     }
 
     declarator_push_array(declarator, lbracket_loc, rbracket_loc, static_loc,
@@ -2931,16 +2896,13 @@ static void parse_array_declarator(Parser* parser, Declarator* declarator)
 
 static void parse_direct_declarator(Parser* parser, Declarator* declarator)
 {
-    bool identifier_allowed = declarator_identifier_allowed(declarator);
-    bool identifier_needed = declarator_identifier_required(declarator);
-
     if (is_match(parser, TOKEN_IDENTIFIER))
     {
         // Get and add the identifier if it is allowed to be in this declarator
         Identifier* identifier = current_token(parser)->data.identifier;
         Location loc = consume(parser);
 
-        if (identifier_allowed)
+        if (declarator_identifier_allowed(declarator))
         {
             declarator_set_identifier(declarator, identifier, loc);
         }
@@ -2972,7 +2934,8 @@ static void parse_direct_declarator(Parser* parser, Declarator* declarator)
         // Note: the check for an elipsis match is there to improve diagnostics
         // since that construct is valid in C23, and it would be nice to handle
         // the parsing a bit better.
-        if (!identifier_needed && (is_typename_start(parser, next_token(parser))
+        if (!declarator_identifier_required(declarator)
+                && (is_typename_start(parser, next_token(parser))
                 || is_next_match(parser, TOKEN_RPAREN)
                 || is_next_match(parser, TOKEN_ELIPSIS)))
         {
@@ -3007,7 +2970,7 @@ static void parse_direct_declarator(Parser* parser, Declarator* declarator)
         }
         Location rparen_loc = consume(parser);
     }
-    else if (!identifier_needed)
+    else if (!declarator_identifier_required(declarator))
     {
         // 'Set' the declarators location so that we can provide warning about
         // functions not have parameter names if we need.
@@ -3016,13 +2979,14 @@ static void parse_direct_declarator(Parser* parser, Declarator* declarator)
     }
     else
     {
-        // Give an appriopriate diagnostic based on the current context
+        // Give an appriopriate diagnostic based on the current context. Noting
+        // that we are erroring since we expected an identifier at some point
+        // but never ended up getting one.
         DeclaratorContext context = declarator_get_context(declarator);
         const char* const message = context == DECL_CTX_STRUCT
                 ? "expected member name or ';' after declaration specifiers"
                 : "expected identifier or '('";
         Location current = current_token_location(parser);
-
         diagnostic_error_at(parser->dm, current, message);
 
         declarator_set_invalid(declarator);
@@ -3045,7 +3009,8 @@ parse_func_array:
             continue;
         }
 
-        // If were not a function or array declarator just exit
+        // If were not a function or array declarator assume we are safe to be
+        // done
         break;
     }
 }
@@ -3107,7 +3072,9 @@ static void parse_struct_declaration(Parser* parser, Declaration* decl)
     DeclarationSpecifiers specifiers = parse_specifier_qualifier_list(parser);
 
     // Struct declarations will always need to have a name to be useful. Unless
-    // we implement c11's anonymous struct/union injection into the scope.
+    // we implement c11's anonymous struct/union injection into the scope. But,
+    // we are currently a C99 only compiler and barely implement structs as is,
+    // so this is a little far off for use.
     if (is_match(parser, TOKEN_SEMI))
     {
         Location loc = consume(parser);
@@ -3131,22 +3098,16 @@ static void parse_struct_declaration(Parser* parser, Declaration* decl)
     }
     while (try_match(parser, TOKEN_COMMA, NULL));
 
-    if (!is_match(parser, TOKEN_SEMI))
+    Location semi = LOCATION_INVALID;
+    if (!try_match(parser, TOKEN_SEMI, &semi))
     {
-        diagnostic_error_at(parser->dm, current_token_location(parser),
+        diagnostic_error_at(parser->dm, semi,
                 "expected ';' after struct declaration");
-        
-        // We could be at end of struct definition!
         if (!is_match(parser, TOKEN_RCURLY))
         {
             recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
         }
-
-        return;
     }
-
-    assert(is_match(parser, TOKEN_SEMI));
-    consume(parser);
 }
 
 static void parse_struct_declaration_list(Parser* parser, Declaration* decl,
@@ -3155,12 +3116,11 @@ static void parse_struct_declaration_list(Parser* parser, Declaration* decl,
     assert(is_match(parser, TOKEN_LCURLY));
     
     Location l_curly = consume(parser);
-
-    if (is_match(parser, TOKEN_RCURLY))
+    Location r_curly = LOCATION_INVALID;
+    if (try_match(parser, TOKEN_RCURLY, &r_curly))
     {
-        diagnostic_error_at(parser->dm, current_token_location(parser), 
-                "empty %s is not supported", is_struct ? "struct" : "union");
-        consume(parser);
+        diagnostic_error_at(parser->dm, r_curly, "empty %s is not supported",
+                is_struct ? "struct" : "union");
         return;
     }
 
@@ -3173,18 +3133,15 @@ static void parse_struct_declaration_list(Parser* parser, Declaration* decl,
         // them.
         if (is_match(parser, TOKEN_SEMI))
         {
-            Location semi = consume(parser);
+            Location sem = consume(parser);
             while (try_match(parser, TOKEN_SEMI, NULL))
                 ;
-            diagnostic_warning_at(parser->dm, semi,
-                    "extra ';' inside a struct");
+            diagnostic_warning_at(parser->dm, sem, "extra ';' inside a struct");
             continue;
         }
 
         if (!is_typename_start(parser, current_token(parser)))
         {
-            // TODO: not exactly sure what error recovery clang is doing for
-            // TODO: this. But we will just use this easy strategy for now
             diagnostic_error_at(parser->dm, current_token_location(parser),
                     "type name requires a specifier or qualifier");
             recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
@@ -3198,8 +3155,8 @@ static void parse_struct_declaration_list(Parser* parser, Declaration* decl,
     semantic_checker_pop_scope(&parser->sc);
     scope_delete(&member_scope);
 
-    Location closing_curly = LOCATION_INVALID;
-    if (!try_match(parser, TOKEN_RCURLY, &closing_curly))
+    // Try to match the closign '}'
+    if (!try_match(parser, TOKEN_RCURLY, &r_curly))
     {
         Location current = current_token_location(parser);
         diagnostic_error_at(parser->dm, current, "expected '}'");
@@ -3288,13 +3245,11 @@ static void parse_enumerator_list(Parser* parser, Declaration* enum_decl)
     Location opening_curly = consume(parser);
 
     // Check for an empty enum, setting it to be a complete declaration if so
-    if (is_match(parser, TOKEN_RCURLY))
+    Location closing_curly = LOCATION_INVALID;
+    if (try_match(parser, TOKEN_RCURLY, &closing_curly))
     {
-        diagnostic_error_at(parser->dm, current_token_location(parser), 
-                "use of empty enum");
-        consume(parser);
+        diagnostic_error_at(parser->dm, closing_curly, "use of empty enum");
         declaration_enum_set_entries(enum_decl, NULL, 0);
-
         return;
     }
 
@@ -3361,7 +3316,7 @@ static void parse_enumerator_list(Parser* parser, Declaration* enum_decl)
             {
                 diagnostic_error_at(parser->dm, current_token_location(parser),
                         "expected '= constant-expression' or end of "
-                        "enumeration");
+                        "enumerator definition");
                 break;
             }
             
@@ -3385,16 +3340,11 @@ static void parse_enumerator_list(Parser* parser, Declaration* enum_decl)
 
     declaration_enum_set_entries(enum_decl, NULL, 0);
 
-    Location closing_curly = LOCATION_INVALID;
-    if (!is_match(parser, TOKEN_RCURLY))
+    closing_curly = LOCATION_INVALID;
+    if (!try_match(parser, TOKEN_RCURLY, &closing_curly))
     {
-        diagnostic_error_at(parser->dm, current_token_location(parser),
-                "expected '}'");
+        diagnostic_error_at(parser->dm, closing_curly, "expected '}'");
         recover(parser, TOKEN_SEMI, RECOVER_NONE);
-    }
-    else
-    {
-        closing_curly = consume(parser);
     }
 }
 
@@ -3934,33 +3884,13 @@ static void parse_top_level(Parser* parser)
             return;
         }
 
-        // All the rest of the tokens exept identifier. Since we want to still
-        // enable implicit int at the top level
+        // All the rest of the tokens, since we want to be able to parse any
+        // top level declaration. Any invalid declarations will be caught and
+        // errored about. 
         default:
-        // {
-        //     // Generic error for naughty tokens
-        //     if (!is_typename_start(parser, current_token(parser)))
-        //     {
-        //         diagnostic_error_at(parser->dm, current_token_location(parser),
-        //                 "expected declaration or definition");
-        //         recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
-        //         return;
-        //     }
-        // }
-
-        // /* FALLTHROUGH */
-
-        // // Intentionlly exclude identifier from the list of declarations that
-        // // we might want to exclude. And also make sure that we include '*' and
-        // // '(' as these can both start declarations if they are implicit int.
-        // case TOKEN_STAR:
-        // case TOKEN_LPAREN:
-        // case TOKEN_IDENTIFIER:
             parse_declaration_or_definition(parser);
             return;
     }
-    
-    panic("unreachable");
 }
 
 static void parse_translation_unit_internal(Parser* parser)

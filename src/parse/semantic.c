@@ -3709,7 +3709,7 @@ static bool semantic_checker_is_callable(SemanticChecker* sc,
 
 // TODO: finish handling this call expression
 Expression* semantic_checker_handle_call_expression(SemanticChecker* sc,
-        Expression* lhs, Location lparen_location, Expression* expr_list,
+        Expression* lhs, Location lparen_location, ExpressionList* expr_list,
         Location rparen_location)
 {
     // Do nothing if we got an error
@@ -3729,11 +3729,6 @@ Expression* semantic_checker_handle_call_expression(SemanticChecker* sc,
         return semantic_checker_handle_error_expression(sc, lparen_location);
     }
 
-    // TODO: we know we have a function and or function pointer so 
-
-    // Now we know we have a function we want to attempt to check that the 
-    // parameters are valid and the types that they should be.
-
     // Get the return type of the function
     QualifiedType pointer = expression_get_qualified_type(lhs);
     pointer = qualified_type_get_canonical(&pointer);
@@ -3744,7 +3739,27 @@ Expression* semantic_checker_handle_call_expression(SemanticChecker* sc,
     // Now we have the real type of the function we will need to check the 
     // number, or arguments that we are given in the function and if they are
     // compatible with the functions declaration.
-    // TODO: above
+    size_t req_parms = type_function_get_param_count(&real_type);
+    size_t given_parms = expression_list_num_expr(expr_list);
+    if (given_parms > req_parms)
+    {
+        diagnostic_error_at(sc->dm, lparen_location,
+                "too many arguments to function call, expected %zu, have %zu",
+                req_parms, given_parms);
+        return semantic_checker_handle_error_expression(sc, lparen_location);
+    }
+    else if (given_parms < req_parms)
+    {
+        diagnostic_error_at(sc->dm, lparen_location,
+                "too few arguments to function call, expected %zu, have %zu",
+                req_parms, given_parms);
+        return semantic_checker_handle_error_expression(sc, lparen_location);
+    }
+
+    // Okay, we now know that we have the correct number of parameters being
+    // passed to the function. This means we can now go and check on the type
+    // of each of the functions so that we can ensure that there is no issue,
+    // passing any of them.
 
     QualifiedType return_type = type_function_get_return(&real_type);
     return semantic_checker_handle_error_expression(sc, lparen_location);
@@ -5686,6 +5701,14 @@ static bool semantic_checker_check_scalar_initialization(SemanticChecker* sc,
         expr_type = qualified_type_get_canonical(&expr_type);
 
         // TODO: check the assignment is compatible at all.
+
+        if (constant)
+        {
+            // TODO: will need a way to check if an expression is a constant
+            // TODO: expression. Note that it may be for example a float 
+            // TODO: expression which is constant but not an integer constant
+        }
+
         return false;
     }
     
@@ -5723,7 +5746,7 @@ static bool semantic_checker_check_scalar_initialization(SemanticChecker* sc,
     // Get the sub initializer and check if that is okay. This function 
     // recursively calls itself until we find that out...
     InitializerListMember* first = initializer_list_member_get(init);
-        Initializer* subinit = initializer_list_member_get_initializer(first);
+    Initializer* subinit = initializer_list_member_get_initializer(first);
     bool okay = semantic_checker_check_scalar_initialization(sc, subinit, type,
             constant, true);
 
@@ -5734,7 +5757,6 @@ static bool semantic_checker_check_scalar_initialization(SemanticChecker* sc,
         return okay;
     }
 
-    assert(!nested);
     InitializerListMember* second = initializer_list_member_get_next(first);
     if (second != NULL)
     {
@@ -5755,13 +5777,19 @@ static bool semantic_checker_check_compound_initialization(SemanticChecker* sc,
 
     // Check that we actually get an initializer list for the array 
     // initialization. Otherwise we cannot perform it.
+    // TODO: this is incorrect consider:
+    // struct a A = *other -> typeof(other) == struct a *
     if (initializer_is(init, INITIALIZER_EXPRESSION))
     {
         Expression* expr = initializer_expression_get(init);
-        Location location = expression_get_location(expr);
+        QualifiedType expr_type = expression_get_qualified_type(expr);
 
-        diagnostic_error_at(sc->dm, location,
-                "compound initializer must be an initializer list");
+        // TODO: check assignment is okay...
+
+        // Location location = expression_get_location(expr);
+
+        // diagnostic_error_at(sc->dm, location,
+                // "compound initializer must be an initializer list");
         return false;
     }
 

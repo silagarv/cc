@@ -330,6 +330,13 @@ QualifiedType type_function_get_return(const QualifiedType* function)
     return function->type->type_function.return_type;
 }
 
+size_t type_function_get_param_count(const QualifiedType* function)
+{
+    assert(qualified_type_is(function, TYPE_FUNCTION));
+
+    return function->type->type_function.num_paramaters;
+}
+
 bool type_function_get_knr(const QualifiedType* type)
 {
     return type->type->type_function.unspecified_paramters;

@@ -55,7 +55,19 @@ DiagnosticManager diagnostic_manager_init(SourceManager* sm)
     dm.warning_count = 0;
     dm.error_count = 0;
 
+    dm.werror = false;
+
     return dm;
+}
+
+void diagnostic_manager_set_sm(DiagnosticManager* dm, SourceManager* sm)
+{
+    dm->sm = sm;
+}
+
+void diagnostic_manager_set_werror(DiagnosticManager* dm, bool value)
+{
+    dm->werror = value;
 }
 
 size_t diagnostic_manager_get_warning_count(const DiagnosticManager* dm)
@@ -139,7 +151,7 @@ void diagnostic_internal(DiagnosticManager* dm, DiagnosticKind kind,
         dm->warning_count++;
     }
     
-    fprintf(stderr, "%s%s%s:%s%s ",
+    fprintf(stderr, "%scc: %s%s:%s%s ",
             dm->colours.highlight,
             kind_to_colour(dm, kind),
             kind_to_name(kind),
@@ -162,7 +174,8 @@ void diagnostic_warning(DiagnosticManager* dm, const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    diagnostic_internal(dm, DIAGNOSTIC_WARNING, fmt, ap);
+    diagnostic_internal(dm, dm->werror ? DIAGNOSTIC_ERROR : DIAGNOSTIC_WARNING,
+            fmt, ap);
     va_end(ap);
 }
 
@@ -185,6 +198,7 @@ void diagnostic_help(DiagnosticManager* dm, const char* fmt, ...)
 void diagnostic_internal_at(DiagnosticManager* dm, DiagnosticKind kind,
         Location loc, const char* fmt, va_list ap)
 {
+    assert(dm->sm);
     assert(loc != LOCATION_INVALID);
 
     if (kind == DIAGNOSTIC_ERROR)
@@ -225,7 +239,8 @@ void diagnostic_warning_at(DiagnosticManager* dm, Location loc,
 {
     va_list ap;
     va_start(ap, fmt);
-    diagnostic_internal_at(dm, DIAGNOSTIC_WARNING, loc, fmt, ap);
+    diagnostic_internal_at(dm,
+            dm->werror ? DIAGNOSTIC_ERROR : DIAGNOSTIC_WARNING, loc, fmt, ap);
     va_end(ap);
 }
 

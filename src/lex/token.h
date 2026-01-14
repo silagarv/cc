@@ -124,6 +124,11 @@ typedef enum TokenType {
     TOKEN_STRING,
     TOKEN_WIDE_STRING,
 
+    // __attribute__ extension token for parsing and ignoring attributes
+    TOKEN___ATTRIBUTE__,
+    TOKEN___EXTENSION__,
+    TOKEN_ASM,
+
     // Special preprocessing token names
     TOKEN_PP_DEFINE,
     TOKEN_PP_UNDEF,
@@ -139,7 +144,6 @@ typedef enum TokenType {
     TOKEN_PP_PRAGMA,
     
     TOKEN_PP_HEADER_NAME,
-    TOKEN_PP_MACRO_PARAMATER,
 
     TOKEN_PP_EOD,
 
@@ -196,19 +200,6 @@ void token_free_data(Token* tok);
 void token_free(Token* tok);
 
 size_t token_get_length(Token* tok);
-
-typedef struct TokenList {
-    Token* tokens;
-    size_t used;
-    size_t allocated;
-} TokenList;
-
-typedef struct TokenStream {
-    Token* tokens;
-    size_t count;
-
-    size_t current_token;
-} TokenStream;
 
 const char* token_type_get_name(TokenType type);
 

@@ -15,8 +15,6 @@ typedef struct Macro {
     bool is_function;
 
     size_t num_args;
-
-    TokenList replacement_list;
 } Macro;
 
 // Destringize a pragma literal token as we will consider this to be macro like

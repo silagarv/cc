@@ -172,7 +172,7 @@ Expression* semantic_checker_handle_array_expression(SemanticChecker* sc,
         Expression* lhs, Location lbracket_loc, Expression* member,
         Location rbracket_loc);
 Expression* semantic_checker_handle_call_expression(SemanticChecker* sc,
-        Expression* lhs, Location lparen_location, Expression* expr_list,
+        Expression* lhs, Location lparen_location, ExpressionList* expr_list,
         Location rparen_location);
 
 Expression* semantic_checker_handle_member_expression(SemanticChecker* sc,

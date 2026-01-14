@@ -9,6 +9,7 @@
 #include "parse/ast_allocator.h"
 #include "parse/type.h"
 #include "parse/literal_parser.h"
+#include <stddef.h>
 
 union Initializer;
 union Expression;
@@ -270,6 +271,17 @@ union Expression {
     ExpressionError error;
 };
 
+typedef struct ExpressionListEntry {
+    struct ExpressionListEntry* next;
+    Expression* expression;
+} ExpressionListEntry;
+
+typedef struct ExpressionList {
+    ExpressionListEntry* first;
+    ExpressionListEntry* tail;
+    size_t num_exprs;
+} ExpressionList;
+
 bool expression_type_is_assignment(ExpressionType type);
 
 bool expression_is(const Expression* expr, ExpressionType type);
@@ -370,5 +382,13 @@ Expression* expression_conditional_get_false(const Expression* expr);
 // TODO: somehow we will need to be able to fold expressions...
 // TODO: so we will need to set up some stuff here to do that. This will also
 // TODO: be useful for any preprocessor work that we have to do.
+
+ExpressionListEntry* expression_list_entry_next(ExpressionListEntry* entry);
+Expression* expression_list_entry_get(ExpressionListEntry* entry);
+
+ExpressionList expression_list_create(void);
+void expression_list_push(AstAllocator* allocator, ExpressionList* list,
+        Expression* expr);
+size_t expression_list_num_expr(const ExpressionList* list);
 
 #endif /* EXPRESSION_H */

@@ -22,6 +22,9 @@ typedef struct Identifier {
     // tokens which will be used by the later stages of the compiler.
     TokenType type;
 
+    // the type of pp idenifier this is if any.
+    TokenType pp_type; 
+
     // The hash for this identifier. We precompute this in order to save a bit
     // of time when trying to find the right identifier in the identifier table.
     uint32_t hash;
@@ -42,7 +45,8 @@ typedef struct IdentifierTable {
 Identifier* identifier_create(String str);
 
 // Create a malloced identifier from the string with the given token type.
-Identifier* identifier_create_keyword(const char* kw, TokenType type);
+Identifier* identifier_create_keyword(const char* kw, TokenType type,
+        TokenType pp_type);
 
 // Delete an identifer.
 void identifier_delete(Identifier* identifier);
@@ -54,6 +58,7 @@ bool identifier_is_reserved(const Identifier* identifier);
 bool identifier_is_equal(const Identifier* ident1, const Identifier* ident2);
 
 TokenType identifier_get_keyword(const Identifier* identifier);
+TokenType identifier_get_pp_keyword(const Identifier* identifier);
 String* identifier_get_string(Identifier* identifier);
 uint32_t identifier_get_hash(const void* identifier);
 
