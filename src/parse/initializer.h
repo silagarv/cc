@@ -97,6 +97,7 @@ Designator* designator_create_member(AstAllocator* allocator, Location dot_loc,
         Location identifier_loc, Identifier* identifier);
 Designator* designator_create_array(AstAllocator* allocator, Location lbracket,
         Expression* expression, Location rbractet);
+Location designator_get_location(const Designator* desig);
     
 DesignatorList* designator_list_create(AstAllocator* allocator,
         Designator* designator);
@@ -131,6 +132,7 @@ Initializer* initializer_create_list(AstAllocator* allocator, Location lcurly,
 
 bool initializer_is(const Initializer* init, InitializerType type);
 Expression* initializer_expression_get(const Initializer* init);
+Location initializer_expression_location(const Initializer* init);
 InitializerListMember* initializer_list_member_get(const Initializer* init);
 Location initializer_list_lcurly(const Initializer* init);
 Location initializer_list_rcurly(const Initializer* init);

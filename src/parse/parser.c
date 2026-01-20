@@ -315,6 +315,19 @@ static void recover_three(Parser* parser, TokenType type1, TokenType type2,
     recover_many(parser, (TokenType[3]) {type1, type2, type3}, 3, flags);
 }
 
+static Location eat_all(Parser* parser, TokenType type)
+{
+    assert(is_match(parser, type));
+
+    Location first = current_token_location(parser);
+    while (is_match(parser, type))
+    {
+        consume(parser);
+    }
+
+    return first;
+}
+
 static bool is_typename_start(Parser* parser, const Token* tok);
 static bool is_expression_start(Parser* parser, const Token* tok);
 static bool is_statement_start(Parser* parser, const Token* tok);
@@ -361,7 +374,6 @@ static Initializer* parse_initializer_list(Parser* parser);
 
 static Declarator parse_declarator(Parser* parser,
         DeclarationSpecifiers* specifiers, DeclaratorContext ctx);
-
 static Declaration* parse_init_declarator_list(Parser* parser,
         DeclarationSpecifiers* specifiers, DeclaratorContext context);
 
@@ -407,11 +419,10 @@ static void parse_struct_declaration_list(Parser* parser, Declaration* decl,
 static void parse_struct_or_union_specifier(Parser* parser,
         DeclarationSpecifiers* specifiers);
 
-static Declaration* parse_declaration(Parser* parser, DeclaratorContext ctx,
-        bool eat_semi);
-static QualifiedType parse_type_name(Parser* parser);
+static Declaration* parse_declaration(Parser* parser, DeclaratorContext context,
+        Location* trailing_semi, bool eat_semi, const char* const msg_context);
+static QualifiedType parse_type_name(Parser* parser, bool* okay);
 
-// The definitions of the functions we will use for pasing
 static bool is_typename_start(Parser* parser, const Token* tok)
 {
     const TokenType type = tok->type;
@@ -450,14 +461,13 @@ static bool is_typename_start(Parser* parser, const Token* tok)
         case TOKEN_AUTO:
             return true;
 
-        // Possibly?
         case TOKEN_IDENTIFIER:
         {
             Identifier* identifier = tok->data.identifier;
             return semantic_checker_identifier_is_typename(&parser->sc,
                     identifier);
         }
-
+    
         default:
             return false;
     }
@@ -841,6 +851,7 @@ static Expression* parse_postfix_expression(Parser* parser)
     // should end up here. But since we that is hard we just pass in the 
     // compound literal expression and DON'T parse a primary expression. 
     Expression* expr = parse_primary_expression(parser);
+
     return parse_postfix_ending(parser, expr);
 }
 
@@ -924,7 +935,8 @@ static Expression* parse_unary_expression(Parser* parser)
                     is_typename_start(parser, next_token(parser)))
             {
                 Location lparen_loc = consume(parser);
-                QualifiedType type = parse_type_name(parser);
+                // Don't care if the type is okay or not deal with later.
+                QualifiedType type = parse_type_name(parser, NULL);
                 Location rparen_loc;
                 if (!try_match(parser, TOKEN_RPAREN, &rparen_loc))
                 {
@@ -950,17 +962,16 @@ static Expression* parse_unary_expression(Parser* parser)
 }
 
 static Expression* parse_compound_literal(Parser* parser, Location lparen_loc,
-        QualifiedType type, Location rparen_loc)
+        QualifiedType type, Location rparen_loc, bool okay)
 {
     assert(is_match(parser, TOKEN_LCURLY));
 
-    bool file_scope = semantic_checker_current_scope_is(&parser->sc,
-            SCOPE_FILE);
     Initializer* initializer = parse_initializer(parser);
     
-    // TODO: create the compound literal
+    // Create the compound literal and go on to parse the postfix ending.
     Expression* compound_literal = semantic_checker_handle_compound_literal(
-            &parser->sc, lparen_loc, type, rparen_loc, initializer);
+            &parser->sc, lparen_loc, type, rparen_loc, okay, initializer);
+    
     return parse_postfix_ending(parser, compound_literal);
 }
 
@@ -975,8 +986,9 @@ static Expression* parse_cast_expression(Parser* parser)
     assert(is_match(parser, TOKEN_LPAREN));
     
     Location lparen_loc = consume(parser);
-    
-    QualifiedType type = parse_type_name(parser);
+
+    bool okay = true;
+    QualifiedType type = parse_type_name(parser, &okay);
     
     Location rparen_loc;
     if (!try_match(parser, TOKEN_RPAREN, &rparen_loc))
@@ -991,7 +1003,8 @@ static Expression* parse_cast_expression(Parser* parser)
     // postfix expression after.
     if (is_match(parser, TOKEN_LCURLY))
     {
-        return parse_compound_literal(parser, lparen_loc, type, rparen_loc);
+        return parse_compound_literal(parser, lparen_loc, type, rparen_loc,
+                okay);
     }
 
     Expression* expr = parse_cast_expression(parser);
@@ -1874,7 +1887,8 @@ static Statement* parse_for_statement(Parser* parser)
     Expression* init_expression = NULL;
     if (is_typename_start(parser, current_token(parser)))
     {   
-        init_declaration = parse_declaration(parser, DECL_CTX_BLOCK, false);
+        init_declaration = parse_declaration(parser, DECL_CTX_BLOCK, NULL,
+                false, NULL);
     }
     else if (is_expression_start(parser, current_token(parser)))
     {
@@ -2003,10 +2017,9 @@ static Statement* parse_return_statement(Parser* parser)
 
 static Statement* parse_declaration_statement(Parser* parser)
 {
-    // Choose block since we are known to be in one and can parse declarations
-    // inside of it.
-    Declaration* decl = parse_declaration(parser, DECL_CTX_BLOCK, false);
-    Location semi_loc = parse_trailing_semi(parser, "declaration");
+    Location semi_loc = LOCATION_INVALID;
+    Declaration* decl = parse_declaration(parser, DECL_CTX_BLOCK, &semi_loc,
+            true, "declaration");
 
     return semantic_checker_handle_declaration_statement(&parser->sc,
             decl, semi_loc);
@@ -2017,14 +2030,12 @@ static Statement* parse_empty_statement(Parser* parser)
     assert(is_match(parser, TOKEN_SEMI));
 
     Location semi_loc = consume(parser);
-
     return semantic_checker_handle_empty_statement(&parser->sc, semi_loc);
 }
 
 static Statement* parse_error_statement(Parser* parser)
 {
     recover_two(parser, TOKEN_RCURLY, TOKEN_SEMI, RECOVER_NONE);
-
     return semantic_checker_handle_error_statement(&parser->sc);
 }
 
@@ -2384,6 +2395,7 @@ static DeclarationList parse_knr_function_parameters(Parser* parser,
         {
             diagnostic_error_at(parser->dm, semi,
                     "expected ';' after declaration");
+            // Should the below be LCURLY???
             recover(parser, TOKEN_RCURLY, RECOVER_STOP_AT_SEMI);
             if (is_match(parser, TOKEN_SEMI))
             {
@@ -2433,12 +2445,13 @@ static Declaration* parse_function_definition(Parser* parser,
         declarator_function_piece_set_all_decls(piece, parms);
     }
 
-    // Now process the declaration.
+    // Now process the declaration, and get the function definition that we are
+    // going to use.
     Declaration* function = semantic_checker_process_declarator(&parser->sc,
             declarator);
 
-    // This here is only possible to get to if we had a knr function definition
-    // that did not have a lcurly after it.
+    // If we parsed all our knr parameters but arent at a LCURLY we have a bit
+    // of a problem. Otherwise, if were not a '{' we have a problem anyways.
     if (!is_match(parser, TOKEN_LCURLY))
     {
         diagnostic_error_at(parser->dm, current_token_location(parser),
@@ -2454,11 +2467,10 @@ static Declaration* parse_function_definition(Parser* parser,
     Scope function_body = scope_block(&parser->ast.ast_allocator);
     semantic_checker_push_scope(&parser->sc, &function_body);
 
-    // Add all of our important function parameters into this scope. Making sure
-    // to use this declaration that we are currently parsing to avoid weird
-    // errors.
+    // Add all of our important function parameters into this scope.
     semantic_checker_add_function_parameters(&parser->sc, function);
 
+    // Parse the compound statement of the function.
     Statement* stmt = parse_compound_statement_internal(parser);
 
     // Finish the function by checking all of our labels...
@@ -2482,7 +2494,7 @@ static bool is_function_definition(Parser* parser, Declarator* declarator)
 {
     assert(declarator_has_function(declarator));
 
-    // Obvious case
+    // Still true even if we're a knr function!
     if (is_match(parser, TOKEN_LCURLY))
     {
         return true;
@@ -2490,7 +2502,6 @@ static bool is_function_definition(Parser* parser, Declarator* declarator)
 
     // Need to know if we are knr function. If we are then the function piece
     // will be a knr type piece. If not then we should have a typename after it.
-    // NOTE: I belive implicit int is not allowed here.
     DeclaratorPiece* piece = declarator_get_function_piece(declarator);
     if (declarator_piece_is_knr_function(piece))
     {
@@ -2530,10 +2541,8 @@ static void parse_initializer_after_declarator(Parser* parser,
         return;
     }
 
-    // Finally, we know we can parse the initializer and try to add it to the
-    // declaration of our choice.
-    QualifiedType type = declaration_get_type(declaration);
     Initializer* initializer = parse_initializer(parser);
+
     semantic_checker_declaration_add_initializer(&parser->sc, declaration, 
             context, equal_loc, initializer);
 }
@@ -2553,14 +2562,19 @@ static Declaration* parse_declaration_after_declarator(Parser* parser,
             declarator);
 
     // If we get a null declaration that means a bad error has occured so bail
-    // early and recover to a reasonable point.
+    // early and recover to a reasonable point. DO NOT eat the semi though, 
+    // since if we are meant to the caller will handle the error, OR, it'll try
+    // to get eaten in parse_declarator and issue another error.
     if (decl == NULL)
     {
-        recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
+        recover(parser, TOKEN_SEMI, RECOVER_NONE);
         return NULL;
     }
 
+    // Parse the initializer if needed and finalize the declaration.
     parse_initializer_after_declarator(parser, decl, context);
+
+    // Then finish the declaration and return it.
     semantic_checker_declaration_finish(&parser->sc, decl);
 
     return decl;
@@ -2598,28 +2612,26 @@ static bool maybe_parse_function(Parser* parser, Declarator* declarator,
                 diagnostic_error_at(parser->dm, current_token_location(parser),
                         "expected function body after function declarator");
                 recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
+                *declaration = NULL;
                 return true;
             }
 
             *declaration = parse_function_definition(parser, declarator);
-
             return true;
         }
-        else
+        else if (is_function_definition(parser, declarator))
         {
             // Only error if we get the start of a function definition. This is
             // where we diverge from clang and meet up with gcc in that we will
             // consider knr parameter lists here...
-            if (is_function_definition(parser, declarator))
-            {
-                // Otherwise we are not allowed to have a function at all, do 
-                // not properly handle the declarator and instead error, recover
-                // and return NULL
-                diagnostic_error_at(parser->dm, current_token_location(parser),
-                        "function definition is not allowed here");
-                parse_skip_function_body(parser);
-                return true;
-            }
+            // Otherwise we are not allowed to have a function at all, do 
+            // not properly handle the declarator and instead error, recover
+            // and return NULL
+            diagnostic_error_at(parser->dm, current_token_location(parser),
+                    "function definition is not allowed here");
+            parse_skip_function_body(parser);
+            *declaration = NULL;
+            return true;
         }
     }
 
@@ -3091,22 +3103,25 @@ static void parse_struct_declaration(Parser* parser, Declaration* decl)
         Declaration* member = semantic_checker_process_struct_declarator(
                 &parser->sc, decl, &d);
 
-        if (member != NULL)
+        if (member)
         {
             declaration_struct_add_member(decl, member);
         }
     }
     while (try_match(parser, TOKEN_COMMA, NULL));
 
+    // Finally parse the trailing semi-colon at the end of the list. Only 
+    // issuing a warning about the GNU extension of allowing no semi at the
+    // end of a structure.
     Location semi = LOCATION_INVALID;
-    if (!try_match(parser, TOKEN_SEMI, &semi))
+    if (is_match(parser, TOKEN_RCURLY))
     {
-        diagnostic_error_at(parser->dm, semi,
-                "expected ';' after struct declaration");
-        if (!is_match(parser, TOKEN_RCURLY))
-        {
-            recover(parser, TOKEN_SEMI, RECOVER_EAT_TOKEN);
-        }
+        diagnostic_warning_at(parser->dm, current_token_location(parser),
+                "expected ';' after struct declarator");
+    }
+    else
+    {
+        semi = parse_trailing_semi(parser, "struct declarator");
     }
 }
 
@@ -3124,22 +3139,21 @@ static void parse_struct_declaration_list(Parser* parser, Declaration* decl,
         return;
     }
 
+    // Create and push our member scope.
     Scope member_scope = scope_member(&parser->ast.ast_allocator);
     semantic_checker_push_scope(&parser->sc, &member_scope);
 
     while (!is_match_two(parser, TOKEN_RCURLY, TOKEN_EOF))
     {
-        // Consume any extra ';' that appear inside the struct and warn about
-        // them.
+        // Consume any extra ';' inside the struct or union
         if (is_match(parser, TOKEN_SEMI))
         {
-            Location sem = consume(parser);
-            while (try_match(parser, TOKEN_SEMI, NULL))
-                ;
+            Location sem = eat_all(parser, TOKEN_SEMI);
             diagnostic_warning_at(parser->dm, sem, "extra ';' inside a struct");
             continue;
         }
 
+        // Expect the start of a typename not allowing implicit int.
         if (!is_typename_start(parser, current_token(parser)))
         {
             diagnostic_error_at(parser->dm, current_token_location(parser),
@@ -3407,30 +3421,16 @@ finish:;
             enum_location);
 }
 
-static bool try_parse_typename_specifier(Parser* parser,
-        DeclarationSpecifiers* specifiers)
-{
-    assert(is_match(parser, TOKEN_IDENTIFIER));
-
-    Token* current = current_token(parser);
-    if (!is_typename_start(parser, current))
-    {
-        return false;
-    }
-
-    Identifier* id = current->data.identifier;
-    Declaration* typename = semantic_checker_get_typename(&parser->sc, id);
-    declaration_specifiers_add_type(parser, specifiers, TYPE_SPECIFIER_TYPENAME,
-            typename, current_token_location(parser));
-
-    return true;
-}
-
-static QualifiedType parse_type_name(Parser* parser)
+static QualifiedType parse_type_name(Parser* parser, bool* okay)
 {
     DeclarationSpecifiers specifiers = parse_specifier_qualifier_list(parser);
     Declarator d = parse_declarator(parser, &specifiers, DECL_CTX_TYPE_NAME);
     QualifiedType type = semantic_checker_process_typename(&parser->sc, &d);
+
+    if (okay && declarator_is_invalid(&d))
+    {
+        *okay = false;
+    }
 
     return type;
 }
@@ -3629,6 +3629,57 @@ static void declaration_specifiers_add_type(Parser* parser,
     }
 }
 
+static bool parse_typedef_name(Parser* parser, DeclarationSpecifiers* dspec)
+{
+    assert(is_match(parser, TOKEN_IDENTIFIER));
+
+    // If were not allowed a typename were are likely done
+    if (!declaration_specifiers_allow_typename(dspec))
+    {
+        return false;
+    }
+
+    // Get the current token and the Identifier from it so we can try a typename
+    // lookup.
+    Token current = *current_token(parser);
+    Identifier* ident = current.data.identifier;
+
+    // Try to get the typename and if it is not null then add it.
+    Declaration* decl = semantic_checker_get_typename(&parser->sc, ident);
+    if (decl != NULL)
+    {
+        declaration_specifiers_add_type(parser, dspec, TYPE_SPECIFIER_TYPENAME,
+                decl, current_token_location(parser));
+        return true;
+    }
+
+    // Okay, we have an identifier but we are allowed a typename still meaning
+    // we have no complex, width, type, or sign specifier. Meaning we could have
+    // some kind of type here since most people wouldnt intentionally write an
+    // implicit int (I hope). Maybe we're missing a tag (enum, struct, union)
+    // keyword? Perform tag lookup and check.
+    // Declaration* maybe_tag = semantic_checker_lookup_missing_tag(&parser->sc,
+    //         ident);
+    // if (maybe_tag != NULL)
+    // {
+    //     // Here we need to make a guess as the intention of the user. Below 
+    //     // assume 'a' is in the tag namespace.
+    //     // const a; 
+    //     //       ^
+    //     // We would agree that this is an attempt at a variable declaration not
+    //     // a missing tag name.
+    //     // So we need some way to determine if we are missing a tag name or not.
+    //     if (is_missing_tag_name(parser))
+    //     {
+    //         DeclarationType kind = declaration_get_kind(maybe_tag);
+    //         const char* tag_name = tag_kind_to_name(kind);
+
+    //     }
+    // }
+
+    return false;
+}
+
 static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser,
         bool spec_qual_only)
 {
@@ -3776,23 +3827,13 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser,
             
             // Special case of identifier since we could have a typedef.
             case TOKEN_IDENTIFIER:
-                // If were not allowed a typename were are likely done
-                if (!declaration_specifiers_allow_typename(&specifiers))
-                {
-                    goto finish;
-                }
-
-                // If we sucessfully get a typename specifier go and eat the 
-                // token. Otherwise, fall through as we are done with our 
-                // specifiers
-                if (try_parse_typename_specifier(parser, &specifiers))
+                if (parse_typedef_name(parser, &specifiers))
                 {
                     break;
                 }
 
-            /* FALLTHROUGH */
-
-            finish:
+                /* FALLTHROUGH */
+            
             default:
                 // Make sure our declaration specifiers are definitely valid. 
                 // This elimates things like 'signed float' and other weird 
@@ -3806,74 +3847,77 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser,
     }
 }
 
-static Declaration* parse_declaration(Parser* parser, DeclaratorContext context,
-        bool eat_semi_no_decl)
+static bool should_eat_semi_after_decl(Parser* parser, Declaration* decl)
 {
+    // All non-function declarations should have a semi after
+    if (!declaration_is(decl, DECLARATION_FUNCTION))
+    {
+        return true;
+    }
+
+    // Otherwise we should only have a semi if we don't have a body
+    return !declaration_function_has_body(decl);
+}
+
+static Declaration* parse_declaration(Parser* parser, DeclaratorContext context,
+        Location* trailing_semi, bool eat_semi, const char* const msg_context)
+{
+    // If we want to eat the semi we must be able to get it's location!
+    assert(eat_semi ? trailing_semi != NULL : true);
+
     // First we need to get our declaration specifiers here
     DeclarationSpecifiers specifiers = parse_declaration_specifiers(parser,
             false);
 
     // Check for a possibly empty declaration with a token and pass it to
     // the semantic checker to deal with
+    Declaration* decl = NULL;
     if (is_match(parser, TOKEN_SEMI))
     {
-        // Process the declaration specifiers so we know if we need to eat the
-        // semi-colon or not.
-        Declaration* decl = semantic_checker_process_specifiers(&parser->sc,
-                &specifiers);
-        
-        // If we don't have a declaration, eat the semi, since nowhere else will
-        // know to eat it.
-        if (eat_semi_no_decl && !decl)
-        {
-            consume(parser);
-        }
-
-        return decl;
+        // Process the declaration specifiers and get the enclosing decl if any
+        // This would mean for example we parsed a struct. We also know that if
+        // we have a ';' we MUST be done with the declaration specifiers.
+        decl = semantic_checker_process_specifiers(&parser->sc, &specifiers);
+    }
+    else
+    {  
+        // Otherwise we are going to try to parse a declaration in some way. If
+        // we have any other token present.
+        decl = parse_init_declarator_list(parser, &specifiers, context);
     }
 
-    return parse_init_declarator_list(parser, &specifiers, context);
+    // Conditionally parse the trailing semi-colon.
+    if (eat_semi && should_eat_semi_after_decl(parser, decl))
+    {
+        *trailing_semi = parse_trailing_semi(parser, msg_context);
+    }
+
+    return decl;
 }
 
 static void parse_declaration_or_definition(Parser* parser)
 {
+    Location trailing_semi = LOCATION_INVALID;
     Declaration* declaration = parse_declaration(parser, DECL_CTX_FILE,
-            true);
-    
-    // If we had a function declaration with a body then we do not want to try
-    // to parse a ';' afterwards and can simply return. Otherwise try to...
-    // Also note we will also not try to parse a semi if the declaration is NULL
-    // this still works if for example we get 'int' since it will try to parse
-    // an identifier after. Note, that a NULL declaration means some kind of 
-    // pretty bad error occured so we can just return here as parse_declaration
-    // already handled if there was a semi or not.
-    if ((declaration_is(declaration, DECLARATION_FUNCTION)
-            && declaration_function_has_body(declaration))
-            || declaration == NULL)
-    {
-        return;
-    }
-
-    parse_trailing_semi(parser, "top level declarator");
+            &trailing_semi, true, "top level declarator");
 }
 
-// The definitions of the functions we will use for pasing
-static void parse_top_level(Parser* parser)
+// The definitions of the functions we will use for parsing. Return false if we
+// hit the end of the file. Otherwise, return true. Even if we did not actually
+// parse a declaration.
+static bool parse_top_level(Parser* parser)
 {
     switch (current_token_type(parser))
     {
         case TOKEN_EOF:
-            return;
+            return false;
 
         case TOKEN_SEMI:
         {
-            Location semi = consume(parser);
-            while (try_match(parser, TOKEN_SEMI, NULL))
-                ;
-
-            diagnostic_error_at(parser->dm, semi,
+            Location semi = eat_all(parser, TOKEN_SEMI);
+            diagnostic_warning_at(parser->dm, semi,
                     "extra ';' outside of a function");
-            return;
+            return true;
         }
 
         case TOKEN_RCURLY:
@@ -3881,7 +3925,7 @@ static void parse_top_level(Parser* parser)
             Location curly = consume(parser);
             diagnostic_error_at(parser->dm, curly,
                     "extraneous closing brace ('}')");
-            return;
+            return true;
         }
 
         // All the rest of the tokens, since we want to be able to parse any
@@ -3889,7 +3933,7 @@ static void parse_top_level(Parser* parser)
         // errored about. 
         default:
             parse_declaration_or_definition(parser);
-            return;
+            return true;
     }
 }
 
@@ -3902,17 +3946,21 @@ static void parse_translation_unit_internal(Parser* parser)
     Scope file = scope_file(&parser->ast.ast_allocator);
     semantic_checker_push_scope(&parser->sc, &file);
 
-    // Check for case of empty translation unit which is not allowed.
-    if (is_match(parser, TOKEN_EOF))
+    // Check for case of empty translation unit which is not allowed. Note, this
+    // occurs when we try to parse the first top level declaration and instead
+    // get an end of file token (no useful input).
+    if (!parse_top_level(parser))
     {
         diagnostic_warning_at(parser->dm, current_token_location(parser),
                 "ISO C requires a translation unit to contain at least one "
                 "declaration");
     }
 
-    while (!is_match(parser, TOKEN_EOF))
+    // Otherwise parse the rest of the translation unit until we hit the end of
+    // the file.
+    while (parse_top_level(parser))
     {
-        parse_top_level(parser);
+        ;
     }
 
     // Finally, after EOF, we can check all of our external definitions.

@@ -217,6 +217,7 @@ const char* token_type_get_name(TokenType type)
         case TOKEN_OR_OR: return "||";
         case TOKEN_QUESTION: return "?";
         case TOKEN_COLON: return ":";
+        case TOKEN_COLON_COLON: return "::";
         case TOKEN_SEMI: return ";";
         case TOKEN_ELIPSIS: return "...";
         case TOKEN_EQUAL: return "=";
@@ -233,12 +234,6 @@ const char* token_type_get_name(TokenType type)
         case TOKEN_COMMA: return ",";
         case TOKEN_HASH: return "#";
         case TOKEN_HASH_HASH: return "##";
-        case TOKEN_LT_COLON: return "<:";
-        case TOKEN_COLON_GT: return ":>";
-        case TOKEN_LT_PERCENT: return "<%";
-        case TOKEN_PERCENT_GT: return "%>";
-        case TOKEN_PERCENT_COLON: return "%:";
-        case TOKEN_PERCENT_COLON_PERCENT_COLON: return "%:%:";
         case TOKEN_AUTO: return "auto";
         case TOKEN_BREAK: return "break";
         case TOKEN_CASE: return "case";

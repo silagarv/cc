@@ -407,6 +407,21 @@ Expression* expression_create_array(AstAllocator* allocator,
     return expr;
 }
 
+Expression* expression_create_compound_literal(AstAllocator* allocator,
+        Location lparen_loc, QualifiedType type, Location rparen_loc,
+        union Initializer* initializer)
+{
+    Expression* expr = expression_create_base(allocator,
+            sizeof(ExpressionCompoundLiteral), EXPRESSION_COMPOUND_LITERAL,
+            type);
+    expr->compound_literal.lparen_loc = lparen_loc;
+    expr->compound_literal.rparen_loc = rparen_loc;
+    expr->compound_literal.type = type;
+    expr->compound_literal.initializer = initializer;
+
+    return expr;
+}
+
 Expression* expression_create_unary(AstAllocator* allocator, 
         ExpressionType type, Location op_loc, Expression* expression,
         QualifiedType expr_type)
@@ -633,6 +648,11 @@ Expression* expression_list_entry_get(ExpressionListEntry* entry)
 ExpressionList expression_list_create(void)
 {
     return (ExpressionList) {NULL, NULL, 0};
+}
+
+ExpressionListEntry* expression_list_first(const ExpressionList* list)
+{
+    return list->first;
 }
 
 void expression_list_push(AstAllocator* allocator, ExpressionList* list,

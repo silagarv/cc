@@ -215,6 +215,18 @@ void semantic_checker_insert_external(SemanticChecker* sc, Declaration* decl)
     scope_insert_ordinairy(sc->externals, decl);
 }
 
+static bool semantic_checker_in_function(const SemanticChecker* sc)
+{
+    return sc->function != NULL;
+}
+
+static Declaration* semantic_checker_get_function(const SemanticChecker* sc)
+{
+    assert(semantic_checker_in_function(sc));
+
+    return sc->function->function;
+}
+
 // -----------------------------------------------------------------------------
 // End functions for handling scopes
 // -----------------------------------------------------------------------------
@@ -520,9 +532,12 @@ Declaration* semantic_checker_get_typename(SemanticChecker* sc,
         Identifier* identifier)
 {
     Declaration* decl = semantic_checker_lookup_ordinairy(sc, identifier, true);
-    assert(declaration_is(decl, DECLARATION_TYPEDEF));
+    if (declaration_is(decl, DECLARATION_TYPEDEF))
+    {
+        return decl;
+    }
 
-    return decl;
+    return NULL;
 }
 
 void declaration_specifiers_finish(SemanticChecker* sc,
@@ -930,6 +945,42 @@ static QualifiedType process_array_type(SemanticChecker* sc, Declarator* d,
 
             // Abort making array type!
             return current;
+        }
+
+        if (is_ice)
+        {
+            ExpressionIntegerValue value = {0};
+            expression_fold_to_integer_constant(expression, &value);
+            int64_t int_value = expression_integer_value_get(&value);
+
+            if (int_value == 0)
+            {
+                diagnostic_error_at(sc->dm, expression_get_location(expression),
+                        "zero size arrays are an unimplemented extension");
+
+                *invalid = true;
+                return semantic_checker_get_int_type(sc);
+            }
+            else if (int_value < 0)
+            {
+                Location loc = expression_get_location(expression);
+                Identifier* id = declarator_get_identifier(d);
+                if (id)
+                {
+                    diagnostic_error_at(sc->dm, loc,
+                            "'%s' declared as an array with negative size",
+                            id->string.ptr);
+                }
+                else
+                {
+                    diagnostic_error_at(sc->dm, loc, "array size is negative"); 
+                }
+
+                *invalid = true;
+                return semantic_checker_get_int_type(sc);
+            }
+
+            length = (size_t) int_value;
         }
 
         is_vla = !is_ice;
@@ -1929,8 +1980,29 @@ Declaration* semantic_checker_process_variable(SemanticChecker* sc,
         invalid = true;
     }
 
+    // Check for the void type specifically as this can never be complete
+    if (qualified_type_is(&canonical_type, TYPE_VOID))
+    {
+        diagnostic_error_at(sc->dm, identifer_loc,
+                "variable has incomplete type 'void'");
+        invalid = true;
+    }
+
     // Diagnose the use of the inline keyword on any variable declaration
     semantic_checker_diagnose_inline(sc, spec);
+
+    // Now check for a non-const static being defined in an inline function but
+    TypeQualifiers quals = qualified_type_get_quals(&canonical_type);
+    if (storage == STORAGE_STATIC && !type_qualifier_is_const(quals)
+            && semantic_checker_in_function(sc)
+            && declaration_function_is_inline(semantic_checker_get_function(sc))
+            && (declaration_function_get_linkage(
+            semantic_checker_get_function(sc)) == DECLARATION_LINKAGE_EXTERNAL))
+    {
+        diagnostic_warning_at(sc->dm, identifer_loc, "non-constant static "
+                "local variable in inline function may be different in "
+                "different files");
+    }
 
     // Now determine the type of linkage that this variable has.
     DeclarationLinkage linkage = calculate_variable_linkage(storage, ctx);
@@ -1939,9 +2011,6 @@ Declaration* semantic_checker_process_variable(SemanticChecker* sc,
     bool maybe_tentative = (linkage != DECLARATION_LINKAGE_NONE)
             && (storage != STORAGE_EXTERN)
             && !declarator_has_initializer(declarator);
-    assert(maybe_tentative && !invalid
-            ? (storage == STORAGE_NONE || storage == STORAGE_STATIC)
-            : true);
 
     // Create the new deckaration that we use.
     Declaration* new_var = declaration_create_variable(&sc->ast->ast_allocator,
@@ -2013,7 +2082,8 @@ Declaration* semantic_checker_process_typedef(SemanticChecker* sc,
             false);
     if (previous != NULL)
     {
-        // TODO: c11 allows for typedef redefinitions
+        // TODO: c11 allows for typedef redefinitions will need to see if 
+        // TODO: can check for this later.
         bool previous_typedef = declaration_is(previous, DECLARATION_TYPEDEF);
         const char* msg = previous_typedef
                 ? "redefinition of typedef '%s'"
@@ -2063,6 +2133,96 @@ Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
     return semantic_checker_process_variable(sc, declarator, type);
 }
 
+static bool semantic_checker_check_bitfield(SemanticChecker* sc,
+        Identifier* identifier, Location loc, QualifiedType type,
+        Location* colon_location, Expression** expression, size_t* size)
+{
+    // if we have no expression early return.
+    if (*expression == NULL)
+    {
+        return true;
+    }
+
+    // If our expression is invalid we will also want to give up early.
+    if (expression_is_invalid(*expression))
+    {
+        return true;
+    }
+
+    // If we have an anonymous bitfield then we will use that for the name of 
+    // the bitfield. We may later want to update this later to get better error
+    // messages. Also steal the colon as the location of our error message.
+    const bool anonymous = identifier == NULL;
+    if (identifier == NULL)
+    {
+        assert(loc == LOCATION_INVALID);
+
+        identifier = identifier_table_get(sc->identifiers, "<anonymous>");
+        loc = *colon_location;
+    }
+
+    // Non-integer bitifleds must go
+    if (!qualified_type_is_integer(&type))
+    {
+        diagnostic_error_at(sc->dm, loc, "bit-field '%s' has non-integral type",
+                identifier->string.ptr);
+        *colon_location = LOCATION_INVALID;
+        *expression = NULL;
+        return false;
+    }
+
+    // Expressions must be integer constant expressions
+    if (!expression_is_integer_constant(*expression))
+    {
+        diagnostic_error_at(sc->dm, expression_get_location(*expression),
+                "bit-field expression must be an integer constant expression");
+        *colon_location = LOCATION_INVALID;
+        *expression = NULL;
+        return false;
+    }
+
+    ExpressionIntegerValue width = {0};
+    expression_fold_to_integer_constant(*expression, &width);
+
+    int64_t width_val = expression_integer_value_get(&width);
+
+    // Check for invalid bitfield sizs. Nothing that anonymous bitfields can
+    // have zero width.
+    if (!anonymous && width_val == 0)
+    {
+        diagnostic_error_at(sc->dm, loc, "named bit-field '%s' has zero width",
+                identifier->string.ptr);
+        *colon_location = LOCATION_INVALID;
+        *expression = NULL;
+        return false;   
+    }
+    else if (width_val < 0)
+    {
+        diagnostic_error_at(sc->dm, loc, "bit-field '%s' has negative width "
+                "(%ld)", identifier->string.ptr, width_val);
+        *colon_location = LOCATION_INVALID;
+        *expression = NULL;
+        return false;
+    }
+
+    QualifiedType canonical = qualified_type_get_canonical(&type);
+    size_t bitsize = qualified_type_get_size(&canonical);
+    if ((size_t) width_val > bitsize * CHAR_BIT)
+    {
+        diagnostic_error_at(sc->dm, loc, "width of bit-field '%s' (%ld bits) "
+                "exceeds the width of its type (%zu bits)",
+                identifier->string.ptr, width_val, bitsize * CHAR_BIT);
+        *colon_location = LOCATION_INVALID;
+        *expression = NULL;
+        return false;
+    }
+
+    // Make sure to set our bitfield size here.
+    *size = (size_t) width_val;
+
+    return true;
+}
+
 Declaration* semantic_checker_process_struct_declarator(SemanticChecker* sc,
         Declaration* struct_decl, Declarator* declarator)
 {
@@ -2071,153 +2231,95 @@ Declaration* semantic_checker_process_struct_declarator(SemanticChecker* sc,
     QualifiedType type = semantic_checker_process_type(sc, declarator);
 
     // Don't even try if we have an invalid declarator. This is mainly here
-    // to simplify the logic of the parsing functions.
+    // to simplify the logic of the parsing functions, also make sure to set
+    // the parent declaration to be invalid so we don't try to properly build it
     if (declarator_is_invalid(declarator))
     {
+        declaration_set_invalid(struct_decl);
+
         return NULL;
     }
 
     // Ensure that the storage specifiers were removed already.
     assert(declarator->specifiers->storage_spec == STORAGE_NONE);
 
-    Identifier* identifier = declarator->identifier;
-    Location identifier_loc = declarator->identifier_location;
-    Location colon_location = declarator_get_colon_location(declarator);
-    Expression* expression = declarator_get_bitfield_expression(declarator);
-
-    // We must either have an identifer of a bitfield
-    assert(identifier != NULL || colon_location != LOCATION_INVALID);
+    // Steal all of the information we need from the declarator to proceed.
+    Identifier* identifier = declarator_get_identifier(declarator);
+    Location loc = declarator_get_location(declarator);
 
     // Track if we were given an invalid field so we can give nicer errors
     bool invalid = false;
 
-    // TODO: this does not yet allow for flexible array members at the end ofs
-    // TODO: a struct. Note: we can check for an expression in the array type 
-    // to see if we have a flexible member or not.
+    // Check to see that the type of the field that we have is valid.
     QualifiedType canonical = qualified_type_get_canonical(&type);
-    if (qualified_type_is(&canonical, TYPE_ARRAY)
-            && !qualified_type_is_complete(&type))
+    bool flexible = false;
+    if (qualified_type_is(&canonical, TYPE_ARRAY))
     {
-        diagnostic_error_at(sc->dm, identifier_loc,
-                "fields must have a constant size");
-
-        // Remove possible bitfield expression
-        colon_location = LOCATION_INVALID;
-        expression = NULL;
-
-        invalid = true;
+        Expression* size_expr = type_array_get_expression(&canonical);
+        if (size_expr == NULL)
+        {
+            // possible flexible member -> cannot be checked yet!
+            flexible = true;
+        }
+        else if (!expression_is_integer_constant(size_expr))
+        {
+            diagnostic_error_at(sc->dm, loc,
+                    "fields must have a constant size");
+            invalid = true;
+        }
     }
     else if (!qualified_type_is_complete(&type))
-    {
-        diagnostic_error_at(sc->dm, identifier_loc,
-                "field '%s' has incomplete type", identifier->string.ptr);
-
-        // Remove possible bitfield expression
-        colon_location = LOCATION_INVALID;
-        expression = NULL;
-
+    {      
+        diagnostic_error_at(sc->dm, loc, "field '%s' has incomplete type",
+                identifier->string.ptr);
         invalid = true;
     }
 
     // Here we only want to lookup if we got an identifier for this.
-    Declaration* previous = semantic_checker_lookup_member(sc, identifier);
+    Declaration* previous = semantic_checker_lookup_member(sc, identifier); 
     if (previous != NULL)
     {
-        diagnostic_error_at(sc->dm, identifier_loc, "duplicate member '%s'",
+        diagnostic_error_at(sc->dm, loc, "duplicate member '%s'",
                 identifier->string.ptr);
         return NULL;
     }
 
-    // Check that the bitfield we have is okay
-    if (expression != NULL)
+    // Check the bifield part of the declaration if we have it
+    Location colon_location = declarator_get_colon_location(declarator);
+    Expression* expression = declarator_get_bitfield_expression(declarator);
+    size_t bitfield_size = 0;
+
+    // Check that the bitfield we have is okay and that we are not a funciton.
+    if (!semantic_checker_check_bitfield(sc, identifier, loc, type,
+            &colon_location, &expression, &bitfield_size))
     {
-        // Check that the bitfield expression is valid
-        if (expression_is_invalid(expression))
-        {
-            colon_location = LOCATION_INVALID;
-            expression = NULL;
-            invalid = true;
-            goto make_decl;
-        }
-        else if (!qualified_type_is_integer(&type))
-        {
-            diagnostic_error_at(sc->dm, identifier_loc,
-                    "bit-field '%s' has non-integral type",
-                    identifier->string.ptr);
-            
-            // Skip the rest of the checks and make sure to construct it without
-            // a bitfield
-            colon_location = LOCATION_INVALID;
-            expression = NULL;
-            invalid = true;
-            goto make_decl;
-        }        
-
-        bool ice = expression_is_integer_constant(expression);
-        if (!ice)
-        {
-            diagnostic_error_at(sc->dm, expression_get_location(expression),
-                    "bit-field expression must be an integer constant "
-                    "expression");
-            colon_location = LOCATION_INVALID;
-            expression = NULL;
-            invalid = true;
-            goto make_decl;
-        }
-
-        ExpressionIntegerValue width = {0};
-        expression_fold_to_integer_constant(expression, &width);
-
-        int64_t width_val = expression_integer_value_get(&width);
-        if (width_val < 0)
-        {
-            diagnostic_error_at(sc->dm, identifier_loc,
-                    "bit-field '%s' has negative width (%ld)",
-                    identifier->string.ptr, width_val);
-            colon_location = LOCATION_INVALID;
-            expression = NULL;
-            invalid = true;
-            goto make_decl;
-        }
-
-        size_t bitsize = qualified_type_get_size(&canonical);
-        if ((size_t) width_val > bitsize * CHAR_BIT)
-        {
-            diagnostic_error_at(sc->dm, identifier_loc, "width of bit-field "
-                    "'%s' (%ld bits) exceeds the width of its type (%zu bits)",
-                    identifier->string.ptr, width_val, bitsize * CHAR_BIT);
-            colon_location = LOCATION_INVALID;
-            expression = NULL;
-            invalid = true;
-            goto make_decl;
-        }
+        invalid = true;
     }
-
-    // Check that we do not have a function type. note that a pointer to a
-    // function is fine here.
-    if (qualified_type_is(&type, TYPE_FUNCTION))
+    else if (qualified_type_is(&canonical, TYPE_FUNCTION))
     {
-        // Do not return NULL here since we will allow this for syntax purposes
-        diagnostic_error_at(sc->dm, identifier_loc,
-                "field '%s' declared as a function", identifier->string.ptr);
+        // Allow this for syntax purposes, so we can add a member.
+        diagnostic_error_at(sc->dm, loc, "field '%s' declared as a function",
+                identifier->string.ptr);
         invalid = true;
     }
 
-    // Create the declaration for the field of the struct
-make_decl:;
-    Declaration* member_decl = declaration_create_field(&sc->ast->ast_allocator,
-            identifier_loc, identifier, type, colon_location, expression);
+    // Finally create the structure
+    Declaration* member = declaration_create_field(&sc->ast->ast_allocator,
+            loc, identifier, type, colon_location, expression, bitfield_size,
+            flexible);
+
+    // Handle the case of the invalid declarator
     if (invalid)
     {
         // Set both the member declaration and struct declaration to be invalid
         // since this will speed up computing the struct fields if it is invalid
-        declaration_set_invalid(member_decl);
+        declaration_set_invalid(member);
         declaration_set_invalid(struct_decl);
     }
 
-    semantic_checker_insert_member(sc, member_decl);
+    semantic_checker_insert_member(sc, member);
 
-    return member_decl;
+    return member;
 }
 
 // TODO: this should be moved to live with all of my function handling functions
@@ -2320,60 +2422,51 @@ void semantic_checker_handle_function_end(SemanticChecker* sc,
     declaration_function_set_definition(previous, function);
 }
 
-static bool semantic_checker_check_initializer_allowed(SemanticChecker* sc,
-        Declaration* declaration, DeclaratorContext context)
+void semantic_checker_declaration_add_initializer(SemanticChecker* sc,
+        Declaration* declaration, DeclaratorContext context, Location equals,
+        Initializer* initializer)
 {
-    // First we must check that the declaration is allowed to have an 
-    // initializer. If not error about it.
+    // Check for bad initializer or invalid declaration and bail if found
+    if (initializer == NULL || !declaration_is_valid(declaration))
+    {
+        return;
+    }
+
+    // First check for variables only
     if (!declaration_is(declaration, DECLARATION_VARIABLE))
     {
         diagnostic_error_at(sc->dm, declaration_get_location(declaration),
                 "illegal initializer (only variables can be initialized)");
         declaration_set_invalid(declaration);
-        return false;
+        return;
     }
 
-    // Now check the variable isn't a block scope extern. Since those cannot
-    // have identifiers under any circumstances.
-    if (declaration_is_valid(declaration) && context == DECL_CTX_BLOCK
-            && declaration_variable_has_linkage(declaration)
-            && declaration_variable_is_extern(declaration))
+    // Then check for external variables with initializers
+    if (context == DECL_CTX_BLOCK
+            && declaration_get_storage_class(declaration) == STORAGE_EXTERN)
     {
         diagnostic_error_at(sc->dm, declaration_get_location(declaration),
                 "declaration of block scope identifier with linkage cannot "
                 "have an initializer");
         declaration_set_invalid(declaration);
-        return false;
-    }
-
-    return true;
-}
-
-void semantic_checker_declaration_add_initializer(SemanticChecker* sc,
-        Declaration* declaration, DeclaratorContext context, Location equals,
-        Initializer* initializer)
-{
-    // In the case of a bad initializer we don't want to check anything. (will
-    // only occur if initializer is NULL)
-    if (initializer == NULL)
-    {
         return;
     }
 
-    // If we find out an initializer isnt allowed bail so we don't produce any
-    // more errors.
-    if (!semantic_checker_check_initializer_allowed(sc, declaration, context))
+    // Also check for a redefinition of the variable, if it is a file scope
+    // declaration since we may have a newly discovered redefinition error
+    if (context == DECL_CTX_FILE)
     {
-        return;
-    }
-
-    assert(declaration_is(declaration, DECLARATION_VARIABLE));
-    assert(!declaration_variable_is_tentative(declaration));
-
-    // Leave this alone if the declaration is not valid...
-    if (!declaration_is_valid(declaration))
-    {
-        return;
+        Identifier* name = declaration_get_identifier(declaration);
+        Declaration* master = semantic_checker_lookup_external(sc, name);
+        
+        // Redefinition's occur when we already have an initializer.
+        if (declaration_variable_has_definition(master))
+        {
+            diagnostic_error_at(sc->dm, declaration_get_location(declaration),
+                    "redefinition of '%s'", name->string.ptr);
+            declaration_set_invalid(declaration);
+            return;
+        }
     }
 
     // Now we need to use the semantic checker to check if the initializer we
@@ -2386,42 +2479,44 @@ void semantic_checker_declaration_add_initializer(SemanticChecker* sc,
         return;
     }
 
-    // TODO: will need to do some checking and determine that the initializer
-    // TODO: is valid for the object type given. This will all be done later
-
-    // Otherwise add the initializer to the declaration
+    // Otherwise add the initializer to the declaration since we now know we
+    // have a valid initializer. 
     declaration_variable_add_initializer(declaration, initializer);
 
-    // NOTE: all of the below is handling and checking 
-
-    // We now also need to do some checks for duplicate initializers if the 
-    // variable was an external definition
-    if (!declaration_variable_has_linkage(declaration))
+    // Then we want to set the definition of this variable. This might involve 
+    // looking up an external declaration so that we are able to set that it
+    // has a definition so next time around an initializer gets disallowed.
+    Declaration* definition = declaration;
+    if (declaration_variable_has_linkage(declaration))
     {
-        return;
+        Identifier* name = declaration_get_identifier(declaration);
+        definition = semantic_checker_lookup_external(sc, name);
+    }
+    declaration_variable_set_definition(definition, declaration);
+
+    // Check and warn if we are an external variable being initialized. This
+    // turns the variable into a definition that we will emit in our assembly,
+    // so this could be a possible source of error.
+    if (declaration_get_storage_class(declaration) == STORAGE_EXTERN)
+    {
+        // Should only be in file context if we got this far!
+        assert(context == DECL_CTX_FILE);
+
+        diagnostic_warning_at(sc->dm, declaration_get_location(declaration),
+                "'extern' variable has an initializer");
     }
 
-    // Lookup the entry for the declaration
-    Identifier* name = declaration_get_identifier(declaration);
-    Declaration* master = semantic_checker_lookup_external(sc, name);
-
-    // If we do not have a definition at all we can safely be done.
-    if (!declaration_variable_has_definition(master))
+    // Finally, we will need to check that our initializer is a constant init
+    // if we are either a static variable or at file scope.
+    if (context == DECL_CTX_FILE 
+            || declaration_get_storage_class(declaration) == STORAGE_STATIC)
     {
-        declaration_variable_set_definition(master, declaration);
-
-        // Finally, warn in the case the we have an 'extern' variable.
-        if (declaration_get_storage_class(declaration) == STORAGE_EXTERN)
+        // TODO: turn this into a call to check for a compile-time initializer
+        if (0)
         {
-            diagnostic_warning_at(sc->dm, declaration_get_location(declaration),
-                    "'extern' variable has initializer");
+            diagnostic_error_at(sc->dm, declaration_get_location(declaration),
+                    "initializer element is not a compile-time constant");
         }
-    }
-    else
-    {
-         // Issue a redefinition error.
-        diagnostic_error_at(sc->dm, declaration_get_location(declaration),
-                "redefinition of '%s'", name->string.ptr);
     }
 }
 
@@ -2540,6 +2635,81 @@ void semantic_checker_check_externals(SemanticChecker* sc)
     }
 }
 
+// Struct to hold information for calculating the layout of a structure or
+// union whilst we are doing so. Holds the current number of bytes that we are
+// from the start of the struct, as well as the number of bits for fine grained
+// control.
+typedef struct CompoundOffset {
+    size_t bytes;
+    size_t bits;
+} CompoundOffset;
+
+static void semantic_checker_calculate_struct_layout(SemanticChecker* sc,
+        Declaration* struct_decl)
+{
+    assert(declaration_is(struct_decl, DECLARATION_STRUCT));
+    // panic("cannot calculate struct layout at this time");
+}
+
+static void semantic_checker_calculate_union_layout(SemanticChecker* sc,
+        Declaration* union_decl)
+{
+    assert(declaration_is_valid(union_decl));
+    assert(declaration_is(union_decl, DECLARATION_UNION));
+
+    // Start by getting the raw Type* from the declaration so that we can make
+    // the modifications we need to it.
+    QualifiedType type = declaration_get_type(union_decl);
+    Type* compound = qualified_type_get_raw(&type);
+
+    assert(type_is(compound, TYPE_UNION));
+
+    size_t max_size = 0;
+    size_t max_alignment = 0;
+
+    DeclarationList members = declaration_struct_get_members(union_decl);
+    DeclarationListEntry* member = declaration_list_iter(&members);
+    for (; member != NULL; member = declaration_list_next(member))
+    {
+        Declaration* member_decl = declaration_list_entry_get(member);
+        assert(declaration_is(member_decl, DECLARATION_FIELD));
+
+        // The only real restriction we have here is that we cannot have a
+        // flexible member in the union at all. Even at the end, so check for 
+        // this and error if we encounter it.
+        if (declaration_field_is_fexible_array(member_decl))
+        {
+            Identifier* id = declaration_get_identifier(member_decl);
+            diagnostic_error_at(sc->dm, declaration_get_location(member_decl),
+                    "flexible array member '%s' in a union", id->string.ptr);
+            declaration_set_invalid(union_decl);
+            return;
+        }
+
+        QualifiedType member_type = declaration_get_type(member_decl);
+
+        size_t member_size = qualified_type_get_size(&member_type);
+        size_t member_align = qualified_type_get_align(&member_type);
+
+        // Increase the max size and member size as needed.
+        if (max_size < member_size)
+        {
+            max_size = member_size;
+        }
+
+        if (max_alignment < member_align)
+        {
+            max_alignment = member_align;
+        }
+    }
+
+    // Okay, we have now found our size and alignment that we need our union to
+    // be. So we need to make sure this is not lost and do some bookkeeping.
+    
+
+    // printf("size: %zu, alignment: %zu\n", max_size, max_alignment);
+}
+
 void semantic_checker_finish_struct_declaration(SemanticChecker* sc,
         Declaration* struct_declaration)
 {
@@ -2551,15 +2721,20 @@ void semantic_checker_finish_struct_declaration(SemanticChecker* sc,
     // leave with a complete struct.
     declaration_struct_set_complete(struct_declaration);
 
-    // Then check if the struct declaration was invalid or not. If it was
-    // invalid then we can skip everything below and simply return.
-    bool valid = declaration_is_valid(struct_declaration);
-    if (!valid)
+    if (!declaration_is_valid(struct_declaration))
     {
         return;
     }
 
-    bool is_struct = declaration_is(struct_declaration, DECLARATION_STRUCT);
+    // Okay, now go and calculate the layour of the struct/union that we have
+    if (declaration_is(struct_declaration, DECLARATION_STRUCT))
+    {
+        semantic_checker_calculate_struct_layout(sc, struct_declaration);
+    }
+    else
+    {
+        semantic_checker_calculate_union_layout(sc, struct_declaration);
+    }
 }
 
 static Declaration* semantic_checker_create_enum_constant(SemanticChecker* sc,
@@ -2838,6 +3013,12 @@ Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
     assert(declaration != NULL);
 
     return declaration;
+}
+
+Declaration* semantic_checker_lookup_missing_tag(SemanticChecker* sc,
+        Identifier* identifier)
+{
+    return semantic_checker_lookup_tag(sc, identifier, true);
 }
 
 // -----------------------------------------------------------------------------
@@ -3420,6 +3601,240 @@ static Expression* semantic_checker_func_array_lvalue_convert(
     return expr;
 }
 
+// TODO: will eventually need to go back and fix some things in this function
+// TODO: as it does not take into account integer constant expressions properly
+// TODO: so will not necessarily be correct.
+static bool semantic_checker_is_null_pointer(SemanticChecker* sc, Expression* e)
+{
+    // An integer constant expression with the value 0, or such an expression 
+    // cast to type void *, is called a null pointer constant.
+    // any object or function.
+
+    // Ignore invalid expressions
+    if (expression_is_invalid(e))
+    {
+        return false;
+    }
+
+    // If it is a cast expression get the inner if it is cast to a void pointer
+    if (expression_is(e, EXPRESSION_CAST))
+    {
+        QualifiedType type = expression_get_qualified_type(e);
+        type = qualified_type_get_canonical(&type);
+
+        // if it isn't a cast to a pointer type cannot be a null pointer
+        if (!qualified_type_is_pointer(&type))
+        {
+            return false;
+        }
+
+        QualifiedType pointee = type_pointer_get_pointee(&type);
+        pointee = qualified_type_get_canonical(&pointee);
+        if (!qualified_type_is(&pointee, TYPE_VOID))
+        {
+            return false;
+        }
+
+        e = expression_cast_get_inner(e);
+    }
+
+    // Okay now we have removed the cast if it exists and so now we can try to
+    // see if we have an integer constant expression.
+    if (expression_is_integer_constant(e))
+    {
+        ExpressionIntegerValue value = {0};
+        expression_fold_to_integer_constant(e, &value);
+
+        return expression_integer_value_get(&value) == 0;
+    }
+
+    return false;
+}
+
+
+// Handle all our assignment stuff here before anything else since it is used in
+// more places than just simple assignment.
+// Enum to help us determine the type of simple assignment that we are dealing
+// with. Like other enums, this is really only used by the function below.
+typedef enum AssignmentType {
+    ASSIGNMENT_ERROR, // error
+    ASSIGNMENT_SUCCESS, // No possible error
+    ASSIGNMENT_POINTER_DISCARDS_QUALS, // Compatible but discards quals
+    ASSIGNMENT_POINTER_INCOMPATIBLE, // Incompatible pointer types
+    ASSIGNMENT_POINTER_INCOMPATIBLE_SIGN, // e.g. int*, unsigned*
+    ASSIGNMENT_INT_POINTER, // from pointer to int -> extension
+    ASSIGNMENT_POINTER_INT, // from int to pointer -> extension
+} AssignmentType;
+
+static AssignmentType semantic_checker_get_ptr_assignment(SemanticChecker* sc,
+        const QualifiedType* lhs, const QualifiedType* rhs)
+{
+    assert(qualified_type_is_pointer(lhs) && qualified_type_is_pointer(rhs));
+
+    // Remove the top level of pointer to get the base type we need to compare.
+    QualifiedType lhs_pointee = type_pointer_get_pointee(lhs);
+    QualifiedType rhs_pointee = type_pointer_get_pointee(rhs);
+
+    // First check if they are fully compatible including qualifiers.
+    if (qualified_type_is_compatible(&lhs_pointee, &rhs_pointee))
+    {
+        return ASSIGNMENT_SUCCESS;
+    }
+
+    // Now check if they are compatible with no quals involved. If we are here
+    // then we have a few options to check. Check first if we discard quals at
+    // the top level. For now we implement the gcc way, where we check for
+    // discarded qualifiers in general...
+    TypeQualifiers lhs_quals = qualified_type_get_quals(&lhs_pointee);
+    TypeQualifiers rhs_quals = qualified_type_get_quals(&rhs_pointee);
+    if (type_qualifiers_discards_quals(lhs_quals, rhs_quals))
+    {   
+        return ASSIGNMENT_POINTER_DISCARDS_QUALS;
+    }
+
+    // Check for void on either the lhs or the rhs. Note that checking for
+    // discarded qualifiers is already done, so this results in a sucessful 
+    // assignment.
+    if (qualified_type_is(&lhs_pointee, TYPE_VOID))
+    {
+        return ASSIGNMENT_SUCCESS;
+    }
+    else if (qualified_type_is(&rhs_pointee, TYPE_VOID))
+    {
+        return ASSIGNMENT_SUCCESS;
+    }
+
+    // Finally, check for incompatible but pointer to integer or same size e.g.
+    // int* && unsigned* -> same size but differing signedness.
+    if (qualified_type_is_integer(&lhs_pointee)
+            && qualified_type_is_integer(&rhs_pointee))
+    {   
+        // Both integer types with the same size, but not compatible with each
+        // other. But the size is the same so we are incompatible sign wise.
+        size_t lhs_size = qualified_type_get_size(&lhs_pointee);
+        size_t rhs_size = qualified_type_get_size(&rhs_pointee);
+        if (lhs_size == rhs_size)
+        {
+            return ASSIGNMENT_POINTER_INCOMPATIBLE_SIGN;
+        }
+    }
+
+    // Otherwise, with not other matches we are simple incompatible pointers.
+    return ASSIGNMENT_POINTER_INCOMPATIBLE;
+}
+
+static AssignmentType semantic_checker_get_assignment_type(SemanticChecker* sc,
+        const QualifiedType* lhs, Expression* rhs_expr)
+{
+    QualifiedType real_lhs = qualified_type_get_canonical(lhs);
+ 
+    QualifiedType rhs = expression_get_qualified_type(rhs_expr);
+    QualifiedType real_rhs = qualified_type_get_canonical(&rhs);
+
+    // Simple case of arithmetic arithmetic types.
+    if (qualified_type_is_arithmetic(&real_lhs)
+            && qualified_type_is_arithmetic(&real_rhs))
+    {
+        return ASSIGNMENT_SUCCESS;
+    }
+
+    // Case of compatible struct / union types for assignment. Then we have 
+    // struct assignment.
+    if (qualified_type_is_compatible(&real_lhs, &real_rhs)
+            && qualified_type_is_compound(&real_lhs)
+            && qualified_type_is_compound(&real_rhs))
+    {
+        return ASSIGNMENT_SUCCESS;
+    }
+
+    // Check for lhs pointer, rhs null pointer.
+    if (qualified_type_is_pointer(&real_lhs) 
+            && semantic_checker_is_null_pointer(sc, rhs_expr))
+    {
+        // TODO: we should also thing about warning when the null pointer
+        // TODO: constant is non trivial e.g (3 - 3)
+        return ASSIGNMENT_SUCCESS;
+    }
+
+    // If both sides are pointer type we call the the function specifically to
+    // handle all of them since there are a few we need to account for :)
+    if (qualified_type_is_pointer(&real_lhs)
+            && qualified_type_is_pointer(&real_rhs))
+    {
+        return semantic_checker_get_ptr_assignment(sc, &real_lhs, &real_rhs);
+    }
+
+    // Finally after all our pointer checking, check for bool, pointer
+    if (qualified_type_is(&real_lhs, TYPE_BOOL)
+            && qualified_type_is_pointer(&real_rhs))
+    {
+        return ASSIGNMENT_SUCCESS;
+    }
+
+    // GCC / Clang int conversion for pointers -> extension
+    if (qualified_type_is_integer(&real_lhs)
+            && qualified_type_is_pointer(&real_rhs))
+    {
+        return ASSIGNMENT_INT_POINTER;
+    }
+    else if (qualified_type_is_pointer(&real_lhs)
+            && qualified_type_is_integer(&real_rhs))
+    {
+        return ASSIGNMENT_POINTER_INT;
+    }
+
+    // Could not find an assignment that we could possibly do.
+    return ASSIGNMENT_ERROR;
+}
+
+static bool semantic_checker_diagnose_assign_error(SemanticChecker* sc,
+        AssignmentType type, Location location, const QualifiedType* lhs,
+        const QualifiedType* rhs)
+{
+    // TODO: revisit this function once type printing is done!
+    switch (type)
+    {
+        // Successful assignment nothing to report.
+        case ASSIGNMENT_SUCCESS:
+            return false;
+
+        case ASSIGNMENT_ERROR:
+            diagnostic_error_at(sc->dm, location,
+                    "assignment to incompatible type");
+            return true;
+
+        case ASSIGNMENT_POINTER_DISCARDS_QUALS:
+            diagnostic_warning_at(sc->dm, location,
+                    "assignment discards qualifiers");
+            return true;
+
+        case ASSIGNMENT_POINTER_INCOMPATIBLE:
+            diagnostic_warning_at(sc->dm, location,
+                    "assignment to incompatible pointer type");
+            return true;
+
+        case ASSIGNMENT_POINTER_INCOMPATIBLE_SIGN:
+            diagnostic_warning_at(sc->dm, location, "conversion between "
+                    "pointers to integer types with different sign");
+            return true;
+
+        case ASSIGNMENT_INT_POINTER:
+        case ASSIGNMENT_POINTER_INT:
+        {
+            const char* msg = type == ASSIGNMENT_INT_POINTER
+                    ? "pointer to integer"
+                    : "integer to pointer";
+            diagnostic_warning_at(sc->dm, location,
+                    "incompatible %s conversion", msg);
+            return true;
+        }
+
+        default:
+            panic("unknown assignment type");
+            return true;
+    }
+}
+
 Expression* semantic_checker_handle_error_expression(SemanticChecker* sc,
         Location location)
 {
@@ -3513,12 +3928,30 @@ Expression* semantic_checker_handle_reference_expression(SemanticChecker* sc,
         expression_set_invalid(reference);
     }
 
-    // Except when it is the operand of the sizeof operator or the unary & 
-    // operator, or is a string literal used to initialize an array, an 
-    // expression that has type ‘array of type’ is converted to an expression
-    // with type ‘pointer to type’ that points to the initial element of the
-    // array object and is not an lvalue. If the array object has register 
-    // storage class, the behavior is undefined
+    // Okay, do a check here to see if we are using the declaration we got in
+    // an invalid way. Specifically, an non-static inline function cannot refer
+    // to a file scope static.
+
+    // First check we're in a function and were referencing a static that is at
+    // file scope.
+    if (semantic_checker_in_function(sc)
+        && declaration_get_storage_class(declaration) == STORAGE_STATIC
+        && semantic_checker_lookup_external(sc, identifier) == declaration)
+    {
+        // Then, check if the function is a non-static inline
+        Declaration* function = semantic_checker_get_function(sc);
+        if (declaration_get_storage_class(function) != STORAGE_STATIC
+                && declaration_function_is_inline(function))
+        {
+            const char* static_type = 
+                    declaration_is(declaration, DECLARATION_FUNCTION)
+                    ? "function"
+                    : "variable";
+            diagnostic_warning_at(sc->dm, identifier_location,
+                    "static %s '%s' is used in an inline function with "
+                    "external linkage", static_type, identifier->string.ptr);
+        }
+    }
 
     return reference;
 }
@@ -3707,6 +4140,54 @@ static bool semantic_checker_is_callable(SemanticChecker* sc,
     return false;
 }
 
+static bool semantic_checker_check_function_paramaters(SemanticChecker* sc,
+        ExpressionList* expr_list, const QualifiedType* function,
+        bool is_variadic)
+{
+    ExpressionListEntry* cur_expr = expression_list_first(expr_list);
+    TypeFunctionParameter* parm = type_function_get_params(function);
+    
+    while (cur_expr != NULL)
+    {
+        // Have got to the end of the list function paramaeters and are at the
+        // variadic parameters
+        if (parm == NULL)
+        {
+            // TODO: do checking on the rest of the parameters passed to the
+            // TODO: function.
+            assert(is_variadic);
+            break;
+        }
+
+        Expression* expr = expression_list_entry_get(cur_expr);
+        if (!expression_is_invalid(expr))
+        {
+            QualifiedType expr_type = expression_get_qualified_type(expr);
+            QualifiedType parm_type = type_function_parameter_get_type(parm);
+
+            // Get the assignment type and possibly produce a message.
+            AssignmentType type = semantic_checker_get_assignment_type(sc,
+                    &parm_type, expr);
+
+            Location location = expression_get_location(expr);
+            semantic_checker_diagnose_assign_error(sc, type, location, &parm_type,
+                    &expr_type);
+                
+            // Only exit these checks if we got a fatal assignment error.
+            if (type == ASSIGNMENT_ERROR)
+            {
+                return false;
+            }
+        }
+
+        // Get the next expression and parameter.
+        cur_expr = expression_list_entry_next(cur_expr);
+        parm = type_function_parameter_get_next(parm);
+    }
+
+    return true;
+}
+
 // TODO: finish handling this call expression
 Expression* semantic_checker_handle_call_expression(SemanticChecker* sc,
         Expression* lhs, Location lparen_location, ExpressionList* expr_list,
@@ -3741,7 +4222,8 @@ Expression* semantic_checker_handle_call_expression(SemanticChecker* sc,
     // compatible with the functions declaration.
     size_t req_parms = type_function_get_param_count(&real_type);
     size_t given_parms = expression_list_num_expr(expr_list);
-    if (given_parms > req_parms)
+    bool is_variadic = type_function_is_variadic(&real_type);
+    if (given_parms > req_parms && !is_variadic)
     {
         diagnostic_error_at(sc->dm, lparen_location,
                 "too many arguments to function call, expected %zu, have %zu",
@@ -3756,22 +4238,22 @@ Expression* semantic_checker_handle_call_expression(SemanticChecker* sc,
         return semantic_checker_handle_error_expression(sc, lparen_location);
     }
 
-    // Okay, we now know that we have the correct number of parameters being
-    // passed to the function. This means we can now go and check on the type
-    // of each of the functions so that we can ensure that there is no issue,
-    // passing any of them.
+    // Now we want to check the validity of the function parameters.
+    if (!semantic_checker_check_function_paramaters(sc, expr_list, &real_type,
+            is_variadic))
+    {
+        return semantic_checker_handle_error_expression(sc, lparen_location);
+    }
 
+    // TODO: actually build the call expression.
     QualifiedType return_type = type_function_get_return(&real_type);
     return semantic_checker_handle_error_expression(sc, lparen_location);
 }
 
-static Declaration* find_member_declaration(QualifiedType* type,
-        Identifier* identifier)
+static DeclarationListEntry* find_member(DeclarationList* decls,
+        Identifier* idnetifier)
 {
-    Declaration* struct_decl = qualified_type_struct_get_declaration(type);
-    DeclarationList decls = declaration_struct_get_members(struct_decl);
-
-    DeclarationListEntry* current = declaration_list_iter(&decls);
+    DeclarationListEntry* current = declaration_list_iter(decls);
     for (; current != NULL; current = declaration_list_next(current))
     {
         Declaration* member = declaration_list_entry_get(current);
@@ -3785,10 +4267,28 @@ static Declaration* find_member_declaration(QualifiedType* type,
         // Now we know that we have an identifier we must get it and compare it
         // to the identifier we are looking for.
         Identifier* member_name = declaration_get_identifier(member);
-        if (member_name == identifier)
+        if (member_name == idnetifier)
         {
-            return member;
+            return current;
         }
+    }
+
+    return NULL;
+    
+    
+    return NULL;
+}
+
+static Declaration* find_member_declaration(QualifiedType* type,
+        Identifier* identifier)
+{
+    Declaration* struct_decl = qualified_type_struct_get_declaration(type);
+    DeclarationList decls = declaration_struct_get_members(struct_decl);
+
+    DeclarationListEntry* member = find_member(&decls, identifier);
+    if (member != NULL)
+    {
+        return declaration_list_entry_get(member);
     }
 
     return NULL;
@@ -4033,9 +4533,32 @@ Expression* semantic_checker_handle_unary_expression(SemanticChecker* sc,
 
 Expression* semantic_checker_handle_compound_literal(SemanticChecker* sc,
         Location lparen_loc, QualifiedType type, Location rparen_loc,
-        Initializer* initializer)
+        bool okay, Initializer* initializer)
 {
-    return semantic_checker_handle_error_expression(sc, lparen_loc);
+    // If the type we parsed was invalid then create an error expression.
+    if (!okay)
+    {
+        return semantic_checker_handle_error_expression(sc, lparen_loc);
+    }
+
+    QualifiedType canonical = qualified_type_get_canonical(&type);
+    if (qualified_type_is(&canonical, TYPE_VOID))
+    {
+        diagnostic_error_at(sc->dm, lparen_loc,
+                "variable has incomplete type 'void'");
+        return semantic_checker_handle_error_expression(sc, lparen_loc);
+    }
+
+    bool file_scope = semantic_checker_current_scope_is(sc, SCOPE_FILE);
+
+    // Bad init => don't create expression
+    if (!semantic_checker_check_initializer(sc, initializer, type, file_scope))
+    {
+        return semantic_checker_handle_error_expression(sc, lparen_loc);
+    }
+    
+    return expression_create_compound_literal(&sc->ast->ast_allocator,
+            lparen_loc, type, rparen_loc, initializer);
 }
 
 // Enum to represent the different failure modes of the address expression.
@@ -4238,6 +4761,8 @@ Expression* semantic_checker_handle_sizeof_expression(SemanticChecker* sc,
                 "invalid application of 'sizeof' to incomplete type");
         return semantic_checker_handle_error_expression(sc, sizeof_location);
     }
+
+    // TODO: need to check that we aren't doing a sizeof to a bitfield.
 
     // Get the standard size type for the value of the expression
     QualifiedType size_type = semantic_checker_get_size_type(sc);
@@ -4856,61 +5381,6 @@ Expression* semantic_checker_handle_relational_expression(SemanticChecker* sc,
             lhs, rhs, result_type);
 }
 
-// TODO: will eventually need to go back and fix some things in this function
-// TODO: as it does not take into account integer constant expressions properly
-// TODO: so will not necessarily be correct.
-static bool semantic_checker_is_null_pointer(SemanticChecker* sc, Expression* e)
-{
-    // An integer constant expression with the value 0, or such an expression 
-    // cast to type void *, is called a null pointer constant.
-    // any object or function.
-
-    // Ignore invalid expressions
-    if (expression_is_invalid(e))
-    {
-        return false;
-    }
-
-    // If it is a cast expression get the inner if it is cast to a void pointer
-    if (expression_is(e, EXPRESSION_CAST))
-    {
-        QualifiedType type = expression_get_qualified_type(e);
-        type = qualified_type_get_canonical(&type);
-
-        // if it isn't a cast to a pointer type cannot be a null pointer
-        if (!qualified_type_is_pointer(&type))
-        {
-            return false;
-        }
-
-        QualifiedType pointee = type_pointer_get_pointee(&type);
-        pointee = qualified_type_get_canonical(&pointee);
-        if (!qualified_type_is(&pointee, TYPE_VOID))
-        {
-            return false;
-        }
-
-        e = expression_cast_get_inner(e);
-    }
-
-    // Okay now we have removed the cast if it exists and so now we can try to
-    // see if we have an integer constant expression.
-    if (expression_is(e, EXPRESSION_INTEGER_CONSTANT))
-    {
-        IntegerValue value = expression_integer_get_value(e);
-        if (value.value == 0)
-        {
-            return true;
-        }
-        else
-        {
-            return false;
-        }
-    }
-
-    return false;
-}
-
 // Another internal enum to help us implement the semantic of the eqaulity
 // expression so that we are able to implement the semantic checking a bit 
 // easier
@@ -5407,17 +5877,6 @@ static Expression* semantic_checker_undo_parenthesis_lvalue_cast(
     return inner;
 }
 
-// Enum to help us determine the type of simple assignment that we are dealing
-// with. Like other enums, this is really only used by the function below.
-typedef enum SimpleAssignmentExpressionType {
-    SIMPLE_ASSIGNMENT_ARITHMETIC,
-    SIMPLE_ASSIGNMENT_STRUCT,
-    SIMPLE_ASSIGNMENT_POINTERS_COMPATIBLE,
-    SIMPLE_ASSIGNMENT_POINTERS_INCOMPLETE,
-    SIMPLE_ASSIGNMENT_POINTER_NULL,
-    SIMPLE_ASSIGNMENT_BOOL_POINTER
-} SimpleAssignmentExpressionType;
-
 static Expression* semantic_checker_handle_simple_assigment(SemanticChecker* sc,
         Expression* lhs, Location operator_loc, Expression* rhs)
 {
@@ -5433,78 +5892,13 @@ static Expression* semantic_checker_handle_simple_assigment(SemanticChecker* sc,
     bool compaitable = qualified_type_is_compatible_no_quals(&lhs_type,
             &rhs_type);
 
-    SimpleAssignmentExpressionType type;
-    if (qualified_type_is_arithmetic(&lhs_type)
-            && qualified_type_is_arithmetic(&rhs_type))
+    // Get the assignment type and return early if an error was diagnosed.
+    AssignmentType type = semantic_checker_get_assignment_type(sc,
+            &real_lhs_type, rhs);
+    semantic_checker_diagnose_assign_error(sc, type, operator_loc,
+            &lhs_type, &rhs_type);
+    if (type == ASSIGNMENT_ERROR)
     {
-        type = SIMPLE_ASSIGNMENT_ARITHMETIC;
-    }
-    else if (compaitable && qualified_type_is_compound(&lhs_type))
-    {
-        assert(qualified_type_is_compound(&rhs_type));
-        type = SIMPLE_ASSIGNMENT_STRUCT;
-    }
-    else if (qualified_type_is_pointer(&lhs_type)
-            && semantic_checker_is_null_pointer(sc, rhs))
-    {
-        type = SIMPLE_ASSIGNMENT_POINTER_NULL;
-    }
-    else if (qualified_type_is_pointer(&lhs_type)
-            && qualified_type_is_pointer(&rhs_type))
-    {
-        // Get the types pointed to by both of the sides and get their 
-        // qualifiers so we can test if they have the same qualifiers
-        QualifiedType lhs_pointee = type_pointer_get_pointee(&real_lhs_type);
-        QualifiedType rhs_pointee = type_pointer_get_pointee(&real_rhs_type);
-
-        TypeQualifiers lhs_quals = qualified_type_get_quals(&lhs_pointee);
-        TypeQualifiers rhs_quals = qualified_type_get_quals(&rhs_pointee);
-
-        if (compaitable)
-        {
-            // TODO: standard says the qualifiers must be the same but both GCC,
-            // TODO: and clang say that it is okay if the qualifiers don't match
-            if (lhs_quals != rhs_quals)
-            {
-                diagnostic_error_at(sc->dm, operator_loc,
-                        "assignment discards qualifier from pointer type");
-                return semantic_checker_handle_error_expression(sc,
-                        operator_loc);
-            }
-
-            type = SIMPLE_ASSIGNMENT_POINTERS_COMPATIBLE;
-        }
-        else if (qualified_type_is(&lhs_pointee, TYPE_VOID)
-                || qualified_type_is(&rhs_pointee, TYPE_VOID))
-        {
-            if (lhs_quals != rhs_quals)
-            {
-                diagnostic_error_at(sc->dm, operator_loc,
-                        "assignment discards qualifier from pointer type");
-                return semantic_checker_handle_error_expression(sc,
-                        operator_loc);
-            }
-
-            type = SIMPLE_ASSIGNMENT_POINTERS_INCOMPLETE;
-        }
-        else
-        {
-            // Again, gcc and clang warn here and don't error
-            diagnostic_error_at(sc->dm, operator_loc,
-                    "incompatible pointer types");
-            return semantic_checker_handle_error_expression(sc, operator_loc);
-        }
-    }
-    else if (qualified_type_is(&real_lhs_type, TYPE_BOOL)
-            && qualified_type_is_pointer(&rhs_type))
-    {
-        type = SIMPLE_ASSIGNMENT_BOOL_POINTER;
-    }
-    else
-    {
-        // ERROR
-        diagnostic_error_at(sc->dm, operator_loc,
-                "assignment to incompatible type");
         return semantic_checker_handle_error_expression(sc, operator_loc);
     }
 
@@ -5604,13 +5998,8 @@ Expression* semantic_checker_handle_assignment_expression(SemanticChecker* sc,
             return semantic_checker_handle_simple_assigment(sc, lhs,
                     operator_loc, rhs);
 
-        // TODO: i think we will have to modify the previous functions for
-        // TODO: tese binary operands to have a boolean checking output to
-        // TODO: check that the operands are valid instead of having it
-        // TODO: directly in the function for the binary operator itself
-        // 
-        // TODO: we could also do this for + and - by adding a flag into the
-        // TODO: function that it is an assignment operator.
+        // For all the rest of the other types of expresssions, use the function
+        // that we have already create to check the types of the expression.
         case EXPRESSION_BINARY_TIMES_ASSIGN:
         case EXPRESSION_BINARY_DIVIDE_ASSIGN:
         case EXPRESSION_BINARY_MODULO_ASSIGN:
@@ -5687,6 +6076,64 @@ Initializer* semantic_checker_initializer_from_list(SemanticChecker* sc,
             rcurly);
 }
 
+// Check for a '{0}' initializer or similar. Note, does not check recursively
+// and only checks the 1 level.
+static bool semantic_checker_is_zero_initializer(SemanticChecker* sc,
+        Initializer* init)
+{
+    // Only initializer expressions can be an init list.
+    if (initializer_is(init, INITIALIZER_EXPRESSION))
+    {
+        return false;
+    }
+
+    // Get the first member from the initializer list
+    InitializerListMember* member = initializer_list_member_get(init);
+
+    // If no members, we are not the '{0}' initializer
+    if (member == NULL)
+    {
+        return false;
+    }
+
+    // Otherwise if we have more than 1 member, we are also not the zero init
+    if (initializer_list_member_get_next(member) != NULL)
+    {
+        return false;
+    }
+
+    // Also check that we don't have a designator
+    if (initializer_list_member_get_designator(member) != NULL)
+    {
+        return false;
+    }
+
+    // Then get the sub init from the member
+    Initializer* sub_init = initializer_list_member_get_initializer(member);
+
+    // If it's not an expression initializer we don't check sub-sub-init;
+    if (!initializer_is(sub_init, INITIALIZER_EXPRESSION))
+    {
+        return false;
+    }
+
+    // Get the expression and check if it is an integer constant expression
+    Expression* init_expr = initializer_expression_get(sub_init);
+
+    // If it's not an ICE don't bother trying to fold
+    if (!expression_is_integer_constant(init_expr))
+    {
+        return false;
+    }
+
+    ExpressionIntegerValue value = {0};
+    expression_fold_to_integer_constant(init_expr, &value);
+
+    // Finally, once we have folded it we can check that the resulting value
+    // is '0'
+    return (expression_integer_value_get(&value) == 0);
+}
+
 // Nested is true if this function tail recursively calls itself!!!
 static bool semantic_checker_check_scalar_initialization(SemanticChecker* sc,
         Initializer* init, QualifiedType type, bool constant, bool nested)
@@ -5698,18 +6145,16 @@ static bool semantic_checker_check_scalar_initialization(SemanticChecker* sc,
         // Get the expression and its canonical type.
         Expression* expr = initializer_expression_get(init);
         QualifiedType expr_type = expression_get_qualified_type(expr);
-        expr_type = qualified_type_get_canonical(&expr_type);
+        Location location = expression_get_location(expr);
 
-        // TODO: check the assignment is compatible at all.
-
-        if (constant)
-        {
-            // TODO: will need a way to check if an expression is a constant
-            // TODO: expression. Note that it may be for example a float 
-            // TODO: expression which is constant but not an integer constant
-        }
-
-        return false;
+        AssignmentType assign = semantic_checker_get_assignment_type(sc, &type,
+                expr);
+        semantic_checker_diagnose_assign_error(sc, assign, location, &type,
+                &expr_type);
+            
+        // As long as the assignment isn't a complete error we will be allowed
+        // to continue.
+        return assign != ASSIGNMENT_ERROR;
     }
     
     // Otherwise we must have an 'initializer list'. Note that since we are only
@@ -5729,7 +6174,7 @@ static bool semantic_checker_check_scalar_initialization(SemanticChecker* sc,
     // If it does have a designator that can't be right since we are trying to
     // initialize a scalar. So error. Note, like clang this ignores, 
     // sub-initializers (incorrectly???)
-    if (initializer_list_has_designator(init))
+    if (!nested && initializer_list_has_designator(init))
     {
         diagnostic_error_at(sc->dm, initializer_list_lcurly(init),
                 "initialization of non-aggregate type with a designated "
@@ -5743,9 +6188,29 @@ static bool semantic_checker_check_scalar_initialization(SemanticChecker* sc,
         return true;
     }
 
+    // As is the zero initializer
+    if (semantic_checker_is_zero_initializer(sc, init))
+    {
+        return true;
+    }
+
     // Get the sub initializer and check if that is okay. This function 
     // recursively calls itself until we find that out...
     InitializerListMember* first = initializer_list_member_get(init);
+
+    // First though check that the first memebr doesn't have a designated 
+    // initializer. If it does, error on the location of it.
+    if (initializer_list_member_get_designator(first) != NULL)
+    {
+        DesignatorList* d_list = initializer_list_member_get_designator(first);
+        Designator* d = designator_list_get_member(d_list);
+        Location loc = designator_get_location(d);
+
+        diagnostic_error_at(sc->dm, loc,
+                "designator in initializer for scalar type");
+        return false;
+    }
+
     Initializer* subinit = initializer_list_member_get_initializer(first);
     bool okay = semantic_checker_check_scalar_initialization(sc, subinit, type,
             constant, true);
@@ -5762,11 +6227,38 @@ static bool semantic_checker_check_scalar_initialization(SemanticChecker* sc,
     {
         Initializer* second_init = initializer_list_member_get_initializer(
                 second);
-        diagnostic_warning_at(sc->dm, initializer_list_lcurly(second_init),
+        Location loc = LOCATION_INVALID;
+        if (initializer_is(init, INITIALIZER_LIST))
+        {
+            loc = initializer_list_lcurly(init);
+        }
+        else
+        {
+            loc = initializer_expression_location(init);
+        }
+
+        diagnostic_warning_at(sc->dm, loc,
                 "excess elements in scalar initializer");
     }
     
     return okay;
+}
+
+static bool semantic_checker_check_members_initialization(SemanticChecker* sc,
+        Initializer* init, QualifiedType type)
+{
+    assert(initializer_is(init, INITIALIZER_LIST));
+    assert(qualified_type_is_compound(&type));
+
+    // Get the declarationListEntry from the declaration corrosponding to the
+    // first declaration in the members list.
+    Declaration* decl = qualified_type_struct_get_declaration(&type);
+    DeclarationList members = declaration_struct_get_members(decl);
+    DeclarationListEntry* entry = declaration_list_iter(&members);
+
+
+
+    return false;
 }
 
 static bool semantic_checker_check_compound_initialization(SemanticChecker* sc,
@@ -5775,32 +6267,42 @@ static bool semantic_checker_check_compound_initialization(SemanticChecker* sc,
     assert(qualified_type_is_compound(&type));
     assert(init);
 
-    // Check that we actually get an initializer list for the array 
-    // initialization. Otherwise we cannot perform it.
-    // TODO: this is incorrect consider:
+    // If we have an initializer expression we are allowed to use that just fine
     // struct a A = *other -> typeof(other) == struct a *
     if (initializer_is(init, INITIALIZER_EXPRESSION))
     {
         Expression* expr = initializer_expression_get(init);
         QualifiedType expr_type = expression_get_qualified_type(expr);
+        Location location = expression_get_location(expr);
 
-        // TODO: check assignment is okay...
-
-        // Location location = expression_get_location(expr);
-
-        // diagnostic_error_at(sc->dm, location,
-                // "compound initializer must be an initializer list");
-        return false;
+        AssignmentType assign = semantic_checker_get_assignment_type(sc, &type,
+                expr);
+        semantic_checker_diagnose_assign_error(sc, assign, location, &type,
+                &expr_type);
+        
+        return assign != ASSIGNMENT_ERROR;
     }
 
-    // Check if we have and empty of zero initializer. In both cases, we get the
-    // same initialization.
-    if (initializer_is_empty(init))
+    // Okay an empty initializer or the zero initializer.
+    if (initializer_is_empty(init)
+            || semantic_checker_is_zero_initializer(sc, init))
     {
         return true;
     }
 
-    return false;
+    // Otherwise we need to check that compound type is okay.
+    return semantic_checker_check_members_initialization(sc, init, type);
+}
+
+static bool semantic_checker_string_init_allowed(SemanticChecker* sc,
+        QualifiedType elem_type)
+{
+    // Allow, char, signed char, unsigned char, and int, BUT NOT unsigned int. 
+    QualifiedType real_type = qualified_type_get_canonical(&elem_type);
+    return qualified_type_is(&real_type, TYPE_CHAR)
+            || qualified_type_is(&real_type, TYPE_S_CHAR)
+            || qualified_type_is(&real_type, TYPE_U_CHAR)
+            || qualified_type_is(&real_type, TYPE_S_INT);
 }
 
 static bool semantic_checker_check_array_initialization(SemanticChecker* sc,
@@ -5808,6 +6310,12 @@ static bool semantic_checker_check_array_initialization(SemanticChecker* sc,
 {
     assert(qualified_type_is(&type, TYPE_ARRAY));
     assert(init);
+
+    // Get the element type of the array so we can special case stirng and wide
+    // string literals and permit them intead of disallowing them as 
+    // initializers for arrays.
+    QualifiedType element_type = type_array_get_element_type(&type);
+    bool string_okay = semantic_checker_string_init_allowed(sc, element_type);
 
     // Check that we actually get an initializer list for the array 
     // initialization. Otherwise we cannot perform it.
@@ -5837,6 +6345,12 @@ static bool semantic_checker_check_array_initialization(SemanticChecker* sc,
         return true;
     }
 
+    // Also allow for the zero initializer
+    if (semantic_checker_is_zero_initializer(sc, init))
+    {
+        return true;
+    }
+
     // Otherwise we need to go figure out where all of our elements go. It is 
     // not as simple as doing recursion since we can initialize multidimensional
     // arrays like so.
@@ -5860,6 +6374,21 @@ static bool semantic_checker_check_aggregate_initialization(SemanticChecker* sc,
                 constant);
     }
     return semantic_checker_check_array_initialization(sc, init, type,
+            constant);
+}
+
+bool semantic_checker_check_initializer(SemanticChecker* sc, Initializer* init,
+        QualifiedType type, bool constant)
+{
+    // Get the true type of the expression and use it to check the initializer
+    // for the object.
+    QualifiedType true_type = qualified_type_get_canonical(&type);
+    if (qualified_type_is_scaler(&true_type))
+    {
+        return semantic_checker_check_scalar_initialization(sc, init, true_type,
+                constant, false);
+    }
+    return semantic_checker_check_aggregate_initialization(sc, init, true_type,
             constant);
 }
 
@@ -5891,15 +6420,7 @@ bool semantic_checker_declaration_check_initializer(SemanticChecker* sc,
 
     // Need to check that true_type, is either an object or array of incomplete
     // type. So that we know if initialization is even allowed or not...
-
-    // Now we will need to go an check the initializer.
-    if (qualified_type_is_scaler(&true_type))
-    {
-        return semantic_checker_check_scalar_initialization(sc, init, true_type,
-                constant, false);
-    }
-    return semantic_checker_check_aggregate_initialization(sc, init, true_type,
-            constant);
+    return semantic_checker_check_initializer(sc, init, type, constant);
 }
 
 // -----------------------------------------------------------------------------

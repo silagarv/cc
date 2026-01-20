@@ -749,7 +749,8 @@ int declaration_enum_constant_get_value(const Declaration* enum_constant)
 
 Declaration* declaration_create_field(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type,
-        Location colon_location, Expression* expression)
+        Location colon_location, Expression* expression, size_t bitfield_size,
+        bool is_flexible)
 {
     Declaration* decl = declaration_create_base(allocator,
             sizeof(DeclarationField), DECLARATION_FIELD, location, identifier,
@@ -757,6 +758,8 @@ Declaration* declaration_create_field(AstAllocator* allocator,
             false);
     decl->field.colon_location = colon_location;
     decl->field.bitfield = expression;
+    decl->field.bitfield_size = bitfield_size;
+    decl->field.is_flexible = is_flexible;
     decl->field.has_bitfield = expression != NULL;
 
     return decl;
@@ -767,6 +770,13 @@ bool declaration_field_has_bitfield(const Declaration* decl)
     assert(declaration_is(decl, DECLARATION_FIELD));
 
     return decl->field.has_bitfield;
+}
+
+bool declaration_field_is_fexible_array(const Declaration* decl)
+{
+    assert(declaration_is(decl, DECLARATION_FIELD));
+
+    return decl->field.is_flexible;
 }
 
 Declaration* declaration_create_struct(AstAllocator* allocator,
@@ -793,6 +803,9 @@ void declaration_struct_add_member(Declaration* declaration,
 
 DeclarationList declaration_struct_get_members(const Declaration* declaration)
 {
+    assert(declaration_is(declaration, DECLARATION_STRUCT) ||
+            declaration_is(declaration, DECLARATION_UNION));
+
     return declaration->compound.members;
 }
 
@@ -816,7 +829,7 @@ bool declaration_struct_is_complete(const Declaration* declaration)
 void declaration_struct_set_complete(Declaration* declaration)
 {
     QualifiedType type = declaration->compound.base.qualified_type;
-    type.type->type_struct.base.is_complete = true;
+    type_struct_set_complete(type.type);
 }
 
 Declaration* declaration_create_union(AstAllocator* allocator,
@@ -860,6 +873,11 @@ Declaration* declaration_create_function(AstAllocator* allocator,
 DeclarationLinkage declaration_function_get_linkage(const Declaration* func)
 {
     return func->function.linkage;
+}
+
+bool declaration_function_is_inline(const Declaration* function)
+{
+    return function->base.function_specifier & FUNCTION_SPECIFIER_INLINE;
 }
 
 void declaration_function_add_decl(Declaration* function, Declaration* decl)

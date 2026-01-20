@@ -4,7 +4,9 @@
 #include <string.h>
 #include <assert.h>
 
+#include "files/location.h"
 #include "parse/ast_allocator.h"
+#include "parse/expression.h"
 
 Designator* designator_create_base(AstAllocator* allocator, size_t size,
         DesignatorType type)
@@ -37,6 +39,21 @@ Designator* designator_create_array(AstAllocator* allocator, Location lbracket,
     desig->array.constant_expr = expression;
 
     return desig;
+}
+
+Location designator_get_location(const Designator* desig)
+{
+    if (designator_is(desig, DESIGNATOR_ARRAY))
+    {
+        return desig->array.l_bracket_loc;
+    }
+    else if (designator_is(desig, DESIGNATOR_MEMBER))
+    {
+        return desig->member.dot_loc;
+    }
+    
+    panic("bad designator type");
+    return LOCATION_INVALID;
 }
     
 DesignatorList* designator_list_create(AstAllocator* allocator,
@@ -164,6 +181,13 @@ Expression* initializer_expression_get(const Initializer* init)
     assert(initializer_is(init, INITIALIZER_EXPRESSION));
 
     return init->expr.expr;
+}
+
+Location initializer_expression_location(const Initializer* init)
+{
+    assert(initializer_is(init, INITIALIZER_EXPRESSION));
+
+    return expression_get_location(init->expr.expr);
 }
 
 InitializerListMember* initializer_list_member_get(const Initializer* init)

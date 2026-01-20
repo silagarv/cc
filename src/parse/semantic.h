@@ -115,7 +115,8 @@ Declaration* semantic_checker_handle_enum_constant(SemanticChecker* sc,
 Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
         DeclarationType type, Location tag_type_loc, Identifier* identifier,
         Location identifier_location, bool is_definition);
-
+Declaration* semantic_checker_lookup_missing_tag(SemanticChecker* sc,
+        Identifier* identifier);
 
 // For post declarator shenanigans
 void semantic_checker_handle_function_end(SemanticChecker* sc,
@@ -185,7 +186,7 @@ Expression* semantic_checker_handle_unary_expression(SemanticChecker* sc,
         ExpressionType type, Location operator_loc, Expression* rhs);
 Expression* semantic_checker_handle_compound_literal(SemanticChecker* sc,
         Location lparen_loc, QualifiedType type, Location rparen_loc,
-        Initializer* initializer);
+        bool okay, Initializer* initializer);
 Expression* semantic_checker_handle_address_expression(SemanticChecker* sc,
         Expression* rhs, Location and_location);
 Expression* semantic_checker_handle_dereference_expression(SemanticChecker* sc,
@@ -227,6 +228,8 @@ Initializer* semantic_checker_initializer_from_expression(SemanticChecker* sc,
 Initializer* semantic_checker_initializer_from_list(SemanticChecker* sc,
         Location lcurly, InitializerListMember* initializer, Location rcurly);
 
+bool semantic_checker_check_initializer(SemanticChecker* sc, Initializer* init,
+        QualifiedType type, bool constant);
 bool semantic_checker_declaration_check_initializer(SemanticChecker* sc,
         Declaration* declaration, DeclaratorContext context, Initializer* init);
 

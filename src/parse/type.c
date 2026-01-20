@@ -127,6 +127,11 @@ TypeQualifiers type_qualifier_combine(TypeQualifiers this, TypeQualifiers that)
     return this | that;
 }
 
+bool type_qualifiers_discards_quals(TypeQualifiers to, TypeQualifiers from)
+{
+    return from & ~to;
+}
+
 static Type* type_create_builtin(AstAllocator* allocator, TypeKind kind,
         size_t size, size_t align, bool complete)
 {
@@ -156,7 +161,8 @@ TypeBuiltins type_builtins_initialise(AstAllocator* allocator)
     builtins.type_char = type_create_builtin(allocator, TYPE_CHAR, 1, 1, true);
     builtins.type_unsigned_char = type_create_builtin(allocator, TYPE_U_CHAR, 1,
             1, true);
-    builtins.type_signed_char = builtins.type_char;
+    builtins.type_signed_char = type_create_builtin(allocator, TYPE_S_CHAR, 1,
+            1, true);
     builtins.type_unsigned_short = type_create_builtin(allocator, TYPE_U_SHORT,
             2, 2, true);
     builtins.type_signed_short = type_create_builtin(allocator, TYPE_S_SHORT,
@@ -337,6 +343,20 @@ size_t type_function_get_param_count(const QualifiedType* function)
     return function->type->type_function.num_paramaters;
 }
 
+TypeFunctionParameter* type_function_get_params(const QualifiedType* function)
+{
+    assert(qualified_type_is(function, TYPE_FUNCTION));
+
+    return function->type->type_function.paramaters;
+}
+
+bool type_function_is_variadic(const QualifiedType* function)
+{
+    assert(qualified_type_is(function, TYPE_FUNCTION));
+
+    return function->type->type_function.is_variadic;
+}
+
 bool type_function_get_knr(const QualifiedType* type)
 {
     return type->type->type_function.unspecified_paramters;
@@ -382,7 +402,6 @@ Type* type_create_struct(AstAllocator* allocator)
             TYPE_STRUCT, 0, 0, false);
     type->type_struct.decl = NULL;
     type->type_struct.members = NULL;
-    type->type_struct.num_members = 0;
 
     return type;
 }
@@ -416,7 +435,6 @@ Type* type_create_union(AstAllocator* allocator)
             TYPE_UNION, 0, 0, false);
     type->type_union.decl = NULL;
     type->type_union.members = NULL;
-    type->type_union.num_members = 0;
 
     return type;
 }
@@ -525,6 +543,11 @@ bool qualified_type_is(const QualifiedType* type, TypeKind kind)
 size_t qualified_type_get_size(const QualifiedType* type)
 {
     return type->type->type_base.type_size;
+}
+
+size_t qualified_type_get_align(const QualifiedType* type)
+{
+    return type->type->type_base.type_alignment;
 }
 
 bool qualified_type_is_integer(const QualifiedType* type)

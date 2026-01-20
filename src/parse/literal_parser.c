@@ -1131,6 +1131,8 @@ bool parse_string_literal(AstAllocator* allocator, StringLiteral* value,
                 "cannot parse wide string literal at this time");
         diagnostic_help_at(dm, location_vector_get(&locs, 0), 
                 "this needs to be implemented");
+        diagnostic_note_at(dm, location_vector_get(&locs, 0), 
+                "this needs to be implemented");
         return false;
     }
 

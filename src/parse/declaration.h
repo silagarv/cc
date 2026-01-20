@@ -262,6 +262,9 @@ typedef struct DeclarationFunction {
     // The body of this function or NULL if there are only declarations of this
     // function and no definitions.
     union Statement* function_body;
+
+    bool is_inline;
+    bool all_inline;
 } DeclarationFunction;
 
 // A declaration of a typedef.
@@ -283,6 +286,12 @@ typedef struct DeclarationField {
 
     // The bitfield expression if present
     Expression* bitfield;
+
+    // The size in bits of the bitfield
+    size_t bitfield_size;
+
+    // True if we are a fexible array member
+    bool is_flexible;
 
     // True if we have a bitfield, false otherwise
     bool has_bitfield;
@@ -499,8 +508,10 @@ int declaration_enum_constant_get_value(const Declaration* enum_constant);
 
 Declaration* declaration_create_field(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type,
-        Location colon_location, Expression* expression);
+        Location colon_location, Expression* expression, size_t bitfield_size,
+        bool is_flexible);
 bool declaration_field_has_bitfield(const Declaration* decl);
+bool declaration_field_is_fexible_array(const Declaration* decl);
 
 Declaration* declaration_create_struct(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type);
@@ -521,6 +532,7 @@ Declaration* declaration_create_function(AstAllocator* allocator,
         StorageSpecifier storage, TypeFunctionSpecifier function_spec,
         DeclarationList all_decls, DeclarationLinkage linkage);
 DeclarationLinkage declaration_function_get_linkage(const Declaration* func);
+bool declaration_function_is_inline(const Declaration* function);
 void declaration_function_add_decl(Declaration* function, Declaration* decl);
 bool declaration_function_has_body(const Declaration* declaration);
 void declaration_function_set_body(Declaration* declaraiton,

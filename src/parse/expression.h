@@ -179,8 +179,6 @@ typedef struct ExpressionCompoundLiteral {
     ExpressionBase base;
     Location lparen_loc;
     Location rparen_loc;
-    Location lcurly_loc;
-    Location rcurly_loc;
     QualifiedType type;
     union Initializer* initializer;
 } ExpressionCompoundLiteral;
@@ -336,6 +334,10 @@ Expression* expression_create_array(AstAllocator* allocator,
         Location lbracket_loc, Location rbracket_loc, Expression* lhs,
         Expression* member, QualifiedType expr_type, bool lhs_is_array);
 
+Expression* expression_create_compound_literal(AstAllocator* allocator,
+        Location lparen_loc, QualifiedType type, Location rparen_loc,
+        union Initializer* initializer);
+
 Expression* expression_create_unary(AstAllocator* allocator, 
         ExpressionType type, Location op_loc, Expression* expression,
         QualifiedType expr_type);
@@ -387,6 +389,7 @@ ExpressionListEntry* expression_list_entry_next(ExpressionListEntry* entry);
 Expression* expression_list_entry_get(ExpressionListEntry* entry);
 
 ExpressionList expression_list_create(void);
+ExpressionListEntry* expression_list_first(const ExpressionList* list);
 void expression_list_push(AstAllocator* allocator, ExpressionList* list,
         Expression* expr);
 size_t expression_list_num_expr(const ExpressionList* list);

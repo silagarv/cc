@@ -1222,7 +1222,13 @@ retry_lexing:;
 
         case ':': 
             curr = get_curr_char(lexer);
-            if (curr == '>')
+            if (curr == ':')
+            {
+                token->type = TOKEN_COLON_COLON;
+
+                consume_char(lexer);
+            }
+            else if (curr == '>')
             {
                 token->type = TOKEN_RBRACKET;
 

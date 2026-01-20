@@ -145,19 +145,26 @@ typedef struct TypeArray {
 // Struct and union types are both compound types which both have members. Each
 // of these members has themselves a type. 
 typedef struct TypeCompoundMember {
-    TypeBase base;
+    TypeBase base; // the base type
+
+    union Declaration* declaration; // the declaration  of this member
+
+    size_t field_offset; // The offset of the field (0 in bitfields)
+
+    size_t bitfield_size; // Size of the members bitfield. Note anonymous 
+                          // bitfields can have a size of 0 so need is_bitfield
+
     bool is_bitfield; // is the member a bitfield
-    union Expression* bitfield_expr; // the constant expression for the bitfield
-    size_t bitfield_size; // Size of the members bitfield if needed
+    bool is_flex_array; // is the member a flexible array member
+    bool offset_valid; // Is the value of the offset a valid number
+
+    struct TypeCompoundMember* next; // the next compound member
 } TypeCompoundMember;
 
 typedef struct TypeCompound {
-    TypeBase base;
-
-    TypeCompoundMember** members; // the members of the compound type
-    size_t num_members;
-
-    union Declaration* decl; // the name given or compiler generated name
+    TypeBase base; // The base type that we have
+    TypeCompoundMember* members; // the members of the compound type
+    union Declaration* decl; // the declaration of this type
 } TypeCompound;
 
 // Note: in this all enum types have real_type = int
@@ -252,6 +259,7 @@ bool type_qualifier_is_restrict(TypeQualifiers qualifiers);
 bool type_qualifier_is_volatile(TypeQualifiers qualifiers);
 bool type_qualifier_already_has(TypeQualifiers qualifiers, TypeQualifiers has);
 TypeQualifiers type_qualifier_combine(TypeQualifiers this, TypeQualifiers that);
+bool type_qualifiers_discards_quals(TypeQualifiers to, TypeQualifiers from);
 
 TypeBuiltins type_builtins_initialise(AstAllocator* allocator);
 
@@ -281,6 +289,8 @@ QualifiedType type_create_function(AstAllocator* allocator,
         size_t num_paramaters, bool unspecified_paramters, bool variadic);
 QualifiedType type_function_get_return(const QualifiedType* function);
 size_t type_function_get_param_count(const QualifiedType* function);
+TypeFunctionParameter* type_function_get_params(const QualifiedType* function);
+bool type_function_is_variadic(const QualifiedType* function);
 bool type_function_get_knr(const QualifiedType* type);
 
 TypeQualifiers qualified_type_get_quals(const QualifiedType* type);
@@ -316,6 +326,7 @@ bool type_is(const Type* type, TypeKind kind);
 bool qualified_type_is(const QualifiedType* type, TypeKind kind);
 
 size_t qualified_type_get_size(const QualifiedType* type);
+size_t qualified_type_get_align(const QualifiedType* type);
 
 bool qualified_type_is_integer(const QualifiedType* type);
 size_t qualified_type_get_rank(const QualifiedType* type);

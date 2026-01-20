@@ -52,6 +52,7 @@ typedef enum TokenType {
     TOKEN_OR_OR,
     TOKEN_QUESTION,
     TOKEN_COLON,
+    TOKEN_COLON_COLON,
     TOKEN_SEMI,
     TOKEN_ELIPSIS,
     TOKEN_EQUAL,
@@ -68,12 +69,6 @@ typedef enum TokenType {
     TOKEN_COMMA,
     TOKEN_HASH,
     TOKEN_HASH_HASH,
-    TOKEN_LT_COLON,
-    TOKEN_COLON_GT,
-    TOKEN_LT_PERCENT,
-    TOKEN_PERCENT_GT,
-    TOKEN_PERCENT_COLON,
-    TOKEN_PERCENT_COLON_PERCENT_COLON,
 
     // Keyword tokens
     TOKEN_AUTO,
