@@ -413,7 +413,7 @@ static bool try_lex_ucn(Lexer* lexer, Token* token, Buffer* buffer, utf32* value
 
 static bool lex_number(Lexer* lexer, Token* token, char* start)
 {
-    token->type = TOKEN_NUMBER;
+    token->type = TOK_NUMBER;
 
     // Reset the position to the start and create a buffer for us to build
     set_position(lexer, start);
@@ -491,7 +491,7 @@ static void classify_identifier(Token* token)
 
 static bool lex_identifier(Lexer* lexer, Token* token, char* start)
 {
-    token->type = TOKEN_IDENTIFIER;
+    token->type = TOK_IDENTIFIER;
 
     // Reset the position to the start and create a buffer for us to build
     set_position(lexer, start);
@@ -564,15 +564,15 @@ static char get_starting_delimiter(TokenType type)
 {
     switch (type)
     {
-        case TOKEN_WIDE_STRING:
-        case TOKEN_STRING:
+        case TOK_WIDE_STRING:
+        case TOK_STRING:
             return '"';
 
-        case TOKEN_WIDE_CHARACTER:
-        case TOKEN_CHARACTER:
+        case TOK_WIDE_CHARACTER:
+        case TOK_CHARACTER:
             return '\'';
 
-        case TOKEN_PP_HEADER_NAME:
+        case TOK_PP_HEADER_NAME:
             return '<';
 
         default:
@@ -585,15 +585,15 @@ static char get_ending_delimiter(TokenType type)
 {
     switch (type)
     {
-        case TOKEN_WIDE_STRING:
-        case TOKEN_STRING:
+        case TOK_WIDE_STRING:
+        case TOK_STRING:
             return '"';
 
-        case TOKEN_WIDE_CHARACTER:
-        case TOKEN_CHARACTER:
+        case TOK_WIDE_CHARACTER:
+        case TOK_CHARACTER:
             return '\'';
 
-        case TOKEN_PP_HEADER_NAME:
+        case TOK_PP_HEADER_NAME:
             return '>';
 
         default:
@@ -606,8 +606,8 @@ static bool is_character_like(TokenType type)
 {
     switch (type) 
     {
-        case TOKEN_CHARACTER:
-        case TOKEN_WIDE_CHARACTER:
+        case TOK_CHARACTER:
+        case TOK_WIDE_CHARACTER:
             return true;
 
         default:
@@ -619,8 +619,8 @@ static bool is_wide(TokenType type)
 {
     switch (type)
     {
-        case TOKEN_WIDE_CHARACTER:
-        case TOKEN_WIDE_STRING:
+        case TOK_WIDE_CHARACTER:
+        case TOK_WIDE_STRING:
             return true;
 
         default:
@@ -657,7 +657,7 @@ static bool lex_string_like_literal(Lexer* lexer, Token* token, TokenType type)
         if (current == '\r' || current == '\n'
                 || (current == '\0' && at_eof(lexer)))
         {
-            token->type = TOKEN_UNKNOWN;
+            token->type = TOK_UNKNOWN;
 
             diagnostic_warning_at(lexer->dm, token->loc,
                     "missing terminating '%c' character", ending_delim);
@@ -684,7 +684,7 @@ finish_string:
     {
         diagnostic_warning_at(lexer->dm, token->loc,
                 "empty character constant");
-        token->type = TOKEN_UNKNOWN;
+        token->type = TOK_UNKNOWN;
     }
 
     token->data = lexer_create_literal_node(lexer, &string);
@@ -694,27 +694,27 @@ finish_string:
 
 static bool lex_string_literal(Lexer* lexer, Token* token)
 {
-    return lex_string_like_literal(lexer, token, TOKEN_STRING);
+    return lex_string_like_literal(lexer, token, TOK_STRING);
 }
 
 static bool lex_wide_string_literal(Lexer* lexer, Token* token)
 {
-    return lex_string_like_literal(lexer, token, TOKEN_WIDE_STRING);
+    return lex_string_like_literal(lexer, token, TOK_WIDE_STRING);
 }
 
 static bool lex_character_literal(Lexer* lexer, Token* token)
 {
-    return lex_string_like_literal(lexer, token, TOKEN_CHARACTER);
+    return lex_string_like_literal(lexer, token, TOK_CHARACTER);
 }
 
 static bool lex_wide_character_literal(Lexer* lexer, Token* token)
 {
-    return lex_string_like_literal(lexer, token, TOKEN_WIDE_CHARACTER);
+    return lex_string_like_literal(lexer, token, TOK_WIDE_CHARACTER);
 }
 
 static bool lex_header_name(Lexer* lexer, Token* token)
 {
-    return lex_string_like_literal(lexer, token, TOKEN_PP_HEADER_NAME);
+    return lex_string_like_literal(lexer, token, TOK_PP_HEADER_NAME);
 }
 
 static bool lex_internal(Lexer* lexer, Token* token)
@@ -740,7 +740,7 @@ retry_lexing:;
     token->loc = token_location;
     token->end = token_location;
 
-    token->type = TOKEN_UNKNOWN;
+    token->type = TOK_UNKNOWN;
 
     // Make sure our token flags are correctly set up
     token_set_flag(token, whitespace ? TOKEN_FLAG_WHITESPACE : TOKEN_FLAG_NONE);
@@ -774,7 +774,7 @@ retry_lexing:;
                             "no newline at end of file");
                 }
 
-                token->type = TOKEN_EOF;
+                token->type = TOK_EOF;
                 return false;
             }
             
@@ -811,7 +811,7 @@ retry_lexing:;
             // about no newlines at eof since we abviously have them.
             if (get_curr_char(lexer) == '\0' && at_eof(lexer))
             {
-                token->type = TOKEN_EOF;
+                token->type = TOK_EOF;
 
                 return false;
             }
@@ -823,7 +823,7 @@ retry_lexing:;
                 lexer->lexing_directive = false;
                 lexer->start_of_line = true;
 
-                token->type = TOKEN_PP_EOD;
+                token->type = TOK_PP_EOD;
 
                 break;
             }
@@ -892,14 +892,14 @@ retry_lexing:;
             }
             else if (curr == '.' && peek_char(lexer) == '.')
             {
-                token->type = TOKEN_ELIPSIS;
+                token->type = TOK_ELIPSIS;
 
                 consume_char(lexer);
                 consume_char(lexer);
             }
             else
             {
-                token->type = TOKEN_DOT;
+                token->type = TOK_DOT;
             }
             break;
 
@@ -929,13 +929,13 @@ retry_lexing:;
             }
             else if (curr == '=')
             {
-                token->type = TOKEN_SLASH_EQUAL;
+                token->type = TOK_SLASH_EQUAL;
 
                 consume_char(lexer);
             }
             else
             {
-                token->type = TOKEN_SLASH;
+                token->type = TOK_SLASH;
             }
             break;
 
@@ -943,13 +943,13 @@ retry_lexing:;
             curr = get_curr_char(lexer);
             if (curr == '=')
             {
-                token->type = TOKEN_STAR_EQUAL;
+                token->type = TOK_STAR_EQUAL;
 
                 consume_char(lexer);
             }
             else
             {
-                token->type = TOKEN_STAR;
+                token->type = TOK_STAR;
             }
             break;
         
@@ -957,13 +957,13 @@ retry_lexing:;
             curr = get_curr_char(lexer);
             if (curr == '=')
             {
-                token->type = TOKEN_PERCENT_EQUAL;
+                token->type = TOK_PERCENT_EQUAL;
 
                 consume_char(lexer);
             }
             else if (curr == '>')
             {
-                token->type = TOKEN_RCURLY;
+                token->type = TOK_RCURLY;
 
                 token_set_flag(token, TOKEN_FLAG_DIGRAPH);
 
@@ -977,7 +977,7 @@ retry_lexing:;
 
                 if (get_curr_char(lexer) == '%' && peek_char(lexer) == ':')
                 {
-                    token->type = TOKEN_HASH_HASH;
+                    token->type = TOK_HASH_HASH;
 
                     token_set_flag(token, TOKEN_FLAG_DIGRAPH);
 
@@ -986,14 +986,14 @@ retry_lexing:;
                 }
                 else
                 {
-                    token->type = TOKEN_HASH;
+                    token->type = TOK_HASH;
 
                     token_set_flag(token, TOKEN_FLAG_DIGRAPH);
                 }
             }
             else
             {
-                token->type = TOKEN_PERCENT;
+                token->type = TOK_PERCENT;
             }
             break;
 
@@ -1001,19 +1001,19 @@ retry_lexing:;
             curr = get_curr_char(lexer);
             if (curr == '+')
             {
-                token->type = TOKEN_PLUS_PLUS;
+                token->type = TOK_PLUS_PLUS;
 
                 consume_char(lexer);
             }
             else if (curr == '=')
             {
-                token->type = TOKEN_PLUS_EQUAL;
+                token->type = TOK_PLUS_EQUAL;
 
                 consume_char(lexer);
             }
             else
             {
-                token->type = TOKEN_PLUS;
+                token->type = TOK_PLUS;
             }
             break;
 
@@ -1021,25 +1021,25 @@ retry_lexing:;
             curr = get_curr_char(lexer);
             if (curr == '-')
             {
-                token->type = TOKEN_MINUS_MINUS;
+                token->type = TOK_MINUS_MINUS;
 
                 consume_char(lexer);
             }
             else if (curr == '>')
             {
-                token->type = TOKEN_ARROW;
+                token->type = TOK_ARROW;
 
                 consume_char(lexer);
             }
             else if (curr == '=')
             {
-                token->type = TOKEN_MINUS_EQUAL;
+                token->type = TOK_MINUS_EQUAL;
 
                 consume_char(lexer);
             }
             else
             {
-                token->type = TOKEN_MINUS;
+                token->type = TOK_MINUS;
             }
             break;
 
@@ -1047,19 +1047,19 @@ retry_lexing:;
             curr = get_curr_char(lexer);
             if (curr == '|')
             {
-                token->type = TOKEN_OR_OR;
+                token->type = TOK_OR_OR;
 
                 consume_char(lexer);
             }
             else if (curr == '=')
             {
-                token->type = TOKEN_OR_EQUAL;
+                token->type = TOK_OR_EQUAL;
 
                 consume_char(lexer);
             }
             else
             {
-                token->type = TOKEN_OR;
+                token->type = TOK_OR;
             }
             break;
 
@@ -1067,19 +1067,19 @@ retry_lexing:;
             curr = get_curr_char(lexer);
             if (curr == '&')
             {
-                token->type = TOKEN_AND_AND;
+                token->type = TOK_AND_AND;
 
                 consume_char(lexer);
             }
             else if (curr == '=')
             {
-                token->type = TOKEN_AND_EQUAL;
+                token->type = TOK_AND_EQUAL;
 
                 consume_char(lexer);
             }
             else
             {
-                token->type = TOKEN_AND;
+                token->type = TOK_AND;
             }
             break;
 
@@ -1087,13 +1087,13 @@ retry_lexing:;
             curr = get_curr_char(lexer);
             if (curr == '=')
             {
-                token->type = TOKEN_XOR_EQUAL;
+                token->type = TOK_XOR_EQUAL;
                 
                 consume_char(lexer);
             }
             else
             {
-                token->type = TOKEN_XOR;
+                token->type = TOK_XOR;
             }
             break;
 
@@ -1101,13 +1101,13 @@ retry_lexing:;
             curr = get_curr_char(lexer);
             if (curr == '=')
             {
-                token->type = TOKEN_EQUAL_EQUAL;
+                token->type = TOK_EQUAL_EQUAL;
 
                 consume_char(lexer);
             }
             else
             {
-                token->type = TOKEN_EQUAL;
+                token->type = TOK_EQUAL;
             }
             break;
 
@@ -1115,13 +1115,13 @@ retry_lexing:;
             curr = get_curr_char(lexer);
             if (curr == '=')
             {
-                token->type = TOKEN_NOT_EQUAL;
+                token->type = TOK_NOT_EQUAL;
 
                 consume_char(lexer);
             }
             else
             {
-                token->type = TOKEN_NOT;
+                token->type = TOK_NOT;
             }
             break;
 
@@ -1129,13 +1129,13 @@ retry_lexing:;
             curr = get_curr_char(lexer);
             if (curr == '#')
             {
-                token->type = TOKEN_HASH_HASH;
+                token->type = TOK_HASH_HASH;
 
                 consume_char(lexer);
             }
             else
             {
-                token->type = TOKEN_HASH;
+                token->type = TOK_HASH;
             }
             break;
         
@@ -1153,24 +1153,24 @@ retry_lexing:;
                 curr = get_curr_char(lexer);
                 if (curr == '=')
                 {
-                    token->type = TOKEN_LT_LT_EQUAL;
+                    token->type = TOK_LT_LT_EQUAL;
 
                     consume_char(lexer);
                 }
                 else
                 {
-                    token->type = TOKEN_LT_LT;
+                    token->type = TOK_LT_LT;
                 }
             }
             else if (curr == '=')
             {
-                token->type = TOKEN_LT_EQUAL;
+                token->type = TOK_LT_EQUAL;
 
                 consume_char(lexer);
             }
             else if (curr == ':')
             {
-                token->type = TOKEN_LBRACKET;
+                token->type = TOK_LBRACKET;
 
                 token_set_flag(token, TOKEN_FLAG_DIGRAPH);
 
@@ -1178,7 +1178,7 @@ retry_lexing:;
             }
             else if (curr == '%')
             {
-                token->type = TOKEN_LCURLY;
+                token->type = TOK_LCURLY;
 
                 token_set_flag(token, TOKEN_FLAG_DIGRAPH);
 
@@ -1186,7 +1186,7 @@ retry_lexing:;
             }
             else
             {
-                token->type = TOKEN_LT;
+                token->type = TOK_LT;
             }
             break;
 
@@ -1199,24 +1199,24 @@ retry_lexing:;
                 curr = get_curr_char(lexer);
                 if (curr == '=')
                 {
-                    token->type = TOKEN_GT_GT_EQUAL;
+                    token->type = TOK_GT_GT_EQUAL;
 
                     consume_char(lexer);
                 }
                 else
                 {
-                    token->type = TOKEN_GT_GT;
+                    token->type = TOK_GT_GT;
                 }
             }
             else if (curr == '=')
             {
-                token->type = TOKEN_GT_EQUAL;
+                token->type = TOK_GT_EQUAL;
 
                 consume_char(lexer);
             }
             else
             {
-                token->type = TOKEN_GT;
+                token->type = TOK_GT;
             }
             break;
 
@@ -1224,13 +1224,13 @@ retry_lexing:;
             curr = get_curr_char(lexer);
             if (curr == ':')
             {
-                token->type = TOKEN_COLON_COLON;
+                token->type = TOK_COLON_COLON;
 
                 consume_char(lexer);
             }
             else if (curr == '>')
             {
-                token->type = TOKEN_RBRACKET;
+                token->type = TOK_RBRACKET;
 
                 token_set_flag(token, TOKEN_FLAG_DIGRAPH);
 
@@ -1238,21 +1238,21 @@ retry_lexing:;
             } 
             else
             {
-                token->type = TOKEN_COLON;
+                token->type = TOK_COLON;
             }
             break;
 
         // All single character tokens in c99
-        case '[': token->type = TOKEN_LBRACKET; break;
-        case ']': token->type = TOKEN_RBRACKET; break;
-        case '(': token->type = TOKEN_LPAREN; break;
-        case ')': token->type = TOKEN_RPAREN; break;
-        case '{': token->type = TOKEN_LCURLY; break;
-        case '}': token->type = TOKEN_RCURLY; break;
-        case '?': token->type = TOKEN_QUESTION; break;
-        case ';': token->type = TOKEN_SEMI; break;
-        case ',': token->type = TOKEN_COMMA; break;
-        case '~': token->type = TOKEN_TILDE; break;
+        case '[': token->type = TOK_LBRACKET; break;
+        case ']': token->type = TOK_RBRACKET; break;
+        case '(': token->type = TOK_LPAREN; break;
+        case ')': token->type = TOK_RPAREN; break;
+        case '{': token->type = TOK_LCURLY; break;
+        case '}': token->type = TOK_RCURLY; break;
+        case '?': token->type = TOK_QUESTION; break;
+        case ';': token->type = TOK_SEMI; break;
+        case ',': token->type = TOK_COMMA; break;
+        case '~': token->type = TOK_TILDE; break;
 
         case '\\': // TODO: ucn starting an identifier
             curr = get_curr_char(lexer);
@@ -1281,7 +1281,7 @@ retry_lexing:;
                 panic("Non ascii character encountered");
             }
 
-            token->type = TOKEN_UNKNOWN;
+            token->type = TOK_UNKNOWN;
 
             Buffer unknown = buffer_from_format("%c", curr);
             token->data = lexer_create_literal_node(lexer, &unknown);

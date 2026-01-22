@@ -26,7 +26,7 @@ Identifier* identifier_create(String str)
     {
         .string = str_copy,
         .hash = string_get_hash(&str),
-        .type = TOKEN_IDENTIFIER
+        .type = TOK_IDENTIFIER
     };
 
     return ident;
@@ -60,7 +60,7 @@ void identifier_delete(Identifier* identifier)
 
 bool identifier_is_keyword(const Identifier* identifier)
 {
-    return identifier->type != TOKEN_IDENTIFIER;
+    return identifier->type != TOK_IDENTIFIER;
 }
 
 bool identifier_is_reserved(const Identifier* identifier)
@@ -151,120 +151,102 @@ IdentifierTable identifier_table_create(void)
                 identifier_table_compare_function, identifier_table_free)
     };
 
-    identifier_table_insert_keyword(&table, "auto", TOKEN_AUTO,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "break", TOKEN_BREAK,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "case", TOKEN_CASE,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "char", TOKEN_CHAR,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "const", TOKEN_CONST,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "continue", TOKEN_CONTINUE,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "default", TOKEN_DEFAULT,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "do", TOKEN_DO,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "double", TOKEN_DOUBLE,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "else", TOKEN_ELSE,
-            TOKEN_PP_ELSE);
-    identifier_table_insert_keyword(&table, "enum", TOKEN_ENUM,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "extern", TOKEN_EXTERN,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "float", TOKEN_FLOAT,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "for", TOKEN_FOR,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "goto", TOKEN_GOTO,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "if", TOKEN_IF,
-            TOKEN_PP_IF);
-    identifier_table_insert_keyword(&table, "inline", TOKEN_INLINE,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "int", TOKEN_INT,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "long", TOKEN_LONG,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "register", TOKEN_REGISTER,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "restrict", TOKEN_RESTRICT,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "return", TOKEN_RETURN,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "short", TOKEN_SHORT,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "signed", TOKEN_SIGNED,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "sizeof", TOKEN_SIZEOF,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "static", TOKEN_STATIC,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "struct", TOKEN_STRUCT,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "switch", TOKEN_SWITCH,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "typedef", TOKEN_TYPEDEF,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "union", TOKEN_UNION,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "unsigned", TOKEN_UNSIGNED,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "void", TOKEN_VOID,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "volatile", TOKEN_VOLATILE,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "while", TOKEN_WHILE,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "_Bool", TOKEN__BOOL,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "_Complex", TOKEN__COMPLEX,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "_Imaginary", TOKEN__IMAGINARY,
-            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "auto", TOK_auto, TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "break", TOK_break, TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "case", TOK_case, TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "char", TOK_char, TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "const", TOK_const, TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "continue", TOK_continue,
+            TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "default", TOK_default,
+            TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "do", TOK_do, TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "double", TOK_double,
+            TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "else", TOK_else, TOK_PP_else);
+    identifier_table_insert_keyword(&table, "enum", TOK_enum, TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "extern", TOK_extern,
+            TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "float", TOK_float, TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "for", TOK_for, TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "goto", TOK_goto, TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "if", TOK_if, TOK_PP_if);
+    identifier_table_insert_keyword(&table, "inline", TOK_inline,
+            TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "int", TOK_int, TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "long", TOK_long, TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "register", TOK_register,
+            TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "restrict", TOK_restrict,
+            TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "return", TOK_return,
+            TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "short", TOK_short,
+            TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "signed", TOK_signed,
+            TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "sizeof", TOK_sizeof,
+            TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "static", TOK_static,
+            TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "struct", TOK_struct,
+            TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "switch", TOK_switch,
+            TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "typedef", TOK_typedef,
+            TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "union", TOK_union,
+            TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "unsigned", TOK_unsigned,
+            TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "void", TOK_void,
+            TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "volatile", TOK_volatile,
+            TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "while", TOK_while,
+            TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "_Bool", TOK__Bool, TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "_Complex", TOK__Complex,
+            TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "_Imaginary", TOK__Imaginary,
+            TOK_IDENTIFIER);
 
     // Predefined identifier for functions
-    identifier_table_insert_keyword(&table, "__func__", TOKEN___FUNC__,
-            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "__func__", TOK___func__,
+            TOK_IDENTIFIER);
 
     // Tokens which are used for builtins / extensions to the language
-    identifier_table_insert_keyword(&table, "__attribute__",
-            TOKEN___ATTRIBUTE__, TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "__extension__",
-            TOKEN___EXTENSION__, TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "__attribute__", TOK___attribute__,
+            TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "__extension__", TOK___extension__,
+            TOK_IDENTIFIER);
 
     // Different variations of 'asm' for embedded assembly
-    identifier_table_insert_keyword(&table, "asm", TOKEN_ASM,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "__asm", TOKEN_ASM,
-            TOKEN_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "__asm__", TOKEN_ASM,
-            TOKEN_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "asm", TOK_asm, TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "__asm", TOK_asm, TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "__asm__", TOK_asm, TOK_IDENTIFIER);
 
     // all of our pp tokens that haven't already been covered.
-    identifier_table_insert_keyword(&table, "define", TOKEN_IDENTIFIER,
-            TOKEN_PP_DEFINE);
-    identifier_table_insert_keyword(&table, "undef", TOKEN_IDENTIFIER,
-            TOKEN_PP_UNDEF);
-    identifier_table_insert_keyword(&table, "include", TOKEN_IDENTIFIER,
-            TOKEN_PP_INCLUDE);
-    identifier_table_insert_keyword(&table, "ifdef", TOKEN_IDENTIFIER,
-            TOKEN_PP_IFDEF);
-    identifier_table_insert_keyword(&table, "ifndef", TOKEN_IDENTIFIER,
-            TOKEN_PP_IFNDEF);
-    identifier_table_insert_keyword(&table, "elif", TOKEN_IDENTIFIER,
-            TOKEN_PP_ELIF);
-    identifier_table_insert_keyword(&table, "endif", TOKEN_IDENTIFIER,
-            TOKEN_PP_ENDIF);
-    identifier_table_insert_keyword(&table, "line", TOKEN_IDENTIFIER,
-            TOKEN_PP_LINE);
-    identifier_table_insert_keyword(&table, "error", TOKEN_IDENTIFIER,
-            TOKEN_PP_ERROR);
-    identifier_table_insert_keyword(&table, "pragma", TOKEN_IDENTIFIER,
-            TOKEN_PP_PRAGMA);
+    identifier_table_insert_keyword(&table, "define", TOK_IDENTIFIER,
+            TOK_PP_define);
+    identifier_table_insert_keyword(&table, "undef", TOK_IDENTIFIER,
+            TOK_PP_undef);
+    identifier_table_insert_keyword(&table, "include", TOK_IDENTIFIER,
+            TOK_PP_include);
+    identifier_table_insert_keyword(&table, "ifdef", TOK_IDENTIFIER,
+            TOK_PP_ifdef);
+    identifier_table_insert_keyword(&table, "ifndef", TOK_IDENTIFIER,
+            TOK_PP_ifndef);
+    identifier_table_insert_keyword(&table, "elif", TOK_IDENTIFIER,
+            TOK_PP_elif);
+    identifier_table_insert_keyword(&table, "endif", TOK_IDENTIFIER,
+            TOK_PP_endif);
+    identifier_table_insert_keyword(&table, "line", TOK_IDENTIFIER,
+            TOK_PP_line);
+    identifier_table_insert_keyword(&table, "error", TOK_IDENTIFIER,
+            TOK_PP_error);
+    identifier_table_insert_keyword(&table, "pragma", TOK_IDENTIFIER,
+            TOK_PP_pragma);
 
     return table;
 }

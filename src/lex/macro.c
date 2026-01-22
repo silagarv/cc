@@ -26,7 +26,7 @@ Buffer destringize_pragma_literal(const Token* token)
     size_t pos = 0;
 
     // Ignore the 'L'
-    if (token->type == TOKEN_WIDE_STRING)
+    if (token->type == TOK_WIDE_STRING)
     {
         assert(string_get(literal, pos) == 'L');
         pos++;

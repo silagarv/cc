@@ -763,7 +763,7 @@ static ValueType determine_value_type(const char* string, size_t len)
 bool parse_preprocessing_number(LiteralValue* value, DiagnosticManager* dm,
         const Token* token)
 {
-    assert(token_is_type(token, TOKEN_NUMBER));
+    assert(token_is_type(token, TOK_NUMBER));
 
     const Location location = token->loc;
 
@@ -977,8 +977,8 @@ static uint64_t decode_escape_sequence(const char* raw, size_t len, size_t* pos,
 bool parse_char_literal(CharValue* value, DiagnosticManager* dm,
         const Token* token, bool wide)
 {
-    assert(token->type == TOKEN_CHARACTER ||
-            token->type == TOKEN_WIDE_CHARACTER);
+    assert(token->type == TOK_CHARACTER ||
+            token->type == TOK_WIDE_CHARACTER);
 
     // Get the location and raw literal data for conversion
     const Location loc = token->loc;
@@ -1075,7 +1075,7 @@ bool parse_char_literal(CharValue* value, DiagnosticManager* dm,
 static bool parse_string_literal_internal(DiagnosticManager* dm, Buffer* buffer,
         Token* token)
 {
-    assert(token->type == TOKEN_STRING);
+    assert(token->type == TOK_STRING);
 
     const Location loc = token->loc;
 

@@ -10,15 +10,26 @@
 
 // An enum containing all of the diagnostics that we have.
 typedef enum DiagnosticType {
-    DIAGNOSTIC_ERROR_START,
-
-    DIAGNOSTIC_ERROR_END,
-
-    DIAGNOSTIC_WARNING_START,
-
-    DIAGNOSTIC_WARNING_END
+    DIAGNOSTIC,
 } DiagnosticType;
 
+// An enum to keep track of the diagnostic state
+typedef enum DiagnosticState {
+    DIAGNOSTIC_STATE_OFF, // Off means will never trigger
+    DIAGNOSTIC_STATE_ON, // On means will trigger a diagnostic for this
+    DIAGNOSTIC_STATE_ERROR // Error means we will trigger a warning as an error
+} DiagnosticState;
+
+// The diagnostic option we would like to control
+typedef struct DiagnosticOption {
+    DiagnosticType type; // The option that this is for
+    DiagnosticState state; // The state of this diagnostic
+    const char* name; // the name of the option e.g. "shadow for -Wshadow"
+    const char* diag; // The diagnostic text that this corrosponds to.
+    bool error; // Treat this as an error always
+} DiagnosticOption;
+
+// Structure to store the diagnostic colours that we will use.
 typedef struct DiagnosticColours {
     char* fatal;
     char* error;
