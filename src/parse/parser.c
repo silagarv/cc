@@ -10,8 +10,6 @@
 #include <string.h>
 
 #include "util/panic.h"
-#include "util/ptr_set.h"
-#include "util/str.h"
 
 #include "driver/diagnostic.h"
 
@@ -577,133 +575,159 @@ static bool is_string_token(Parser* parser, const Token* tok)
     }
 }
 
-static Expression* parse_primary_expression(Parser* parser)
+static Expression* parse_parenthesised_expression(Parser* parser)
+{
+    assert(is_match(parser, TOK_LPAREN));
+
+    Location lparen_loc = consume(parser);
+    Expression* expr = parse_expression(parser);
+
+    // Don't create the next expression at all, rather, return the
+    // expression we just parsed so save us some trouble.
+    Location rparen_loc = LOCATION_INVALID;
+    if (!try_match(parser, TOK_RPAREN, &rparen_loc))
+    {
+        diagnostic_error_at(parser->dm, current_token_location(parser),
+                "expected ')' after expression");
+        return expr;
+    }
+
+    return semantic_checker_handle_parenthesis_expression(&parser->sc,
+            lparen_loc, expr, rparen_loc);
+}
+
+static Expression* parse_reference_expression(Parser* parser)
+{
+    assert(is_match(parser, TOK_IDENTIFIER));
+
+    Identifier* identifier = current_token(parser)->data.identifier;
+    Location identifer_loc = consume(parser);
+
+    bool is_function_call = is_match(parser, TOK_LPAREN);
+    return semantic_checker_handle_reference_expression(&parser->sc,
+            identifer_loc, identifier, is_function_call);
+}
+
+static Expression* parse_numeric_expression(Parser* parser)
+{
+    assert(is_match(parser, TOK_NUMBER));
+
+    Token number_tok = *current_token(parser);
+    Location loc = consume(parser);
+
+    LiteralValue value = {0};
+    bool success = parse_preprocessing_number(&value, parser->dm,
+            &number_tok);
+    
+    return semantic_checker_handle_number_expression(&parser->sc,
+            loc, value, success);
+}
+
+static Expression* parse_character_expression(Parser* parser)
+{
+    assert(is_match_two(parser, TOK_CHARACTER, TOK_WIDE_CHARACTER));
+
+    bool wide = is_match(parser, TOK_WIDE_CHARACTER);
+            
+    Token char_token = *current_token(parser);
+    Location loc = consume(parser);
+
+    CharValue value = {0};
+    bool success = parse_char_literal(&value, parser->dm, &char_token,
+            wide);
+
+    return semantic_checker_handle_char_expression(&parser->sc, loc,
+            value, success);
+}
+
+static Expression* parse_string_expression(Parser* parser)
 {
     static const TokenType string_tokens[] = {TOK_STRING, TOK_WIDE_STRING};
     static const size_t num_string_tokens = countof(string_tokens);
 
-    TokenType type = current_token_type(parser);
-    switch (type)
+    assert(is_match_two(parser, TOK_STRING, TOK_WIDE_STRING));
+
+    Location start_location = current_token_location(parser);
+
+    TokenVector toks = token_vector_create(1);
+    LocationVector locs = location_vector_create(1);
+
+    // Track if the token is wide to make conversion easier
+    bool wide = false;
+    do
+    {
+        if (is_match(parser, TOK_WIDE_STRING))
+        {
+            wide = true;
+        }
+
+        Token string_token = *current_token(parser);
+        Location token_loc = consume(parser);
+
+        token_vector_push(&toks, string_token);
+        location_vector_push(&locs, token_loc);
+    }
+    while (has_match(parser, string_tokens, num_string_tokens));
+
+    // Attempt the conversion using the information we have here
+    StringLiteral string;
+    bool conversion = parse_string_literal(&parser->ast.ast_allocator,
+            &string, parser->dm, toks, locs, wide);
+
+    // Make sure to free our vectors after we are done with them.
+    token_vector_free(&toks, NULL);
+    location_vector_free(&locs, NULL);
+
+    if (!conversion)
+    {
+        diagnostic_error(parser->dm, "string conversion failed");
+    }
+    else
+    {
+        // printf("%s\n", string.string.ptr);
+    }
+
+    return semantic_checker_handle_error_expression(&parser->sc,
+            start_location);
+}
+
+static Expression* parse_builtin_identifier(Parser* parser)
+{
+    assert(is_match(parser, TOK___func__));
+
+    Location location = consume(parser);
+    return semantic_checker_handle_builtin_identifier(&parser->sc,
+            location);
+}
+
+static Expression* parse_primary_expression(Parser* parser)
+{
+    switch (current_token_type(parser))
     {
         case TOK_LPAREN:
-        {
-            Location lparen_loc = consume(parser);
-            Expression* expr = parse_expression(parser);
-
-            // Don't create the next expression at all, rather, return the
-            // expression we just parsed so save us some trouble.
-            Location rparen_loc = LOCATION_INVALID;
-            if (!try_match(parser, TOK_RPAREN, &rparen_loc))
-            {
-                diagnostic_error_at(parser->dm, current_token_location(parser),
-                        "expected ')' after expression");
-                return expr;
-            }
-
-            return semantic_checker_handle_parenthesis_expression(&parser->sc,
-                    lparen_loc, expr, rparen_loc);
-        }
+            return parse_parenthesised_expression(parser);
         
         case TOK_IDENTIFIER:
-        {
-            Identifier* identifier = current_token(parser)->data.identifier;
-            Location identifer_loc = consume(parser);
-
-            bool is_function_call = is_match(parser, TOK_LPAREN);
-            return semantic_checker_handle_reference_expression(&parser->sc,
-                    identifer_loc, identifier, is_function_call);
-        }
+            return parse_reference_expression(parser);
 
         case TOK_NUMBER:
-        {
-            Token number_tok = *current_token(parser);
-            Location loc = consume(parser);
-
-            LiteralValue value = {0};
-            bool success = parse_preprocessing_number(&value, parser->dm,
-                    &number_tok);
-            
-            return semantic_checker_handle_number_expression(&parser->sc,
-                    loc, value, success);
-        }
+            return parse_numeric_expression(parser);
 
         case TOK_CHARACTER:
         case TOK_WIDE_CHARACTER:
-        {
-            bool wide = is_match(parser, TOK_WIDE_CHARACTER);
-            
-            Token char_token = *current_token(parser);
-            Location loc = consume(parser);
-
-            CharValue value = {0};
-            bool success = parse_char_literal(&value, parser->dm, &char_token,
-                    wide);
-
-            return semantic_checker_handle_char_expression(&parser->sc, loc,
-                    value, success);
-        }
+            return parse_character_expression(parser);
 
         case TOK_STRING:
         case TOK_WIDE_STRING:
-        {
-            Location start_location = current_token_location(parser);
-
-            TokenVector toks = token_vector_create(1);
-            LocationVector locs = location_vector_create(1);
-
-            // Track if the token is wide to make conversion easier
-            bool wide = false;
-            do
-            {
-                if (is_match(parser, TOK_WIDE_STRING))
-                {
-                    wide = true;
-                }
-
-                Token string_token = *current_token(parser);
-                Location token_loc = consume(parser);
-
-                token_vector_push(&toks, string_token);
-                location_vector_push(&locs, token_loc);
-            }
-            while (has_match(parser, string_tokens, num_string_tokens));
-
-            // Attempt the conversion using the information we have here
-            StringLiteral string;
-            bool conversion = parse_string_literal(&parser->ast.ast_allocator,
-                    &string, parser->dm, toks, locs, wide);
-
-            // Make sure to free our vectors after we are done with them.
-            token_vector_free(&toks, NULL);
-            location_vector_free(&locs, NULL);
-
-            if (!conversion)
-            {
-                diagnostic_error(parser->dm, "string conversion failed");
-            }
-            else
-            {
-                // printf("%s\n", string.string.ptr);
-            }
-
-            return semantic_checker_handle_error_expression(&parser->sc,
-                    start_location);
-        }
+            return parse_string_expression(parser);
 
         case TOK___func__:
-        {
-            Location location = consume(parser);
-            return semantic_checker_handle_builtin_identifier(&parser->sc,
-                    location);
-        }
+            return parse_builtin_identifier(parser);
 
         default:
         {
             Location err_loc = current_token_location(parser);
             diagnostic_error_at(parser->dm, err_loc, "expected expression");
-
-            // Do not do error recovery since the function calling this one 
-            // could be pretty much anything.
             return semantic_checker_handle_error_expression(&parser->sc,
                     err_loc);
         }
@@ -716,6 +740,7 @@ static void parse_argument_expression_list(Parser* parser,
     do
     {
         Expression* arg = parse_assignment_expression(parser);
+        
         expression_list_push(&parser->ast.ast_allocator, list, arg);
     }
     while (try_match(parser, TOK_COMMA, NULL));
@@ -935,7 +960,6 @@ static Expression* parse_unary_expression(Parser* parser)
                     is_typename_start(parser, next_token(parser)))
             {
                 Location lparen_loc = consume(parser);
-                // Don't care if the type is okay or not deal with later.
                 QualifiedType type = parse_type_name(parser, NULL);
                 Location rparen_loc;
                 if (!try_match(parser, TOK_RPAREN, &rparen_loc))
@@ -1364,14 +1388,6 @@ static Expression* parse_assignment_expression(Parser* parser)
 
 static Expression* parse_constant_expression(Parser* parser)
 {
-    // if (expression_is_integer_constant(expr))
-    // {
-        // ExpressionIntegerValue value = {0};
-        // expression_fold_to_integer_constant(parser->dm, expr, &value);
-    // }
-
-    // TODO: handle folding the constant expression...
-
     return parse_conditional_expression(parser);
 }
 
@@ -1423,6 +1439,9 @@ static Statement* parse_statement_after_label(Parser* parser, const char* ctx)
 
 static Statement* parse_label_statement(Parser* parser)
 {
+    assert(is_match(parser, TOK_IDENTIFIER));
+    assert(is_next_match(parser, TOK_COLON));
+
     // Get the identifier from the current token.
     Identifier* identifier = current_token(parser)->data.identifier;
     Location label_loc = consume(parser);
@@ -3509,6 +3528,13 @@ static void declaration_specifiers_add_width(Parser* parser,
         DeclarationSpecifiers* specifiers, TypeSpecifierWidth width,
         Location location)
 {
+    // Do the check here instead to clean up parsing of decl-spec
+    if (specifiers->type_spec_width == WIDTH_SPECIFIER_LONG
+            && width == WIDTH_SPECIFIER_LONG)
+    {
+        width = WIDTH_SPECIFIER_LONG_LONG;
+    }
+
     // Here we differ from clang which allows duplicate short specifier
     if (specifiers->type_spec_width == WIDTH_SPECIFIER_NONE)
     {
@@ -3748,16 +3774,8 @@ static DeclarationSpecifiers parse_declaration_specifiers(Parser* parser,
                 break;
 
             case TOK_long:
-                if (specifiers.type_spec_width == WIDTH_SPECIFIER_LONG)
-                {
-                    declaration_specifiers_add_width(parser, &specifiers,
-                            WIDTH_SPECIFIER_LONG_LONG, location);
-                }
-                else
-                {
-                    declaration_specifiers_add_width(parser, &specifiers,
-                            WIDTH_SPECIFIER_LONG, location);
-                }
+                declaration_specifiers_add_width(parser, &specifiers,
+                        WIDTH_SPECIFIER_LONG, location);
                 break;
 
             // Sign specifiers

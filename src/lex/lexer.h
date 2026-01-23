@@ -30,10 +30,7 @@ typedef struct Lexer {
 } Lexer;
 
 // Create a lexer on the stack, no heap allocations needed for it at all
-Lexer lexer(IdentifierTable* identifiers, const char* buffer_start,
-        const char* buffer_end, Location start_loc);
-
-Lexer lexer_create(DiagnosticManager* dm, Arena* literal_arena,
+void lexer_create(Lexer* lexer, DiagnosticManager* dm, Arena* literal_arena,
         IdentifierTable* identifiers, SourceFile* source);
 
 // Get the next token from the lexer advancing it's position

@@ -70,7 +70,8 @@ FileBuffer* file_buffer_try_get(Filepath path);
 
 // Create a file buffer from a buffer with a given name. Should only be used to
 // create compiler generated buffers.
-FileBuffer* file_buffer_from_buffer(Filepath name, Buffer buffer, FileBufferType type);
+FileBuffer* file_buffer_from_buffer(Filepath name, Buffer buffer,
+        FileBufferType type);
 
 // Free a file buffer structure
 void file_buffer_free(FileBuffer* buffer);
@@ -105,6 +106,7 @@ FileBuffer* file_manager_try_get(FileManager* fm, Filepath path);
 // Create a filebuffer from the given buffer and of the given type of type. It
 // should be noted that this function will ensure duplicate builtin and 
 // command-line buffers cannot be created. Also note that type cannot be file.
-FileBuffer* file_manager_buffer_from(FileManager* fm, Buffer buffer, FileBufferType type);
+FileBuffer* file_manager_buffer_from(FileManager* fm, Buffer buffer,
+        FileBufferType type);
 
 #endif /* FILE_BUFFER_H */

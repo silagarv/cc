@@ -247,6 +247,8 @@ IdentifierTable identifier_table_create(void)
             TOK_PP_error);
     identifier_table_insert_keyword(&table, "pragma", TOK_IDENTIFIER,
             TOK_PP_pragma);
+    identifier_table_insert_keyword(&table, "defined", TOK_IDENTIFIER,
+            TOK_PP_defined);
 
     return table;
 }

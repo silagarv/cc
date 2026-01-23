@@ -12,7 +12,6 @@
 #include "util/vec.h"
 #include "util/xmalloc.h"
 #include "util/str.h"
-#include "util/hash.h"
 
 #include "lex/identifier_table.h"
 

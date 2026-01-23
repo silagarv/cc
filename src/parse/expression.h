@@ -3,7 +3,6 @@
 
 #include "files/location.h"
 
-#include "lex/token.h"
 #include "lex/identifier_table.h"
 
 #include "parse/ast_allocator.h"

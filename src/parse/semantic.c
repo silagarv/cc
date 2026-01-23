@@ -652,19 +652,6 @@ void declaration_specifiers_finish(SemanticChecker* sc,
             break;
     }
 
-    // Now check that we have actually recieved a type during parsing
-    switch (specifiers->type_spec_type)
-    {
-        case TYPE_SPECIFIER_NONE:
-            // diagnostic_error_at(sc->dm, specifiers->location,
-            //         "type specifier missing, defaults to 'int'");
-            // specifiers->type_spec_type = TYPE_SPECIFIER_TYPE_INT;
-            break;
-
-        default:
-            break;
-    }
-
     // Now that we believe that our type is valid we can determine the type that
     // this set of declaration specifiers should have.
 }
@@ -715,7 +702,8 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
     {
         case TYPE_SPECIFIER_NONE:
             diagnostic_error_at(sc->dm, location,
-                    "type specifier missing, defaults to 'int'");
+                    "type specifier missing, defaults to 'int'; ISO C99 and "
+                    "later do not support implicit int");
             type = builtins->type_signed_int;
             break;
 
@@ -3074,7 +3062,6 @@ Declaration* semantic_checker_act_on_label(SemanticChecker* sc,
     {
         diagnostic_error_at(sc->dm, identifier_location,
                 "redefinition of label '%s'", identifier->string.ptr);
-        // TODO: add note for original location?
         return NULL;
     }
 
@@ -3704,11 +3691,17 @@ static AssignmentType semantic_checker_get_ptr_assignment(SemanticChecker* sc,
         return ASSIGNMENT_SUCCESS;
     }
 
+    // Check for compatibility ignoring all qualifiers
+    if (qualified_type_is_compatible_no_quals(&lhs_pointee, &rhs_pointee))
+    {
+        return ASSIGNMENT_SUCCESS;
+    }
+
     // Finally, check for incompatible but pointer to integer or same size e.g.
     // int* && unsigned* -> same size but differing signedness.
     if (qualified_type_is_integer(&lhs_pointee)
             && qualified_type_is_integer(&rhs_pointee))
-    {   
+    {
         // Both integer types with the same size, but not compatible with each
         // other. But the size is the same so we are incompatible sign wise.
         size_t lhs_size = qualified_type_get_size(&lhs_pointee);
@@ -3800,17 +3793,17 @@ static bool semantic_checker_diagnose_assign_error(SemanticChecker* sc,
 
         case ASSIGNMENT_ERROR:
             diagnostic_error_at(sc->dm, location,
-                    "assignment to incompatible type");
+                    "incompatible types");
             return true;
 
         case ASSIGNMENT_POINTER_DISCARDS_QUALS:
             diagnostic_warning_at(sc->dm, location,
-                    "assignment discards qualifiers");
+                    "implicit pointer conversion discards qualifiers");
             return true;
 
         case ASSIGNMENT_POINTER_INCOMPATIBLE:
             diagnostic_warning_at(sc->dm, location,
-                    "assignment to incompatible pointer type");
+                    "incompatible pointer types");
             return true;
 
         case ASSIGNMENT_POINTER_INCOMPATIBLE_SIGN:
@@ -4745,6 +4738,19 @@ Expression* semantic_checker_handle_sizeof_type_expression(SemanticChecker* sc,
             sizeof_location, lparen_loc, type, rparen_loc, size_type);
 }
 
+static bool semantic_checker_is_bitfield_access(SemanticChecker* sc,
+        Expression* expression)
+{
+    if (!expression_is(expression, EXPRESSION_MEMBER_ACCESS)
+            && !expression_is(expression, EXPRESSION_MEMBER_POINTER_ACCESS))
+    {
+        return false;
+    }
+
+    Declaration* member = expression_member_access_get_decl(expression);
+    return declaration_field_has_bitfield(member);
+}
+
 Expression* semantic_checker_handle_sizeof_expression(SemanticChecker* sc,
         Location sizeof_location, Expression* expression)
 {
@@ -4762,7 +4768,19 @@ Expression* semantic_checker_handle_sizeof_expression(SemanticChecker* sc,
         return semantic_checker_handle_error_expression(sc, sizeof_location);
     }
 
-    // TODO: need to check that we aren't doing a sizeof to a bitfield.
+    // Also check that we aren't trying to apply to a bitfield type
+    if (expression_is(expression, EXPRESSION_MEMBER_ACCESS)
+            || expression_is(expression, EXPRESSION_MEMBER_POINTER_ACCESS))
+    {
+        Declaration* member = expression_member_access_get_decl(expression);
+        if (declaration_field_has_bitfield(member))
+        {
+            diagnostic_error_at(sc->dm, expression_get_location(expression),
+                    "invalid application of 'sizeof' to bit-field");
+            return semantic_checker_handle_error_expression(sc,
+                    sizeof_location);
+        }
+    }
 
     // Get the standard size type for the value of the expression
     QualifiedType size_type = semantic_checker_get_size_type(sc);
@@ -6798,8 +6816,13 @@ Statement* semantic_checker_handle_return_statement(SemanticChecker* sc,
         }
         else
         {
-            // TODO: check the expressions type matches the current functions 
-            // TODO: type!
+            AssignmentType assign = semantic_checker_get_assignment_type(sc,
+                    &real_type, expression);
+            
+            QualifiedType expr_type = expression_get_qualified_type(expression);
+            semantic_checker_diagnose_assign_error(sc, assign,
+                    expression_get_location(expression), &real_type,
+                    &expr_type);
         }
     }
     

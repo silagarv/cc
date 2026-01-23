@@ -70,11 +70,15 @@ typedef enum TokenType {
     TOK_HASH_HASH,
 
     // Keyword tokens
+    TOK_alignas, // C23 Keyword
+    TOK_alignof, // C23 Keyword
     TOK_auto,
     TOK_break,
+    TOK_bool, // C23 keyword
     TOK_case,
     TOK_char,
     TOK_const,
+    TOK_constexpr, // C23 Keyword
     TOK_continue,
     TOK_default,
     TOK_do,
@@ -82,13 +86,15 @@ typedef enum TokenType {
     TOK_else,
     TOK_enum,
     TOK_extern,
+    TOK_false, // C23 Keyword
     TOK_float,
     TOK_for,
     TOK_goto,
     TOK_if,
-    TOK_inline,
+    TOK_inline, // C99 Keyword
     TOK_int,
     TOK_long,
+    TOK_nullptr, // C23 Keyword
     TOK_register,
     TOK_restrict,
     TOK_return,
@@ -96,17 +102,33 @@ typedef enum TokenType {
     TOK_signed,
     TOK_sizeof,
     TOK_static,
+    TOK_static_assert, // C23 Keyword
     TOK_struct,
     TOK_switch,
+    TOK_thread_local, // C23 Keyword
+    TOK_true, // C23 Keyword
     TOK_typedef,
+    TOK_typeof, // C23 Keyword
+    TOK_typeof_unqual, // C23 Keyword
     TOK_union,
     TOK_unsigned,
     TOK_void,
     TOK_volatile,
     TOK_while,
-    TOK__Bool,
-    TOK__Complex,
-    TOK__Imaginary,
+    TOK__Alignas, // C11 Keyword
+    TOK__Alignof, // C11 Keyword
+    TOK__Atomic, // C11 Keyword
+    TOK__Bitint, // C23 Keyword
+    TOK__Bool, // C99 Keyword
+    TOK__Complex, // C99 Keyword
+    TOK__Decimal128, // C23 Keyword
+    TOK__Decimal32, // C23 Keyword
+    TOK__Decimal64, // C23 Keyword
+    TOK__Generic, // C11 Keyword
+    TOK__Imaginary, // C99 Keyword
+    TOK__Noreturn, // C11 Keyword
+    TOK__Static_assert, // C11 Keyword
+    TOK__Thread_local, // C11 Keyword
 
     TOK___func__, // __func__
 
@@ -127,15 +149,23 @@ typedef enum TokenType {
     TOK_PP_define,
     TOK_PP_undef,
     TOK_PP_include,
+    TOK_PP_embed, // C23
     TOK_PP_if,
     TOK_PP_ifdef,
     TOK_PP_ifndef,
+    TOK_PP_elifndef, // C23
+    TOK_PP_elifdef, // C23
     TOK_PP_else,
     TOK_PP_elif,
     TOK_PP_endif,
     TOK_PP_line,
     TOK_PP_error,
+    TOK_PP_warning, // C23
     TOK_PP_pragma,
+    TOK_PP_defined, 
+    TOK_PP___has_include, // C23
+    TOK_PP___has_embed, // C23
+    TOK_PP___has_c_attribute, // C23
     
     TOK_PP_HEADER_NAME,
 

@@ -30,12 +30,11 @@
 #define NUMBER_START_SIZE (10)
 #define STRING_START_SIZE (10)
 
-Lexer lexer_create(DiagnosticManager* dm, Arena* literal_arena,
+void lexer_create(Lexer* lexer, DiagnosticManager* dm, Arena* literal_arena,
         IdentifierTable* identifiers, SourceFile* source)
 {
     const FileBuffer* fb = source_file_get_buffer(source);
-    
-    Lexer lexer = (Lexer)
+    *lexer = (Lexer)
     {
         .dm = dm,
         .literal_arena = literal_arena,
@@ -48,8 +47,6 @@ Lexer lexer_create(DiagnosticManager* dm, Arena* literal_arena,
         .lexing_directive = false,
         .can_lex_header = false
     };
-
-    return lexer;
 }
 
 // Modify the lexer's position
