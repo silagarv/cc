@@ -18,6 +18,23 @@
 
 #include "lex/token.h"
 
+struct LexerStack {
+    // The current lexer storing information
+    Lexer lexer;
+
+    // The entry below this one.
+    LexerStack* below;
+};
+
+static bool lexer_stack_has_below(const LexerStack* lexers)
+{
+    assert(lexers != NULL);
+
+    return lexers->below != NULL;
+}
+
+
+
 // Print a quoted include filename into a buffer
 static void buffer_add_quote_include(Buffer* buffer, const char* filename)
 {
@@ -93,6 +110,9 @@ void preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
     pp->identifiers = identifier_table_create();
     pp->literal_arena = arena_new(ARENA_DEFAULT_CHUNK_SIZE,
             ARENA_DEFAULT_ALIGNMENT);
+    pp->pp_allocator = arena_new(ARENA_DEFAULT_CHUNK_SIZE,
+            ARENA_DEFAULT_ALIGNMENT);
+    pp->lexers = NULL;
     lexer_create(&pp->lexer, dm, &pp->literal_arena, &pp->identifiers,
             starting_file);
 }
@@ -100,6 +120,7 @@ void preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
 void preprocessor_delete(Preprocessor* pp)
 {
     arena_delete(&pp->literal_arena);
+    arena_delete(&pp->pp_allocator);
     identifier_table_delete(&pp->identifiers);
 }
 

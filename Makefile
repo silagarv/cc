@@ -47,12 +47,7 @@ FILES = src/files/filepath.c \
 
 DRIVER = src/driver/diagnostic.c \
 	src/driver/lang.c \
-	src/driver/options.c \
-	#src/driver/target.c \
-	src/driver/options.c \
-	src/driver/command_line.c \
-	src/driver/translation_unit.c \
-	src/driver/driver.c
+	src/driver/options.c
 
 LEX = src/lex/identifier_table.c \
 	src/lex/token.c \
@@ -64,6 +59,7 @@ LEX = src/lex/identifier_table.c \
 
 PARSE = src/parse/ast_allocator.c \
 	src/parse/ast.c \
+	src/parse/compound_layout_calculator.c \
 	src/parse/type.c \
 	src/parse/literal_parser.c \
 	src/parse/expression.c \

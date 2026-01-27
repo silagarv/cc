@@ -23,12 +23,14 @@ To building, run 'make' in the cc directory and it wll output an executable name
 ## Current TODO
 - Declaration parsing
     - complete struct / union building for sizeof and offsets
+    - also include a second list in struct / union decl's for all decls inside it
 
 - Semantic
     - expressions
         - fix array subscript checking code -> register variable error not triggered in some cases.
         - Finish creating compound initializers
         - Create code for casting when folding constant expressions
+        - Fix bug for calculating sizeof 0 sized types and making arrays with them
     - initializers 
         - clean up the code for variable initializations to make it alot more clean so that it can easily be seen what is happening where.
         - also make the calculation of what is tentative and what is not tentative more clear so that we can do the above better

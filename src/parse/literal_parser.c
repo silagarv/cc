@@ -477,9 +477,10 @@ bool parse_float_exponent(const char* string, size_t len, size_t* pos,
     {
         *pos += 1;
     }
-    else if (string[*pos] == '\0')
+
+    // Now check if we got an empty exponent (after we have tried to skip a +-)
+    if (string[*pos] == '\0')
     {
-        // TODO: somehow issue an error that exponent has no digits
         return true;
     }
 
@@ -640,8 +641,7 @@ bool parse_float_literal(LiteralValue* value, DiagnosticManager* dm,
             // part to check if we have a suffix or not
             if (current == 'e' || current == 'E')
             {
-                bool error = parse_float_exponent(string, len, &pos,
-                        &exponent);
+                bool error = parse_float_exponent(string, len, &pos, &exponent);
                 if (error)
                 {
                     diagnostic_error_at(dm, location, "exponent has no digits");

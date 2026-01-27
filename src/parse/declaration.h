@@ -303,6 +303,9 @@ typedef struct DeclarationCompound {
 
     // The members of the structure.
     DeclarationList members;
+
+    // Do we have a flexible array member
+    bool flexible_array;
 } DeclarationCompound;
 
 typedef struct DeclarationEnumConstant {
@@ -430,7 +433,7 @@ DeclarationList declarator_function_piece_get_all_decls(
         const DeclaratorPiece* piece);
 void declarator_function_piece_set_all_decls(DeclaratorPiece* piece,
         DeclarationList decls);
-bool declarator_has_function(const Declarator* declarator);
+bool declarator_is_function(const Declarator* declarator);
 
 void declarator_push_pointer(Declarator* declarator, TypeQualifiers qualifiers);
 void declarator_push_array(Declarator* declarator, Location lbracket, 
@@ -455,6 +458,7 @@ bool declaration_list_has_identifier(const DeclarationList* list,
 DeclarationType declaration_get_kind(const Declaration *decl);
 bool declaration_is(const Declaration* decl, DeclarationType type);
 bool declaration_is_tag(const Declaration* decl);
+bool declaration_is_compound(const Declaration* decl);
 bool declaration_has_identifier(const Declaration* decl);
 Identifier* declaration_get_identifier(const Declaration* decl);
 bool declaration_is_external(const Declaration* decl);
@@ -511,6 +515,7 @@ Declaration* declaration_create_field(AstAllocator* allocator,
         Location colon_location, Expression* expression, size_t bitfield_size,
         bool is_flexible);
 bool declaration_field_has_bitfield(const Declaration* decl);
+size_t declaration_field_get_bitfield(const Declaration* decl);
 bool declaration_field_is_fexible_array(const Declaration* decl);
 
 Declaration* declaration_create_struct(AstAllocator* allocator,
@@ -520,6 +525,8 @@ void declaration_struct_add_member(Declaration* declaration,
 DeclarationList declaration_struct_get_members(const Declaration* declaration);
 bool declaration_struct_is_complete(const Declaration* declaration);
 void declaration_struct_set_complete(Declaration* declaration);
+void declaration_struct_set_flexible_array(Declaration* decalration);
+bool declaration_struct_get_flexible_array(Declaration* decalration);
 
 Declaration* declaration_create_union(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type);

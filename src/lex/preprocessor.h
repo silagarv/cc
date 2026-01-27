@@ -1,18 +1,19 @@
 #ifndef PREPROCESSOR_H
 #define PREPROCESSOR_H
 
-#include "driver/diagnostic.h"
-#include "files/filepath.h"
-#include "lex/identifier_table.h"
-#include "lex/token.h"
 #include "util/arena.h"
-#include "util/buffer.h"
-#include "util/hash_map.h"
+
+#include "driver/diagnostic.h"
 
 #include "files/source_manager.h"
 
+#include "lex/identifier_table.h"
+#include "lex/token.h"
 #include "lex/lexer.h"
 #include "lex/header_finder.h"
+
+// Implement at a typedef so when changes are made we don't have to recompile
+typedef struct LexerStack LexerStack;
 
 typedef struct Preprocessor {
     DiagnosticManager* dm;
@@ -35,6 +36,14 @@ typedef struct Preprocessor {
 
     // The lexer -> but todo, create a lexer stack or something
     Lexer lexer;
+
+    // The Arena that we are going to use for allocating all of our preprocessor
+    // information onto particularaly for our macro tables and those kinds of
+    // things.
+    Arena pp_allocator;
+
+    // The stack of lexers we are using for this preprocessor
+    LexerStack* lexers;
 } Preprocessor;
 
 void preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,

@@ -309,6 +309,7 @@ void type_struct_set_declaration(Type* type, union Declaration* declaration);
 union Declaration* qualified_type_struct_get_declaration(QualifiedType* type);
 bool type_struct_is_complete(Type* type);
 void type_struct_set_complete(Type* type);
+void type_struct_set_size(Type* type, size_t size, size_t align);
 // TODO: make sure we set the members
 
 Type* type_create_union(AstAllocator* allocator);
@@ -335,8 +336,9 @@ bool qualified_type_is_unsigned(const QualifiedType* type);
 bool qualified_type_is_arithmetic(const QualifiedType* type);
 bool qualified_type_is_scaler(const QualifiedType* type);
 bool qualified_type_is_pointer(const QualifiedType* type);
-
+bool qualified_type_is_array(const QualifiedType* type);
 bool qualified_type_is_compound(const QualifiedType* type);
+
 QualifiedType type_get_canonical(const Type* type);
 QualifiedType qualified_type_get_canonical(const QualifiedType* type);
 

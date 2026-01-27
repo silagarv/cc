@@ -335,9 +335,49 @@ void declarator_function_piece_set_all_decls(DeclaratorPiece* piece,
     piece->function.all_decls = decls;
 }
 
-bool declarator_has_function(const Declarator* declarator)
+bool declarator_is_function(const Declarator* declarator)
 {
-    return declarator_get_function_piece(declarator) != NULL;
+    DeclaratorPiece* piece = declarator->piece_stack;
+
+    // Okay keep track of if we maybe have a function we want to parse. We 
+    // essentially want to look through the pieces in reverse order but cannot
+    // do this effeciently since we have stack.
+    // void* func(void); -> pointer -> func (is the piece stack here)
+    // void (*func)(void); -> func -> pointer (is the stack here)
+    //
+    // So while we traverse through the stack if we see a pointer or array
+    // then the func that is okay. Otherwise if we see func the pointer we
+    // cannot be a function
+    bool maybe_function = false;
+    while (piece != NULL)
+    {
+        switch (piece->base.type)
+        {
+            case DECLARATOR_PIECE_FUNCTION:
+                maybe_function = true;
+                break;
+
+            case DECLARATOR_PIECE_ARRAY:
+            case DECLARATOR_PIECE_POINTER:
+                // if we have one of these we have already seen a function
+                // declarator so we cannot be a function.
+                if (maybe_function)
+                {
+                    return false;
+                }
+
+                // Otherwise we are good to continue
+                break;
+
+            default:
+                panic("unexpected declarator piece type");
+                break;
+        }
+        
+        piece = piece->base.next;
+    }
+    
+    return maybe_function;
 }
 
 void declarator_push_pointer(Declarator* declarator, TypeQualifiers qualifiers)
@@ -479,6 +519,12 @@ bool declaration_is_tag(const Declaration* decl)
 {
     return declaration_is(decl, DECLARATION_ENUM)
             || declaration_is(decl, DECLARATION_STRUCT)
+            || declaration_is(decl, DECLARATION_UNION);
+}
+
+bool declaration_is_compound(const Declaration* decl)
+{
+    return declaration_is(decl, DECLARATION_STRUCT)
             || declaration_is(decl, DECLARATION_UNION);
 }
 
@@ -772,6 +818,13 @@ bool declaration_field_has_bitfield(const Declaration* decl)
     return decl->field.has_bitfield;
 }
 
+size_t declaration_field_get_bitfield(const Declaration* decl)
+{
+    assert(declaration_field_has_bitfield(decl));
+
+    return decl->field.bitfield_size;
+}
+
 bool declaration_field_is_fexible_array(const Declaration* decl)
 {
     assert(declaration_is(decl, DECLARATION_FIELD));
@@ -787,6 +840,7 @@ Declaration* declaration_create_struct(AstAllocator* allocator,
             identifier, type, STORAGE_NONE,
             FUNCTION_SPECIFIER_NONE, false);
     decl->compound.members = declaration_list_create(allocator);
+    decl->compound.flexible_array = false;
 
     return decl;
 }
@@ -832,6 +886,16 @@ void declaration_struct_set_complete(Declaration* declaration)
     type_struct_set_complete(type.type);
 }
 
+void declaration_struct_set_flexible_array(Declaration* decalration)
+{
+    decalration->compound.flexible_array = true;
+}
+
+bool declaration_struct_get_flexible_array(Declaration* decalration)
+{
+    return decalration->compound.flexible_array;
+}
+
 Declaration* declaration_create_union(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type)
 {
@@ -840,6 +904,7 @@ Declaration* declaration_create_union(AstAllocator* allocator,
             identifier, type, STORAGE_NONE,
             FUNCTION_SPECIFIER_NONE, false);
     decl->compound.members = declaration_list_create(allocator);
+    decl->compound.flexible_array = false;
 
     return decl;
 }

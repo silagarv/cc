@@ -1,5 +1,6 @@
 #include "type.h"
 
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -229,8 +230,11 @@ QualifiedType type_create_array(AstAllocator* allocator,
     bool is_complete = (expression != NULL) && !is_vla && !is_star;
 
     // Need to determine the size and align or the array.
+    QualifiedType real_elem_type = qualified_type_get_canonical(&element_type);
+    size_t elem_align = qualified_type_get_align(&real_elem_type);
+    
     Type* type = type_create_base(allocator, sizeof(TypeArray), TYPE_ARRAY,
-            size, element_type.type->type_base.type_alignment, is_complete);
+            size, elem_align, is_complete);
     type->type_array.element_type = element_type;
     type->type_array.expression = expression;
     type->type_array.length = length;
@@ -429,6 +433,15 @@ void type_struct_set_complete(Type* type)
     type->type_struct.base.is_complete = true;
 }
 
+void type_struct_set_size(Type* type, size_t size, size_t align)
+{
+    assert(type_is(type, TYPE_STRUCT) || type_is(type, TYPE_UNION));
+    assert(align != 0);
+
+    type->type_base.type_size = size;
+    type->type_base.type_alignment = align;
+}
+
 Type* type_create_union(AstAllocator* allocator)
 {
     Type* type = type_create_base(allocator, sizeof(TypeCompound),
@@ -459,8 +472,9 @@ void type_union_set_complete(Type* type)
 Type* type_create_typedef(AstAllocator* allocator, QualifiedType type,
         union Declaration* decl)
 {
-    size_t type_size = type.type->type_base.type_size;
-    size_t type_align = type.type->type_base.type_alignment;
+    QualifiedType base_type = qualified_type_get_canonical(&type);
+    size_t type_size = qualified_type_get_size(&base_type);
+    size_t type_align = qualified_type_get_align(&base_type);
     bool complete = type.type->type_base.is_complete;
 
     // Here even with multiple typedef's we will get the real type very fast
@@ -718,10 +732,15 @@ bool qualified_type_is_pointer(const QualifiedType* type)
     return qualified_type_is(&real_type, TYPE_POINTER);
 }
 
+bool qualified_type_is_array(const QualifiedType* type)
+{
+    QualifiedType real_type = qualified_type_get_canonical(type);
+    return qualified_type_is(&real_type, TYPE_ARRAY);
+}
+
 bool qualified_type_is_compound(const QualifiedType* type)
 {
     QualifiedType real_type = qualified_type_get_canonical(type);
-
     return qualified_type_is(&real_type, TYPE_STRUCT) ||
             qualified_type_is(&real_type, TYPE_UNION);
 }

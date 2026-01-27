@@ -1624,7 +1624,14 @@ static Location parse_trailing_semi(Parser* parser, const char* context)
         // brace warning which will need to be fixed anyways so I think this is
         // fine.
         recover(parser, TOK_RCURLY, RECOVER_STOP_AT_SEMI);
-        
+
+        // Finally, if we actually stopped on a semi consume it. We are already
+        // in a bad error path so this extra check if fine to have.
+        if (is_match(parser, TOK_SEMI))
+        {
+            consume(parser);
+        }
+
         return LOCATION_INVALID;
     }
 
@@ -2446,7 +2453,7 @@ static void parse_skip_function_body(Parser* parser)
 static Declaration* parse_function_definition(Parser* parser,
         Declarator* declarator)
 {
-    assert(declarator_has_function(declarator));
+    assert(declarator_is_function(declarator));
     assert(!is_match(parser, TOK_SEMI));
 
     // Set that this is a function definition so that when we are handling the
@@ -2511,7 +2518,7 @@ static Declaration* parse_function_definition(Parser* parser,
 
 static bool is_function_definition(Parser* parser, Declarator* declarator)
 {
-    assert(declarator_has_function(declarator));
+    assert(declarator_is_function(declarator));
 
     // Still true even if we're a knr function!
     if (is_match(parser, TOK_LCURLY))
@@ -2616,7 +2623,7 @@ static bool maybe_parse_function(Parser* parser, Declarator* declarator,
     // Additionally, clang seems to behave that if we don't have a '=', ',', or
     // ';', and we are a function declaration, then we MUST have a definiton.
     // So copy this behaviour.
-    if (declarator_has_function(declarator) && !has_declaration(parser))
+    if (declarator_is_function(declarator) && !has_declaration(parser))
     {
         // Now check we have a valid context for being able to parse a function
         // definition. Knowing that it should be allow and that we might want
@@ -3020,6 +3027,8 @@ static void parse_direct_declarator(Parser* parser, Declarator* declarator)
         Location current = current_token_location(parser);
         diagnostic_error_at(parser->dm, current, message);
 
+        recover(parser, TOK_SEMI, RECOVER_NONE);
+
         declarator_set_invalid(declarator);
         return;
     }
@@ -3150,12 +3159,10 @@ static void parse_struct_declaration_list(Parser* parser, Declaration* decl,
     assert(is_match(parser, TOK_LCURLY));
     
     Location l_curly = consume(parser);
-    Location r_curly = LOCATION_INVALID;
-    if (try_match(parser, TOK_RCURLY, &r_curly))
+    if (is_match(parser, TOK_RCURLY))
     {
-        diagnostic_error_at(parser->dm, r_curly, "empty %s is not supported",
-                is_struct ? "struct" : "union");
-        return;
+        diagnostic_warning_at(parser->dm, current_token_location(parser),
+                "empty %s is a GNU extension", is_struct ? "struct" : "union");
     }
 
     // Create and push our member scope.
@@ -3189,6 +3196,7 @@ static void parse_struct_declaration_list(Parser* parser, Declaration* decl,
     scope_delete(&member_scope);
 
     // Try to match the closign '}'
+    Location r_curly = LOCATION_INVALID;
     if (!try_match(parser, TOK_RCURLY, &r_curly))
     {
         Location current = current_token_location(parser);
@@ -3287,7 +3295,6 @@ static void parse_enumerator_list(Parser* parser, Declaration* enum_decl)
     }
 
     Declaration* previous = NULL;
-    // Make sure we don't infinitely loop
     while (!is_match(parser, TOK_EOF))
     {
         // Here parse the enumerator declaration placing it in the symbol table
@@ -3335,7 +3342,7 @@ static void parse_enumerator_list(Parser* parser, Declaration* enum_decl)
         previous = constant_decl;
 
         // Now see if we are at the end and finish the definition  
-        if (!is_match_two(parser, TOK_RCURLY, TOK_COMMA))      
+        if (!is_match_two(parser, TOK_RCURLY, TOK_COMMA))
         {
             if (is_match(parser, TOK_IDENTIFIER))
             {
@@ -3345,19 +3352,18 @@ static void parse_enumerator_list(Parser* parser, Declaration* enum_decl)
                 continue;
             }
             
-            if (is_match(parser, TOK_SEMI))
+            if (is_match(parser, TOK_SEMI) && expression == NULL)
             {
                 diagnostic_error_at(parser->dm, current_token_location(parser),
                         "expected '= constant-expression' or end of "
                         "enumerator definition");
+                recover(parser, TOK_RCURLY, RECOVER_NONE);
                 break;
             }
             
-            // Otherwise, recover by finding the next enumerator or the end
             diagnostic_error_at(parser->dm, current_token_location(parser),
                     "expected ',' or '}' after enumerator");
-            recover_two(parser, TOK_COMMA, TOK_RCURLY,
-                    RECOVER_STOP_AT_SEMI);
+            recover_two(parser, TOK_COMMA, TOK_RCURLY, RECOVER_NONE);
         }
 
         if (is_match(parser, TOK_COMMA))

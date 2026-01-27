@@ -7,6 +7,7 @@
 #include <assert.h>
 
 #include "parse/ast_allocator.h"
+#include "parse/compound_layout_calculator.h"
 #include "parse/expression_eval.h"
 #include "util/panic.h"
 
@@ -913,9 +914,21 @@ static QualifiedType process_array_type(SemanticChecker* sc, Declarator* d,
         const char* string = name != NULL ? name->string.ptr : "type name";
         diagnostic_error_at(sc->dm, array->lbracket,
                 "'%s' declared as array of functions", string);
-            
-        // Recover by making it an int
         return semantic_checker_get_int_type(sc);
+    }
+
+    // Also check that a struct with a flexible array is not used as an array
+    if (qualified_type_is_compound(&real_type))
+    {
+        Declaration* decl = qualified_type_struct_get_declaration(&real_type);
+        if (declaration_struct_get_flexible_array(decl))
+        {
+            bool is_struct = qualified_type_is(&real_type, TYPE_STRUCT);
+            diagnostic_warning_at(sc->dm, array->lbracket,
+                    "'%s %s' may not be used as an array element due to "
+                    "flexible array member", is_struct ? "struct" : "union",
+                    declaration_get_identifier(decl)->string.ptr);
+        }
     }
 
     // TODO: will eventually need for work for vlas and other things.
@@ -944,8 +957,7 @@ static QualifiedType process_array_type(SemanticChecker* sc, Declarator* d,
             if (int_value == 0)
             {
                 diagnostic_error_at(sc->dm, expression_get_location(expression),
-                        "zero size arrays are an unimplemented extension");
-
+                        "ISO C forbids zero-sized arrays");
                 *invalid = true;
                 return semantic_checker_get_int_type(sc);
             }
@@ -2623,79 +2635,90 @@ void semantic_checker_check_externals(SemanticChecker* sc)
     }
 }
 
-// Struct to hold information for calculating the layout of a structure or
-// union whilst we are doing so. Holds the current number of bytes that we are
-// from the start of the struct, as well as the number of bits for fine grained
-// control.
-typedef struct CompoundOffset {
-    size_t bytes;
-    size_t bits;
-} CompoundOffset;
-
-static void semantic_checker_calculate_struct_layout(SemanticChecker* sc,
-        Declaration* struct_decl)
+static void semantic_checker_check_struct_fields(SemanticChecker* sc,
+        Declaration* declaration)
 {
-    assert(declaration_is(struct_decl, DECLARATION_STRUCT));
-    // panic("cannot calculate struct layout at this time");
-}
-
-static void semantic_checker_calculate_union_layout(SemanticChecker* sc,
-        Declaration* union_decl)
-{
-    assert(declaration_is_valid(union_decl));
-    assert(declaration_is(union_decl, DECLARATION_UNION));
-
-    // Start by getting the raw Type* from the declaration so that we can make
-    // the modifications we need to it.
-    QualifiedType type = declaration_get_type(union_decl);
-    Type* compound = qualified_type_get_raw(&type);
-
-    assert(type_is(compound, TYPE_UNION));
-
-    size_t max_size = 0;
-    size_t max_alignment = 0;
-
-    DeclarationList members = declaration_struct_get_members(union_decl);
-    DeclarationListEntry* member = declaration_list_iter(&members);
-    for (; member != NULL; member = declaration_list_next(member))
+    if (!declaration_is_valid(declaration))
     {
-        Declaration* member_decl = declaration_list_entry_get(member);
-        assert(declaration_is(member_decl, DECLARATION_FIELD));
-
-        // The only real restriction we have here is that we cannot have a
-        // flexible member in the union at all. Even at the end, so check for 
-        // this and error if we encounter it.
-        if (declaration_field_is_fexible_array(member_decl))
-        {
-            Identifier* id = declaration_get_identifier(member_decl);
-            diagnostic_error_at(sc->dm, declaration_get_location(member_decl),
-                    "flexible array member '%s' in a union", id->string.ptr);
-            declaration_set_invalid(union_decl);
-            return;
-        }
-
-        QualifiedType member_type = declaration_get_type(member_decl);
-
-        size_t member_size = qualified_type_get_size(&member_type);
-        size_t member_align = qualified_type_get_align(&member_type);
-
-        // Increase the max size and member size as needed.
-        if (max_size < member_size)
-        {
-            max_size = member_size;
-        }
-
-        if (max_alignment < member_align)
-        {
-            max_alignment = member_align;
-        }
+        return;
     }
 
-    // Okay, we have now found our size and alignment that we need our union to
-    // be. So we need to make sure this is not lost and do some bookkeeping.
+    DeclarationList members = declaration_struct_get_members(declaration);
+    DeclarationListEntry* member_entry = declaration_list_iter(&members);
     
+    size_t named_fields = 0;
+    size_t fields = 0;
+    bool is_union = declaration_is(declaration, DECLARATION_UNION);
 
-    // printf("size: %zu, alignment: %zu\n", max_size, max_alignment);
+    while (member_entry != NULL)
+    {
+        // Get the member and if it is the last entry
+        Declaration* member = declaration_list_entry_get(member_entry);
+        bool has_next = (declaration_list_next(member_entry) != NULL);
+
+        // Increment our field counts accordingly.
+        if (declaration_has_identifier(member))
+        {
+            named_fields++;
+        }
+        fields++;
+
+        // Check that if we have a flexible array member that it is okay
+        bool flex_array = declaration_field_is_fexible_array(member);
+        if (flex_array && (is_union || has_next || (named_fields == 1)))
+        {
+            const char* msg = NULL;
+            if (is_union)
+            {
+                msg = "flexible array member '%s' in union";
+            }
+            else if (has_next)
+            {
+                msg = "flexible array member '%s' is not at the end of struct";
+            }
+            else if (named_fields == 1)
+            {
+                msg = "flexible array member '%s' in otherwise empty struct";
+            }
+
+            Location location = declaration_get_location(member);
+            Identifier* name = declaration_get_identifier(member);
+            diagnostic_error_at(sc->dm, location, msg, name->string.ptr);
+            declaration_set_invalid(member);
+            declaration_set_invalid(declaration);
+        }
+        else if (flex_array)
+        {
+            declaration_struct_set_flexible_array(declaration);
+        }
+
+        // Check that we aren't nesting a compound member with a flexible array
+        QualifiedType type = declaration_get_type(member);
+        if (qualified_type_is_compound(&type))
+        {
+            Declaration* decl = qualified_type_struct_get_declaration(&type);
+            if (declaration_struct_get_flexible_array(decl))
+            {
+                Identifier* name = declaration_get_identifier(member);
+                diagnostic_warning_at(sc->dm, declaration_get_location(member),
+                        "'%s' may not be nested in a %s due to flexible "
+                        "array member", name->string.ptr,
+                        is_union ? "union" : "struct");
+            }
+        }
+
+        // Get the next entry and continue
+        member_entry = declaration_list_next(member_entry);
+    }
+
+    // Also check that we actually have a single named field (unless we are an
+    // empty struct/union)
+    if (fields != 0 && named_fields == 0)
+    {
+        diagnostic_warning_at(sc->dm, declaration_get_location(declaration),
+                "%s without named members is a GNU extension",
+                is_union ? "union" : "struct");
+    }
 }
 
 void semantic_checker_finish_struct_declaration(SemanticChecker* sc,
@@ -2704,25 +2727,20 @@ void semantic_checker_finish_struct_declaration(SemanticChecker* sc,
     assert(declaration_is(struct_declaration, DECLARATION_STRUCT) ||
             declaration_is(struct_declaration, DECLARATION_UNION));
 
+    semantic_checker_check_struct_fields(sc, struct_declaration);
+
     // Start by setting the struct declaration to be considered complete so
     // that even if errors occur when finishing the definition then we still
     // leave with a complete struct.
     declaration_struct_set_complete(struct_declaration);
 
+    // Skip calcualting the layout if the declaration is invalid
     if (!declaration_is_valid(struct_declaration))
     {
         return;
     }
 
-    // Okay, now go and calculate the layour of the struct/union that we have
-    if (declaration_is(struct_declaration, DECLARATION_STRUCT))
-    {
-        semantic_checker_calculate_struct_layout(sc, struct_declaration);
-    }
-    else
-    {
-        semantic_checker_calculate_union_layout(sc, struct_declaration);
-    }
+    calculate_compound_layout(sc->dm, struct_declaration);
 }
 
 static Declaration* semantic_checker_create_enum_constant(SemanticChecker* sc,
@@ -2741,8 +2759,9 @@ Declaration* semantic_checker_handle_enum_constant(SemanticChecker* sc,
             false);
     if (previous != NULL)
     {
-        diagnostic_error_at(sc->dm, location, "redefinition of '%s'",
-                identifier->string.ptr);
+        const char* msg = declaration_is(previous, DECLARATION_ENUM_CONSTANT)
+                ? "redefinition of enumerator '%s'" : "redefinition of '%s'";
+        diagnostic_error_at(sc->dm, location, msg, identifier->string.ptr);
         return declaration_create_error(&sc->ast->ast_allocator, location);
     }
 
@@ -2755,8 +2774,8 @@ Declaration* semantic_checker_handle_enum_constant(SemanticChecker* sc,
         if (!expression_is_invalid(expression))
         {
             diagnostic_error_at(sc->dm, expression_get_location(expression),
-                "enumerator value for '%s' is not an integer constant "
-                "expression", identifier->string.ptr);
+                    "enumerator value for '%s' is not an integer constant "
+                    "expression", identifier->string.ptr);
         }
 
         value = 0;
@@ -2764,29 +2783,20 @@ Declaration* semantic_checker_handle_enum_constant(SemanticChecker* sc,
     else if (expression != NULL)
     {
         ExpressionIntegerValue integer_value = {0};
-        bool success = expression_fold_to_integer_constant(expression,
-                &integer_value);
+        expression_fold_to_integer_constant(expression, &integer_value);
         
-        // if conversion failed just give it the value of 0 and stop here.
-        if (!success)
-        {
-            value = 0;
-        }
-        else
-        {
-            // Get the integer value
-            int64_t int_value = expression_integer_value_get(&integer_value);
+        // Get the integer value
+        int64_t int_value = expression_integer_value_get(&integer_value);
 
-            // Check for overflow
-            if (int_value > INT_MAX || int_value < INT_MIN)
-            {
-                diagnostic_error_at(sc->dm, location,
-                        "ISO C restricts enumerator values to range of 'int' "
-                        "(%ld is too large)", int_value);
-            }
-
-            value = (int) int_value;
+        // Check for overflow
+        if (int_value > INT_MAX || int_value < INT_MIN)
+        {
+            diagnostic_error_at(sc->dm, location,
+                    "ISO C restricts enumerator values to range of 'int' "
+                    "(%ld is too large)", int_value);
         }
+
+        value = (int) int_value;
     }
     else if (last_decl != NULL)
     {
@@ -2822,8 +2832,6 @@ Declaration* semantic_checker_handle_enum_constant(SemanticChecker* sc,
 static Declaration* semantic_checker_create_enum(SemanticChecker* sc,
         Location enum_location, Identifier* name, bool anonymous)
 {
-    // NOTE: if the enum is anonymous it is not inserted into the tag symbols
-
     // Create the enum type and a declaration for the enum itself
     QualifiedType type = type_create_enum(&sc->ast->ast_allocator,
             sc->ast->base_types.type_signed_int);
@@ -3119,15 +3127,6 @@ void sematic_checker_act_on_end_of_function(SemanticChecker* sc)
 // -----------------------------------------------------------------------------
 // Start functions for expressions
 // -----------------------------------------------------------------------------
-
-// TODO: make some functions for lvalues and stuff
-
-// TODO: make functions for promoting integers, array to pointer conversion, and
-// TODO: anything else that we might need to use in order to properly handle
-// TODO: expression types.
-
-// TODO: need to have some lvalue to rvalue conversion taking place. and also
-// TODO: need to have integer conversion to appropriate types taking place
 
 static Expression* semantic_checker_create_implicit_cast(SemanticChecker* sc,
         Expression* expression, QualifiedType cast_to)
@@ -6274,9 +6273,30 @@ static bool semantic_checker_check_members_initialization(SemanticChecker* sc,
     DeclarationList members = declaration_struct_get_members(decl);
     DeclarationListEntry* entry = declaration_list_iter(&members);
 
+    InitializerListMember* member = initializer_list_member_get(init);
+    while (member != NULL && entry != NULL)
+    {
+        Initializer* subinit = initializer_list_member_get_initializer(member);
 
+        Declaration* member_decl = declaration_list_entry_get(entry);
+        QualifiedType member_type = declaration_get_type(member_decl);
 
-    return false;
+        // TODO: we cannot simple go and check the initializer for the member
+        // TODO: we have to do some special stuff since we can have missing
+        // TODO: braces in an initializer...
+        bool init_okay = semantic_checker_check_initializer(sc, subinit,
+                member_type, false);
+        if (!init_okay)
+        {
+            return false;
+        }
+
+        // Get the next member and entry.
+        member = initializer_list_member_get_next(member);
+        entry = declaration_list_next(entry);
+    }
+
+    return true;
 }
 
 static bool semantic_checker_check_compound_initialization(SemanticChecker* sc,
