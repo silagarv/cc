@@ -32,6 +32,11 @@ char* state_get_argument(const CommandLineState* state)
     return state->argv[state->i];
 }
 
+static bool string_is(const char* value, const char* string)
+{
+    return strcmp(value, string) == 0;
+}
+
 static bool is_compiler_argument(const char* arg)
 {
     assert(arg != NULL);
@@ -43,6 +48,12 @@ static bool is_compiler_argument(const char* arg)
 static bool argument_is(const char* value, const char* arg)
 {
     return strcmp(arg, value) == 0;
+}
+
+static bool argument_starts_with(const char* value, const char* arg)
+{
+    size_t value_length = strlen(value);
+    return strncmp(value, arg, value_length) == 0;
 }
 
 static CompilerOptions compiler_options_create(void)
@@ -123,6 +134,55 @@ static bool handle_outfile(CompilerOptions* opts, DiagnosticManager* dm,
     return true;
 }
 
+static bool handle_standard(CompilerOptions* opts, DiagnosticManager* dm,
+        CommandLineState* state, char* argument)
+{
+    assert(is_compiler_argument(argument));
+
+    static const struct {
+        const char* value;
+        LangStandard standard;
+    } standards[] =
+    {
+        { "c89", LANG_STANDARD_C89},
+        { "c99", LANG_STANDARD_C99},
+        { "c11", LANG_STANDARD_C11},
+        { "c23", LANG_STANDARD_C23}
+    };
+    static size_t num_standards = sizeof(standards) / sizeof(standards[0]);
+
+    // Make sure that the arugment has an '=' sign
+    if (!argument_starts_with("-std=", argument))
+    {
+        return false;
+    }
+
+    // Eat the argument since we don't need it anymore
+    state_eat_argument(state);
+
+    // Get the remaining part of the argument.
+    size_t prefix_len = strlen("-std=");
+    char* remaining = argument + prefix_len;
+
+    // Find the standard that this corrosponds to
+    for (size_t i = 0; i < num_standards; i++)
+    {
+        if (string_is(standards[i].value, remaining))
+        {
+            opts->standard = standards[i].standard;
+            if (standards[i].standard != LANG_STANDARD_C99)
+            {
+                diagnostic_warning(dm, "only c99 is supported but got given "
+                        "'%s'", remaining);
+            }
+            return true;
+        }
+    }
+
+    diagnostic_error(dm, "invalid value '%s' in 'std='", remaining);    
+    return true;
+}
+
 static void parse_compiler_option(CompilerOptions* opts, DiagnosticManager* dm,
         CommandLineState* state)
 {
@@ -140,10 +200,13 @@ static void parse_compiler_option(CompilerOptions* opts, DiagnosticManager* dm,
     {
         return;
     }
-
-    diagnostic_error(dm, "unknown argument '%s'", current_arg);
+    else if (handle_standard(opts, dm, state, current_arg))
+    {
+        return;
+    }
 
     // We didn't find anything so eat the argument and error.
+    diagnostic_error(dm, "unknown argument '%s'", current_arg);
     state_eat_argument(state);
 }
 
