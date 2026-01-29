@@ -1,0 +1,75 @@
+#include "codegen_expression.h"
+
+#include "parse/expression.h"
+
+void codegen_expression(const Expression* expression)
+{
+    switch (expression_get_kind(expression))
+    {
+        case EXPRESSION_ARRAY_DECAY:
+        case EXPRESSION_LVALUE_CAST:
+        case EXPRESSION_REFERENCE:
+        case EXPRESSION_ENUMERATION_CONSTANT:
+        case EXPRESSION_INTEGER_CONSTANT:    
+        case EXPRESSION_FLOATING_CONSTANT:
+        case EXPRESSION_CHARACTER_CONSTANT:
+        case EXPRESSION_STRING_LITERAL:
+        case EXPRESSION_ARRAY_ACCESS:
+        case EXPRESSION_FUNCTION_CALL:
+        case EXPRESSION_MEMBER_ACCESS:
+        case EXPRESSION_MEMBER_POINTER_ACCESS:
+        case EXPRESSION_COMPOUND_LITERAL:
+        case EXPRESSION_SIZEOF_TYPE:
+        case EXPRESSION_SIZEOF_EXPRESSION:
+        case EXPRESSION_CAST:
+        case EXPRESSION_CAST_IMPLICIT:
+        case EXPRESSION_UNARY_ADDRESS:
+        case EXPRESSION_UNARY_DEREFERENCE:
+        case EXPRESSION_UNARY_PLUS:
+        case EXPRESSION_UNARY_MINUS:
+        case EXPRESSION_UNARY_BIT_NOT:
+        case EXPRESSION_UNARY_NOT:
+        case EXPRESSION_UNARY_PRE_INCREMENT:
+        case EXPRESSION_UNARY_PRE_DECREMENT:
+        case EXPRESSION_UNARY_POST_INCREMENT:
+        case EXPRESSION_UNARY_POST_DECREMENT:
+        case EXPRESSION_BINARY_TIMES:
+        case EXPRESSION_BINARY_DIVIDE:
+        case EXPRESSION_BINARY_MODULO:
+        case EXPRESSION_BINARY_ADD:
+        case EXPRESSION_BINARY_SUBTRACT:
+        case EXPRESSION_BINARY_SHIFT_LEFT:
+        case EXPRESSION_BINARY_SHIFT_RIGHT:
+        case EXPRESSION_BINARY_LESS_THAN:
+        case EXPRESSION_BINARY_GREATER_THAN:
+        case EXPRESSION_BINARY_LESS_THAN_EQUAL:
+        case EXPRESSION_BINARY_GREATER_THAN_EQUAL:
+        case EXPRESSION_BINARY_EQUAL:
+        case EXPRESSION_BINARY_NOT_EQUAL:
+        case EXPRESSION_BINARY_AND:
+        case EXPRESSION_BINARY_XOR:
+        case EXPRESSION_BINARY_OR:
+        case EXPRESSION_BINARY_LOGICAL_AND:
+        case EXPRESSION_BINARY_LOGICAL_OR:
+        case EXPRESSION_BINARY_ASSIGN:
+        case EXPRESSION_BINARY_TIMES_ASSIGN:
+        case EXPRESSION_BINARY_DIVIDE_ASSIGN:
+        case EXPRESSION_BINARY_MODULO_ASSIGN:
+        case EXPRESSION_BINARY_ADD_ASSIGN:
+        case EXPRESSION_BINARY_SUBTRACT_ASSIGN:
+        case EXPRESSION_BINARY_SHIFT_LEFT_ASSIGN:
+        case EXPRESSION_BINARY_SHIFT_RIGHT_ASSIGN:
+        case EXPRESSION_BINARY_AND_ASSIGN:
+        case EXPRESSION_BINARY_XOR_ASSIGN:
+        case EXPRESSION_BINARY_OR_ASSIGN:
+        case EXPRESSION_CONDITIONAL:
+        case EXPRESSION_COMMA:
+        case EXPRESSION_PARENTHESISED:
+            return;
+
+        case EXPRESSION_ERROR:
+        default:
+            panic("attempting codegen on error or unknown expression");
+            return;
+    }
+}

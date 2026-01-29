@@ -11,7 +11,7 @@ Ast ast_create(void)
     {
         .ast_allocator = allocator,
         .base_types = type_builtins_initialise(&allocator),
-        .top_level_decls = declaration_vector_create(1)
+        .top_level_decls = {0}
     };
 
     // Set the size type to be unsigned long long
@@ -27,7 +27,26 @@ Ast ast_create(void)
 
 void ast_delete(Ast* ast)
 {
-    declaration_vector_free(&ast->top_level_decls, NULL);
     ast_allocator_delete(&ast->ast_allocator);
+}
+
+void ast_set_top_level_decls(Ast* ast, DeclarationList decls)
+{
+    ast->top_level_decls = decls;
+}
+
+DeclarationList ast_get_top_level_decls(const Ast* ast)
+{
+    return ast->top_level_decls;
+}
+
+void ast_set_external_decls(Ast* ast, DeclarationList decls)
+{
+    ast->external_decls = decls;
+}
+
+DeclarationList ast_get_external_decls(const Ast* ast)
+{
+    return ast->external_decls;
 }
 

@@ -47,6 +47,6 @@ typedef struct Parser {
     // TODO: track brackets???
 } Parser;
 
-void parse_translation_unit(DiagnosticManager* dm, Preprocessor* pp);
+Ast parse_translation_unit(DiagnosticManager* dm, Preprocessor* pp);
 
 #endif /* PARSER_H */

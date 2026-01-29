@@ -11,9 +11,19 @@
 
 vector_of_impl(Statement*, Statement, statement)
 
+StatementType statement_get_kind(const Statement* stmt)
+{
+    return stmt->base.type;
+}
+
 void statement_set_next(Statement* stmt, Statement* next)
 {
     stmt->base.next = next;
+}
+
+Statement* statement_get_next(const Statement* stmt)
+{
+    return stmt->base.next;
 }
 
 static Statement* statement_create_base(AstAllocator* allocator,
@@ -110,6 +120,13 @@ Statement* statement_create_compound(AstAllocator* allocator,
     stmt->compound_stmt.first = first;
 
     return stmt;
+}
+
+Statement* statement_compound_get_first(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_COMPOUND));
+
+    return stmt->compound_stmt.first;
 }
 
 Statement* statement_create_expression(AstAllocator* allocator, 
@@ -279,6 +296,11 @@ Statement* statement_create_return(AstAllocator* allocator,
     stmt->return_stmt.expression_opt = expression;
 
     return stmt;
+}
+
+Expression* statement_return_get_expression(const Statement* stmt)
+{
+    return stmt->return_stmt.expression_opt;
 }
 
 Statement* statement_create_empty(AstAllocator* allocator, 

@@ -9,6 +9,7 @@ typedef enum LangStandard {
     LANG_STANDARD_C89, // C89 (unsupported)
     LANG_STANDARD_C99, // C99 (supported)
     LANG_STANDARD_C11, // C11 (unsupported)
+    LANG_STANDARD_C17, // C17 (unsupported)
     LANG_STANDARD_C23,  // C23 (unsupported)
 } LangStandard;
 

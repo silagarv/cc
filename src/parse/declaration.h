@@ -544,6 +544,7 @@ void declaration_function_add_decl(Declaration* function, Declaration* decl);
 bool declaration_function_has_body(const Declaration* declaration);
 void declaration_function_set_body(Declaration* declaraiton,
         union Statement* body);
+union Statement* declaration_function_get_body(const Declaration* declaration);
 void declaration_function_set_definition(Declaration* declaration,
         Declaration* definition);
 Declaration* declaration_function_get_definition(Declaration* declaration);

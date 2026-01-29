@@ -64,5 +64,6 @@ void symbol_table_insert(SymbolTable* table, Declaration* symbol)
 
     assert(!symbol_table_contains(table, symbol->base.identifier));
 
-    hash_map_insert(&table->symbols, symbol->base.identifier, symbol);
+    Identifier* id = declaration_get_identifier(symbol);
+    hash_map_insert(&table->symbols, id, symbol);
 }

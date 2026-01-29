@@ -11,8 +11,11 @@
 #include "lex/preprocessor.h"
 
 #include "parse/parser.h"
+#include "parse/ast.h"
 
-bool get_filepath(Filepath* path, const char* argv)
+#include "codegen/codegen.h"
+
+static bool get_filepath(Filepath* path, const char* argv)
 {
     if (argv == NULL)
     {
@@ -31,7 +34,7 @@ bool get_filepath(Filepath* path, const char* argv)
     return true;
 }
 
-bool compiler_driver_parse_translation_unit(CompilerDriver* driver)
+static bool compiler_driver_process_translation_unit(CompilerDriver* driver)
 {
     bool okay = true;
 
@@ -55,9 +58,24 @@ bool compiler_driver_parse_translation_unit(CompilerDriver* driver)
     // Now attempt to parse the translation unit here.
     Preprocessor pp;
     preprocessor_create(&pp, &driver->dm, &sm, source);
-    parse_translation_unit(&driver->dm, &pp);
+
+    // Parse the translation unit
+    Ast ast = parse_translation_unit(&driver->dm, &pp);
+
+    // Finally, check if there were any errors during parsing
+    if (diagnostic_manager_get_error_count(&driver->dm) != 0)
+    {
+        okay = false;
+        goto no_codegen;
+    }
+
+    // Now try to do codegen for the AST...
+    codegen_translation_unit(&ast);
+
+    // And make sure to free the ast and the preprocessor
+no_codegen:
+    ast_delete(&ast);
     preprocessor_delete(&pp);
-    diagnostic_emit_count(&driver->dm);
 
 no_file:
     source_manager_delete(&sm);
@@ -65,16 +83,15 @@ no_file:
     return okay;
 }
 
-int compiler_driver_execute_options(CompilerDriver* driver)
+static int compiler_driver_execute(CompilerDriver* driver)
 {
     // First try to parse the translation unit.
-    if (compiler_driver_parse_translation_unit(driver) == false)
+    if (compiler_driver_process_translation_unit(driver) == false)
     {
         return EXIT_FAILURE;
     }
 
-    // TODO: something? like codegen and that?
-
+    // Finally, emit the diagnostic count right at the very end.
     return EXIT_SUCCESS;
 }
 
@@ -94,5 +111,5 @@ int compiler_driver_invoke(int argc, char** argv)
 
     // Now we know we have good options we can go ahead and invoke the compiler
     // on the options.
-    return compiler_driver_execute_options(&driver);
+    return compiler_driver_execute(&driver);
 }

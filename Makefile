@@ -88,9 +88,12 @@ PARSE = src/parse/ast_allocator.c \
 	src/parse/parser.c \
 	src/parse/semantic.c
 
-# CODEGEN = src/codegen/gen.c
+CODEGEN = src/codegen/codegen.c \
+	src/codegen/codegen_expression.c \
+	src/codegen/codegen_statement.c \
+	src/codegen/codegen_declaration.c
 
-SRCS = $(UTIL) $(FILES) $(DRIVER) $(LEX) $(PARSE) src/main.c
+SRCS = $(UTIL) $(FILES) $(DRIVER) $(LEX) $(PARSE) $(CODEGEN) src/main.c
 
 BUILDDIR = build
 OBJS = $(patsubst src/%.c, $(BUILDDIR)/%.o, $(SRCS))

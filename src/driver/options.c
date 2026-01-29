@@ -124,6 +124,7 @@ static bool handle_outfile(CompilerOptions* opts, DiagnosticManager* dm,
     if (!state_has_next_argument(state))
     {
         diagnostic_error(dm, "missing filename after '-o'");
+        state->options_okay = false;
         return true;
     }
     
@@ -144,10 +145,27 @@ static bool handle_standard(CompilerOptions* opts, DiagnosticManager* dm,
         LangStandard standard;
     } standards[] =
     {
-        { "c89", LANG_STANDARD_C89},
-        { "c99", LANG_STANDARD_C99},
-        { "c11", LANG_STANDARD_C11},
-        { "c23", LANG_STANDARD_C23}
+        // C89 Standards
+        { "c89",                LANG_STANDARD_C89},
+        { "c90",                LANG_STANDARD_C89},
+        { "iso9899:1990",       LANG_STANDARD_C89},
+
+        // C99 Standards
+        { "c99",                LANG_STANDARD_C99},
+        { "iso9899:1999",       LANG_STANDARD_C99},
+
+        // C11 Standards
+        { "c11",                LANG_STANDARD_C11},
+        { "iso9899:2011",       LANG_STANDARD_C11},
+
+        // C17 Standards
+        { "c17",                LANG_STANDARD_C17},
+        { "iso9899:2017",       LANG_STANDARD_C17},
+        { "c18",                LANG_STANDARD_C17},
+        { "iso9899:2018",      LANG_STANDARD_C17},
+
+        // C23 Standards
+        { "c23",                LANG_STANDARD_C23}
     };
     static size_t num_standards = sizeof(standards) / sizeof(standards[0]);
 
@@ -172,14 +190,17 @@ static bool handle_standard(CompilerOptions* opts, DiagnosticManager* dm,
             opts->standard = standards[i].standard;
             if (standards[i].standard != LANG_STANDARD_C99)
             {
-                diagnostic_warning(dm, "only c99 is supported but got given "
+                diagnostic_error(dm, "only c99 is supported but got given "
                         "'%s'", remaining);
+                state->options_okay = false;
             }
             return true;
         }
     }
 
-    diagnostic_error(dm, "invalid value '%s' in 'std='", remaining);    
+    // Report error and set options state
+    diagnostic_error(dm, "invalid value '%s' in 'std='", remaining); 
+    state->options_okay = false;
     return true;
 }
 
@@ -188,14 +209,14 @@ static void parse_compiler_option(CompilerOptions* opts, DiagnosticManager* dm,
 {
     char* current_arg = state_get_argument(state);
     
-    // First see if this is potentially a file for us to use.
+    // First see if this is potentially a file for us to use, and handle if so
+    // otherwise go and try to handle any potential argument that we have
     if (!is_compiler_argument(current_arg))
     {
         handle_infile(opts, dm, state, current_arg);
         return;
     }
 
-    // Otherwise we need to handle an actual argument here
     if (handle_outfile(opts, dm, state, current_arg))
     {
         return;

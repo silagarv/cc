@@ -250,7 +250,9 @@ vector_of_decl(Statement*, Statement, statement);
 // TODO: some of below needs to be redone since some of these statements need
 // to exist before we can make a body
 
+StatementType statement_get_kind(const Statement* stmt);
 void statement_set_next(Statement* stmt, Statement* next);
+Statement* statement_get_next(const Statement* stmt);
 
 Statement* statement_create_error(AstAllocator* allocator);
 
@@ -270,6 +272,7 @@ Statement* statement_create_default(AstAllocator* allocator,
 
 Statement* statement_create_compound(AstAllocator* allocator,
         Location opening_curly, Location closing_curly, Statement* first);
+Statement* statement_compound_get_first(const Statement* stmt);
 
 Statement* statement_create_expression(AstAllocator* allocator, 
         Location semi_location, Expression* expression);
@@ -317,6 +320,7 @@ Statement* statement_create_break(AstAllocator* allocator,
 Statement* statement_create_return(AstAllocator* allocator,
         Location return_location, Location semi_location,
         Expression* expression);
+Expression* statement_return_get_expression(const Statement* stmt);
 
 Statement* statement_create_empty(AstAllocator* allocator,
         Location semi_location);

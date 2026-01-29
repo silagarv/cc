@@ -3173,19 +3173,16 @@ static void parse_direct_declarator(Parser* parser, Declarator* declarator)
         Location lparen_loc = consume(parser);
 
         parse_declarator_internal(parser, declarator);
-        
-        if (!is_match(parser, TOK_RPAREN))
+
+        Location rparen_loc = LOCATION_INVALID;
+        if (!try_match(parser, TOK_RPAREN, &rparen_loc))
         {
-            diagnostic_error_at(parser->dm, current_token_location(parser),
-                    "expected ')'");
+            // Error but don't return from the function in case we have a tail
+            // end to parse.
+            diagnostic_error_at(parser->dm, rparen_loc, "expected ')'");
             recover(parser, TOK_RPAREN,
                     RECOVER_EAT_TOKEN | RECOVER_STOP_AT_SEMI);
-            if (!is_match(parser, TOK_RPAREN))
-            {
-                return;
-            }
         }
-        Location rparen_loc = consume(parser);
     }
     else if (!declarator_identifier_required(declarator))
     {
@@ -4145,6 +4142,14 @@ static void parse_translation_unit_internal(Parser* parser)
     // Finally, after EOF, we can check all of our external definitions.
     semantic_checker_check_externals(&parser->sc);
 
+    // Ast the last thing we do, set our top level and external declarations so
+    // that we are able to keep using these.
+    DeclarationList top_level_decls = scope_get_declarations(&file);
+    ast_set_top_level_decls(&parser->ast, top_level_decls);
+    
+    DeclarationList external_decls = scope_get_declarations(&externals);
+    ast_set_external_decls(&parser->ast, external_decls);
+
     // Here we can pop and delete since all of our needed decl's are in the top
     // level delcaration vector.
     semantic_checker_pop_scope(&parser->sc);
@@ -4154,7 +4159,7 @@ static void parse_translation_unit_internal(Parser* parser)
     scope_delete(&externals);
 }
 
-void parse_translation_unit(DiagnosticManager* dm, Preprocessor* pp)
+Ast parse_translation_unit(DiagnosticManager* dm, Preprocessor* pp)
 {
     Parser parser = {0};
     parser.dm = dm;
@@ -4168,5 +4173,5 @@ void parse_translation_unit(DiagnosticManager* dm, Preprocessor* pp)
 
     parse_translation_unit_internal(&parser);
 
-    ast_delete(&parser.ast);
+    return parser.ast;
 }

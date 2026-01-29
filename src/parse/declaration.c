@@ -965,6 +965,13 @@ void declaration_function_set_body(Declaration* declaraiton,
     declaraiton->function.function_body = body;
 }
 
+union Statement* declaration_function_get_body(const Declaration* declaration)
+{
+    assert(declaration_function_has_body(declaration));
+
+    return declaration->function.function_body;
+}
+
 void declaration_function_set_definition(Declaration* declaration,
         Declaration* definition)
 {
