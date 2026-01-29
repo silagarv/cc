@@ -366,6 +366,7 @@ static Statement* parse_statement(Parser* parser, bool declaration_allowed);
 
 // All of our functions for parsing declarations / definitions
 // TODO: maybe all of these don't need to return a declaration type???
+static bool is_designation_start(Parser* parser);
 static DesignatorList* parse_designator_list(Parser* parser);
 static Initializer* parse_initializer(Parser* parser);
 static Initializer* parse_initializer_list(Parser* parser);
@@ -494,6 +495,10 @@ static bool is_expression_token(TokenType type)
 
         // Builtin identifiers
         case TOK___func__:
+
+        // Builtin functions with special parsing
+        case TOK___builtin_va_arg:
+        case TOK___builtin_offsetof:
             return true;
 
         default:
@@ -684,7 +689,7 @@ static Expression* parse_string_expression(Parser* parser)
     }
     else
     {
-        // printf("%s\n", string.string.ptr);
+        // ...
     }
 
     return semantic_checker_handle_error_expression(&parser->sc,
@@ -698,6 +703,163 @@ static Expression* parse_builtin_identifier(Parser* parser)
     Location location = consume(parser);
     return semantic_checker_handle_builtin_identifier(&parser->sc,
             location);
+}
+
+static void recover_end_of_builtin(Parser* parser)
+{
+    recover(parser, TOK_RPAREN, RECOVER_EAT_TOKEN | RECOVER_STOP_AT_SEMI);
+}
+
+static Expression* parse_builtin_va_arg(Parser* parser)
+{
+    assert(is_match(parser, TOK___builtin_va_arg));
+
+    Location builtin_loc = consume(parser);
+
+    Location lparen_loc;
+    if (!try_match(parser, TOK_LPAREN, &lparen_loc))
+    {
+        diagnostic_error_at(parser->dm, lparen_loc, "expected '('");
+        recover_end_of_builtin(parser);
+        return semantic_checker_handle_error_expression(&parser->sc,
+                builtin_loc);
+    }
+
+    Expression* expr = parse_assignment_expression(parser);
+
+    if (!try_match(parser, TOK_COMMA, NULL))
+    {
+        diagnostic_error_at(parser->dm, current_token_location(parser),
+                "expected ','");
+        recover_end_of_builtin(parser);
+        return semantic_checker_handle_error_expression(&parser->sc,
+                builtin_loc);
+    }
+
+    if (!is_typename_start(parser, current_token(parser)))
+    {
+        diagnostic_error_at(parser->dm, current_token_location(parser),
+                "expected a type");
+        recover_end_of_builtin(parser);
+        return semantic_checker_handle_error_expression(&parser->sc,
+                builtin_loc);
+    }
+
+    bool okay = true;
+    QualifiedType type = parse_type_name(parser, &okay);
+
+    Location rparen_loc;
+    if (!try_match(parser, TOK_RPAREN, &rparen_loc))
+    {
+        diagnostic_error_at(parser->dm, rparen_loc, "expected ')'");
+        recover_end_of_builtin(parser);
+        return semantic_checker_handle_error_expression(&parser->sc,
+                builtin_loc);
+    }
+
+    // TODO: properly create this expression.
+    return semantic_checker_handle_error_expression(&parser->sc, builtin_loc);
+}
+
+static Expression* parse_builtin_offsetof(Parser* parser)
+{
+    assert(is_match(parser, TOK___builtin_offsetof));
+
+    Location builtin_loc = consume(parser);
+
+    Location lparen_loc;
+    if (!try_match(parser, TOK_LPAREN, &lparen_loc))
+    {
+        diagnostic_error_at(parser->dm, lparen_loc, "expected '('");
+        recover_end_of_builtin(parser);
+        return semantic_checker_handle_error_expression(&parser->sc,
+                builtin_loc);
+    }
+
+    if (!is_typename_start(parser, current_token(parser)))
+    {
+        diagnostic_error_at(parser->dm, current_token_location(parser),
+                "expected a type");
+        recover_end_of_builtin(parser);
+        return semantic_checker_handle_error_expression(&parser->sc,
+                builtin_loc);
+    }
+
+    bool okay = true;
+    QualifiedType type = parse_type_name(parser, &okay);
+
+    // Now try to get the membre designator for it
+    if (!try_match(parser, TOK_COMMA, NULL))
+    {
+        diagnostic_error_at(parser->dm, current_token_location(parser),
+                "expected ','");
+        recover_end_of_builtin(parser);
+        return semantic_checker_handle_error_expression(&parser->sc,
+                builtin_loc);
+    }
+
+    // Now try to get the member designator.
+    if (!is_match(parser, TOK_IDENTIFIER))
+    {
+        diagnostic_error_at(parser->dm, current_token_location(parser),
+                "expected identifier");
+        recover_end_of_builtin(parser);
+        return semantic_checker_handle_error_expression(&parser->sc,
+                builtin_loc);
+    }
+
+    Identifier* id = current_token(parser)->data.identifier;
+    Location id_loc = consume(parser);
+
+    while (true)
+    {
+        if (is_match(parser, TOK_DOT))
+        {
+            Location dot = consume(parser);
+
+            if (!is_match(parser, TOK_IDENTIFIER))
+            {
+                diagnostic_error_at(parser->dm, current_token_location(parser),
+                        "expected identifier");
+                recover_end_of_builtin(parser);
+                return semantic_checker_handle_error_expression(&parser->sc,
+                        builtin_loc);
+            }
+
+            id = current_token(parser)->data.identifier;
+            id_loc = consume(parser);
+        }
+        else if (is_match(parser, TOK_LBRACKET))
+        {
+            Location lbracket_loc = consume(parser);
+            Expression* expr = parse_expression(parser);
+            Location rbracket_loc = LOCATION_INVALID;
+            if (!try_match(parser, TOK_RBRACKET, &rbracket_loc))
+            {
+                diagnostic_error_at(parser->dm, rbracket_loc, "expected ']'");
+                recover_end_of_builtin(parser);
+                return semantic_checker_handle_error_expression(&parser->sc,
+                        builtin_loc);
+            }
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    // Finally, eat the trailing right parenthesis.
+    Location rparen_loc;
+    if (!try_match(parser, TOK_RPAREN, &rparen_loc))
+    {
+        diagnostic_error_at(parser->dm, lparen_loc, "expected ')'");
+        recover_end_of_builtin(parser);
+        return semantic_checker_handle_error_expression(&parser->sc,
+                builtin_loc);
+    }
+
+    // TODO: create this expression properly
+    return semantic_checker_handle_error_expression(&parser->sc, builtin_loc);
 }
 
 static Expression* parse_primary_expression(Parser* parser)
@@ -724,6 +886,15 @@ static Expression* parse_primary_expression(Parser* parser)
         case TOK___func__:
             return parse_builtin_identifier(parser);
 
+        // We imitate both GCC and Clang in that va_arg is the only va_bultin
+        // declared as a token in its own right. Otherwise we parse and handle
+        // the other required builtins elsewhere.
+        case TOK___builtin_va_arg:
+            return parse_builtin_va_arg(parser);
+
+        case TOK___builtin_offsetof:
+            return parse_builtin_offsetof(parser);
+        
         default:
         {
             Location err_loc = current_token_location(parser);
@@ -979,6 +1150,11 @@ static Expression* parse_unary_expression(Parser* parser)
                         sizeof_loc, expr);
             }
         }
+
+        // GNU address of label extension is treated as a unary expression by
+        // GCC (and Clang it seems), so leave this here as a TODO
+        // case TOK_AND_AND:
+        // { ... }
 
         default:
             return parse_postfix_expression(parser);
@@ -2201,15 +2377,16 @@ static DesignatorList* parse_designator_list(Parser* parser)
             return NULL;
         }
 
-        DesignatorList* list = designator_list_create(
-                &parser->ast.ast_allocator, designator);
+        // Create our list member that we are going to use.
+        DesignatorList* l = designator_list_create(&parser->ast.ast_allocator,
+                designator);
         
         // Finally, build our designator list.
         if (start == NULL)
         {
-            start = list;
+            start = l;
         }
-        current = designator_list_set_next(current, list);
+        current = designator_list_set_next(current, l);
     }
  
     return start;
@@ -2263,6 +2440,8 @@ static Initializer* parse_initializer_list(Parser* parser)
     {
         diagnostic_warning_at(parser->dm, lcurly,
                 "use of an empty initializer is a C23 extension");
+        // TODO: i think this return can be removed here and change the
+        // try_match to an is_match
         return semantic_checker_initializer_from_list(&parser->sc, lcurly,
                 NULL, rcurly);
     }
@@ -3685,30 +3864,6 @@ static bool parse_typedef_name(Parser* parser, DeclarationSpecifiers* dspec)
         return true;
     }
 
-    // Okay, we have an identifier but we are allowed a typename still meaning
-    // we have no complex, width, type, or sign specifier. Meaning we could have
-    // some kind of type here since most people wouldnt intentionally write an
-    // implicit int (I hope). Maybe we're missing a tag (enum, struct, union)
-    // keyword? Perform tag lookup and check.
-    // Declaration* maybe_tag = semantic_checker_lookup_missing_tag(&parser->sc,
-    //         ident);
-    // if (maybe_tag != NULL)
-    // {
-    //     // Here we need to make a guess as the intention of the user. Below 
-    //     // assume 'a' is in the tag namespace.
-    //     // const a; 
-    //     //       ^
-    //     // We would agree that this is an attempt at a variable declaration not
-    //     // a missing tag name.
-    //     // So we need some way to determine if we are missing a tag name or not.
-    //     if (is_missing_tag_name(parser))
-    //     {
-    //         DeclarationType kind = declaration_get_kind(maybe_tag);
-    //         const char* tag_name = tag_kind_to_name(kind);
-
-    //     }
-    // }
-
     return false;
 }
 
@@ -3896,7 +4051,7 @@ static Declaration* parse_declaration(Parser* parser, DeclaratorContext context,
     // Check for a possibly empty declaration with a token and pass it to
     // the semantic checker to deal with
     Declaration* decl = NULL;
-    if (is_match(parser, TOK_SEMI))
+    if (is_match_two(parser, TOK_SEMI, TOK_EOF))
     {
         // Process the declaration specifiers and get the enclosing decl if any
         // This would mean for example we parsed a struct. We also know that if

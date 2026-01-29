@@ -185,7 +185,7 @@ void semantic_checker_insert_tag(SemanticChecker* sc, Declaration* decl)
         diagnostic_warning_at(sc->dm, decl->base.location,
                 "declaration of '%s %s' will not be visible outside of this "
                 "function", tag_kind_to_name(decl->base.declaration_type),
-                decl->base.identifier->string.ptr);
+                identifier_cstr(declaration_get_identifier(decl)));
     }
 
     scope_insert_tag(sc->scope, decl);
@@ -911,7 +911,7 @@ static QualifiedType process_array_type(SemanticChecker* sc, Declarator* d,
     if (qualified_type_is(&real_type, TYPE_FUNCTION))
     {
         Identifier* name = declarator_get_identifier(d);
-        const char* string = name != NULL ? name->string.ptr : "type name";
+        const char* string = name != NULL ? identifier_cstr(name) : "type name";
         diagnostic_error_at(sc->dm, array->lbracket,
                 "'%s' declared as array of functions", string);
         return semantic_checker_get_int_type(sc);
@@ -927,7 +927,7 @@ static QualifiedType process_array_type(SemanticChecker* sc, Declarator* d,
             diagnostic_warning_at(sc->dm, array->lbracket,
                     "'%s %s' may not be used as an array element due to "
                     "flexible array member", is_struct ? "struct" : "union",
-                    declaration_get_identifier(decl)->string.ptr);
+                    identifier_cstr(declaration_get_identifier(decl)));
         }
     }
 
@@ -969,7 +969,7 @@ static QualifiedType process_array_type(SemanticChecker* sc, Declarator* d,
                 {
                     diagnostic_error_at(sc->dm, loc,
                             "'%s' declared as an array with negative size",
-                            id->string.ptr);
+                            identifier_cstr(id));
                 }
                 else
                 {
@@ -1190,7 +1190,7 @@ static QualifiedType process_function_type(SemanticChecker* sc, Declarator* d,
 QualifiedType semantic_checker_process_type(SemanticChecker* sc,
         Declarator* declarator)
 {
-    DeclaratorContext context = declarator->context;
+    DeclaratorContext context = declarator_get_context(declarator);
     Location declarator_location = declarator_get_location(declarator);
     QualifiedType type = qualified_type_from_declaration_specifiers(sc, 
             declarator->specifiers, declarator_location);
@@ -1426,7 +1426,7 @@ Declaration* semantic_checker_process_function_param(SemanticChecker* sc,
     if (previous != NULL)
     {
         diagnostic_error_at(sc->dm, declarator_get_location(declarator),
-                "redefinition of parameter '%s'", identifier->string.ptr);
+                "redefinition of parameter '%s'", identifier_cstr(identifier));
         declaration_set_invalid(declaration);
     }
     else
@@ -1445,14 +1445,14 @@ Declaration* semantic_checker_process_knr_param(SemanticChecker* sc,
     {
         diagnostic_error_at(sc->dm, location,
                 "unexpected type name '%s': expected identifier",
-                identifier->string.ptr);
+                identifier_cstr(identifier));
         return NULL;
     }
 
     if (semantic_checker_lookup_previous(sc, identifier, false, NULL))
     {
         diagnostic_error_at(sc->dm, location, "redefinition of parameter '%s'",
-                identifier->string.ptr);
+                identifier_cstr(identifier));
         return NULL;
     }
     
@@ -1504,7 +1504,7 @@ Declaration* semantic_checker_process_knr_param_defn(SemanticChecker* sc,
     {
         diagnostic_error_at(sc->dm, declarator->identifier_location,
                 "parameter named '%s' is missing from identifier list",
-                identifier->string.ptr);
+                identifier_cstr(identifier));
     }
 
     // Go on to create the parameter anyway since we may want to include it in
@@ -1519,7 +1519,7 @@ Declaration* semantic_checker_process_knr_param_defn(SemanticChecker* sc,
     if (previous != NULL)
     {
         diagnostic_error_at(sc->dm, declarator_get_location(declarator),
-                "redefinition of parameter '%s'", identifier->string.ptr);
+                "redefinition of parameter '%s'", identifier_cstr(identifier));
         declaration_set_invalid(declaration);
     }
     else
@@ -1556,7 +1556,7 @@ static void semantic_checker_check_function_redeclaration(SemanticChecker* sc,
     {
         diagnostic_error_at(sc->dm, location,
                 "redefinition of '%s' as a different kind of symbol",
-                identifier->string.ptr);
+                identifier_cstr(identifier));
         declaration_set_invalid(function);
         return;
     }
@@ -1572,7 +1572,7 @@ static void semantic_checker_check_function_redeclaration(SemanticChecker* sc,
     else if (!qualified_type_is_compatible(&new_type, &old_type))
     {
         diagnostic_error_at(sc->dm, location, "conflicting types for '%s'",
-                identifier->string.ptr);
+                identifier_cstr(identifier));
         declaration_set_invalid(function);
         return;
     }
@@ -1588,7 +1588,7 @@ static void semantic_checker_check_function_redeclaration(SemanticChecker* sc,
     {
         diagnostic_error_at(sc->dm, location,
                 "static declaration of '%s' follows non-static declaration",
-                identifier->string.ptr);
+                identifier_cstr(identifier));
         declaration_set_invalid(function);
         return;
     }
@@ -1597,7 +1597,7 @@ static void semantic_checker_check_function_redeclaration(SemanticChecker* sc,
     if (declaration_function_has_definition(previous) && is_defn)
     {
         diagnostic_error_at(sc->dm, location, "redefinition of '%s'",
-                identifier->string.ptr);
+                identifier_cstr(identifier));
         declaration_set_invalid(function);
     }
 }
@@ -1769,7 +1769,7 @@ static void semantic_checker_check_variable_redeclaration(SemanticChecker* sc,
     {
         diagnostic_error_at(sc->dm, location,
                 "redefinition of '%s' as a different kind of symbol",
-                identifier->string.ptr);
+                identifier_cstr(identifier));
         declaration_set_invalid(variable);
         return;
     }
@@ -1781,7 +1781,7 @@ static void semantic_checker_check_variable_redeclaration(SemanticChecker* sc,
     {
         diagnostic_error_at(sc->dm, location,
                 "redeclaration of '%s' with a different type",
-                identifier->string.ptr);
+                identifier_cstr(identifier));
         declaration_set_invalid(variable);
         return;
     }
@@ -1805,7 +1805,7 @@ static void semantic_checker_check_variable_redeclaration(SemanticChecker* sc,
         assert(!declaration_variable_has_linkage(old_decl));
         diagnostic_error_at(sc->dm, location,
                 "non-static declaration of '%s' follows static declaration",
-                identifier->string.ptr);
+                identifier_cstr(identifier));
         declaration_set_invalid(variable);
         return;
     }
@@ -1816,7 +1816,7 @@ static void semantic_checker_check_variable_redeclaration(SemanticChecker* sc,
     {
         diagnostic_error_at(sc->dm, location,
                 "static declaration of '%s' follows non-static declaration",
-                identifier->string.ptr);
+                identifier_cstr(identifier));
         declaration_set_invalid(variable);
         return;
     }
@@ -1827,7 +1827,7 @@ static void semantic_checker_check_variable_redeclaration(SemanticChecker* sc,
     {
         diagnostic_error_at(sc->dm, location,
                 "non-extern declaration of '%s' follows extern declaration",
-                identifier->string.ptr);
+                identifier_cstr(identifier));
         declaration_set_invalid(variable);
         return;
     }
@@ -1838,7 +1838,7 @@ static void semantic_checker_check_variable_redeclaration(SemanticChecker* sc,
     {
         diagnostic_error_at(sc->dm, location,
                 "extern declaration of '%s' follows non-extern declaration",
-                identifier->string.ptr);
+                identifier_cstr(identifier));
         declaration_set_invalid(variable);
         return;
     }
@@ -1877,7 +1877,7 @@ static void semantic_checker_check_variable_redeclaration(SemanticChecker* sc,
     {
         // Redefinition of function locals. e.g. ``` int foo; int foo;```
         diagnostic_error_at(sc->dm, declaration_get_location(variable),
-                "redefinition of '%s'", identifier->string.ptr);
+                "redefinition of '%s'", identifier_cstr(identifier));
         declaration_set_invalid(variable);
     }
 }
@@ -2089,7 +2089,7 @@ Declaration* semantic_checker_process_typedef(SemanticChecker* sc,
                 ? "redefinition of typedef '%s'"
                 : "redefinition of '%s' as different kind of symbol";
         diagnostic_error_at(sc->dm, declarator->identifier_location, msg,
-                identifier->string.ptr);
+                identifier_cstr(identifier));
     }
     else
     {
@@ -2135,7 +2135,7 @@ Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
 
 static bool semantic_checker_check_bitfield(SemanticChecker* sc,
         Identifier* identifier, Location loc, QualifiedType type,
-        Location* colon_location, Expression** expression, size_t* size)
+        Location* colon_location, Expression** expression, uint64_t * size)
 {
     // if we have no expression early return.
     if (*expression == NULL)
@@ -2165,7 +2165,7 @@ static bool semantic_checker_check_bitfield(SemanticChecker* sc,
     if (!qualified_type_is_integer(&type))
     {
         diagnostic_error_at(sc->dm, loc, "bit-field '%s' has non-integral type",
-                identifier->string.ptr);
+                identifier_cstr(identifier));
         *colon_location = LOCATION_INVALID;
         *expression = NULL;
         return false;
@@ -2191,7 +2191,7 @@ static bool semantic_checker_check_bitfield(SemanticChecker* sc,
     if (!anonymous && width_val == 0)
     {
         diagnostic_error_at(sc->dm, loc, "named bit-field '%s' has zero width",
-                identifier->string.ptr);
+                identifier_cstr(identifier));
         *colon_location = LOCATION_INVALID;
         *expression = NULL;
         return false;   
@@ -2199,26 +2199,26 @@ static bool semantic_checker_check_bitfield(SemanticChecker* sc,
     else if (width_val < 0)
     {
         diagnostic_error_at(sc->dm, loc, "bit-field '%s' has negative width "
-                "(%ld)", identifier->string.ptr, width_val);
+                "(%ld)", identifier_cstr(identifier), width_val);
         *colon_location = LOCATION_INVALID;
         *expression = NULL;
         return false;
     }
 
     QualifiedType canonical = qualified_type_get_canonical(&type);
-    size_t bitsize = qualified_type_get_size(&canonical);
-    if ((size_t) width_val > bitsize * CHAR_BIT)
+    uint64_t bitsize = (size_t) qualified_type_get_size(&canonical);
+    if ((uint64_t) width_val > bitsize * CHAR_BIT)
     {
         diagnostic_error_at(sc->dm, loc, "width of bit-field '%s' (%ld bits) "
-                "exceeds the width of its type (%zu bits)",
-                identifier->string.ptr, width_val, bitsize * CHAR_BIT);
+                "exceeds the width of its type (%lu bits)",
+                identifier_cstr(identifier), width_val, bitsize * CHAR_BIT);
         *colon_location = LOCATION_INVALID;
         *expression = NULL;
         return false;
     }
 
     // Make sure to set our bitfield size here.
-    *size = (size_t) width_val;
+    *size = (uint64_t) width_val;
 
     return true;
 }
@@ -2271,7 +2271,7 @@ Declaration* semantic_checker_process_struct_declarator(SemanticChecker* sc,
     else if (!qualified_type_is_complete(&type))
     {      
         diagnostic_error_at(sc->dm, loc, "field '%s' has incomplete type",
-                identifier->string.ptr);
+                identifier_cstr(identifier));
         invalid = true;
     }
 
@@ -2280,14 +2280,14 @@ Declaration* semantic_checker_process_struct_declarator(SemanticChecker* sc,
     if (previous != NULL)
     {
         diagnostic_error_at(sc->dm, loc, "duplicate member '%s'",
-                identifier->string.ptr);
+                identifier_cstr(identifier));
         return NULL;
     }
 
     // Check the bifield part of the declaration if we have it
     Location colon_location = declarator_get_colon_location(declarator);
     Expression* expression = declarator_get_bitfield_expression(declarator);
-    size_t bitfield_size = 0;
+    uint64_t bitfield_size = 0;
 
     // Check that the bitfield we have is okay and that we are not a funciton.
     if (!semantic_checker_check_bitfield(sc, identifier, loc, type,
@@ -2299,7 +2299,7 @@ Declaration* semantic_checker_process_struct_declarator(SemanticChecker* sc,
     {
         // Allow this for syntax purposes, so we can add a member.
         diagnostic_error_at(sc->dm, loc, "field '%s' declared as a function",
-                identifier->string.ptr);
+                identifier_cstr(identifier));
         invalid = true;
     }
 
@@ -2396,7 +2396,7 @@ void semantic_checker_handle_end_of_knr_parameters(SemanticChecker* sc,
         {
             diagnostic_error_at(sc->dm, declaration_get_location(decl),
                     "parameter '%s' not declared, defaults to 'int'",
-                    id->string.ptr);
+                    identifier_cstr(id));
             declaration_list_push(decls, decl);
         }
     }
@@ -2463,7 +2463,7 @@ void semantic_checker_declaration_add_initializer(SemanticChecker* sc,
         if (declaration_variable_has_definition(master))
         {
             diagnostic_error_at(sc->dm, declaration_get_location(declaration),
-                    "redefinition of '%s'", name->string.ptr);
+                    "redefinition of '%s'", identifier_cstr(name));
             declaration_set_invalid(declaration);
             return;
         }
@@ -2543,7 +2543,7 @@ void semantic_checker_declaration_finish(SemanticChecker* sc,
         {
             diagnostic_error_at(sc->dm, declaration_get_location(declaration),
                     "variable '%s' has incomplete type",
-                    declaration_get_identifier(declaration)->string.ptr);
+                    identifier_cstr(declaration_get_identifier(declaration)));
             declaration_set_invalid(declaration);
         }
     }
@@ -2555,7 +2555,7 @@ void semantic_checker_declaration_finish(SemanticChecker* sc,
         {
             diagnostic_error_at(sc->dm, declaration_get_location(declaration),
                     "variable '%s' has incomplete type",
-                    declaration_get_identifier(declaration)->string.ptr);
+                    identifier_cstr(declaration_get_identifier(declaration)));
             declaration_set_invalid(declaration);
         }
         else if (linkage == DECLARATION_LINKAGE_INTERNAL
@@ -2564,7 +2564,7 @@ void semantic_checker_declaration_finish(SemanticChecker* sc,
             diagnostic_warning_at(sc->dm, declaration_get_location(declaration),
                     "tentative definition of variable '%s' with internal "
                     "linkage has incomplete non-array type",
-                    declaration_get_identifier(declaration)->string.ptr);
+                    identifier_cstr(declaration_get_identifier(declaration)));
         }
     }
 }
@@ -2611,7 +2611,7 @@ static void semantic_checker_finish_external(SemanticChecker* sc,
     {
         diagnostic_error_at(sc->dm, declaration_get_location(declaration),
                 "tentative definition of '%s' has type that is never completed",
-                declaration_get_identifier(declaration)->string.ptr);
+                identifier_cstr(declaration_get_identifier(declaration)));
         declaration_set_invalid(declaration);
     }
 }
@@ -2683,7 +2683,7 @@ static void semantic_checker_check_struct_fields(SemanticChecker* sc,
 
             Location location = declaration_get_location(member);
             Identifier* name = declaration_get_identifier(member);
-            diagnostic_error_at(sc->dm, location, msg, name->string.ptr);
+            diagnostic_error_at(sc->dm, location, msg, identifier_cstr(name));
             declaration_set_invalid(member);
             declaration_set_invalid(declaration);
         }
@@ -2702,7 +2702,7 @@ static void semantic_checker_check_struct_fields(SemanticChecker* sc,
                 Identifier* name = declaration_get_identifier(member);
                 diagnostic_warning_at(sc->dm, declaration_get_location(member),
                         "'%s' may not be nested in a %s due to flexible "
-                        "array member", name->string.ptr,
+                        "array member", identifier_cstr(name),
                         is_union ? "union" : "struct");
             }
         }
@@ -2740,7 +2740,10 @@ void semantic_checker_finish_struct_declaration(SemanticChecker* sc,
         return;
     }
 
-    calculate_compound_layout(sc->dm, struct_declaration);
+    // Finally, complete this struct declaration by going and calculating the
+    // layout of the struct 
+    calculate_compound_layout(&sc->ast->ast_allocator, sc->dm,
+            struct_declaration);
 }
 
 static Declaration* semantic_checker_create_enum_constant(SemanticChecker* sc,
@@ -2761,7 +2764,7 @@ Declaration* semantic_checker_handle_enum_constant(SemanticChecker* sc,
     {
         const char* msg = declaration_is(previous, DECLARATION_ENUM_CONSTANT)
                 ? "redefinition of enumerator '%s'" : "redefinition of '%s'";
-        diagnostic_error_at(sc->dm, location, msg, identifier->string.ptr);
+        diagnostic_error_at(sc->dm, location, msg, identifier_cstr(identifier));
         return declaration_create_error(&sc->ast->ast_allocator, location);
     }
 
@@ -2775,7 +2778,7 @@ Declaration* semantic_checker_handle_enum_constant(SemanticChecker* sc,
         {
             diagnostic_error_at(sc->dm, expression_get_location(expression),
                     "enumerator value for '%s' is not an integer constant "
-                    "expression", identifier->string.ptr);
+                    "expression", identifier_cstr(identifier));
         }
 
         value = 0;
@@ -2807,7 +2810,7 @@ Declaration* semantic_checker_handle_enum_constant(SemanticChecker* sc,
         {
             diagnostic_warning_at(sc->dm, location,
                     "overflow in enumeration value '%s'",
-                    identifier->string.ptr);
+                    identifier_cstr(identifier));
             value = INT_MIN;
         }
         else
@@ -2934,7 +2937,7 @@ Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
     {
         diagnostic_error_at(sc->dm, identifier_location, "use of '%s' with tag"
                 " type that does not match previous declaration",
-                identifier->string.ptr);
+                identifier_cstr(identifier));
 
         identifier = NULL;
         identifier_location = LOCATION_INVALID;
@@ -2990,7 +2993,7 @@ Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
             // Otherwise we have a redefinition
             diagnostic_error_at(sc->dm, identifier_location,
                     "redefinition of %s '%s'", tag_kind_to_name(type),
-                    identifier->string.ptr);
+                    identifier_cstr(identifier));
             
             // Make all of the current stuff blank so we can create a new tag
             identifier = NULL;
@@ -3069,7 +3072,7 @@ Declaration* semantic_checker_act_on_label(SemanticChecker* sc,
     if (!current->base.implicit)
     {
         diagnostic_error_at(sc->dm, identifier_location,
-                "redefinition of label '%s'", identifier->string.ptr);
+                "redefinition of label '%s'", identifier_cstr(identifier));
         return NULL;
     }
 
@@ -3113,7 +3116,7 @@ void sematic_checker_act_on_end_of_function(SemanticChecker* sc)
         {
             diagnostic_error_at(sc->dm, decl->base.location,
                     "use of undeclared label '%s'",
-                    decl->base.identifier->string.ptr);
+                    identifier_cstr(declaration_get_identifier(decl)));
         }
 
         // TODO: warn about declared but unused labels?
@@ -3207,7 +3210,7 @@ static Expression* semantic_checker_decay_expression_type(SemanticChecker* sc,
             {
                 diagnostic_error_at(sc->dm, expression_get_location(no_parens),
                         "address of register variable '%s' requested",
-                        declaration_get_identifier(ref)->string.ptr);
+                        identifier_cstr(declaration_get_identifier(ref)));
                 return semantic_checker_handle_error_expression(sc,
                         expression_get_location(expression));
             }
@@ -3882,7 +3885,7 @@ Expression* semantic_checker_handle_reference_expression(SemanticChecker* sc,
                 ? "use of undeclared identifier '%s'"
                 : "call to undeclared function '%s'";
         diagnostic_error_at(sc->dm, identifier_location, context,
-                identifier->string.ptr);
+                identifier_cstr(identifier));
 
         // TODO: handle builting function giving it type int() and putting the
         // TODO: declaration at the identifier location.
@@ -3893,7 +3896,7 @@ Expression* semantic_checker_handle_reference_expression(SemanticChecker* sc,
     {
         diagnostic_error_at(sc->dm, identifier_location,
                 "unexpected type name '%s': expected expression",
-                identifier->string.ptr);
+                identifier_cstr(identifier));
         return semantic_checker_handle_error_expression(sc,
                 identifier_location);
     }
@@ -3941,7 +3944,7 @@ Expression* semantic_checker_handle_reference_expression(SemanticChecker* sc,
                     : "variable";
             diagnostic_warning_at(sc->dm, identifier_location,
                     "static %s '%s' is used in an inline function with "
-                    "external linkage", static_type, identifier->string.ptr);
+                    "external linkage", static_type, identifier_cstr(identifier));
         }
     }
 
@@ -4365,15 +4368,21 @@ Expression* semantic_checker_handle_member_expression(SemanticChecker* sc,
                 &base_type);
         DeclarationType kind = declaration_get_kind(struct_decl);
         diagnostic_error_at(sc->dm, identifier_location,
-                "no member named '%s' in '%s %s'", identifier->string.ptr,
+                "no member named '%s' in '%s %s'", identifier_cstr(identifier),
                 tag_kind_to_name(kind),
-                declaration_get_identifier(struct_decl)->string.ptr);
+                identifier_cstr(declaration_get_identifier(struct_decl)));
         return semantic_checker_handle_error_expression(sc, operator_loc);
     }
 
+    QualifiedType canonical_base = qualified_type_get_canonical(&base_type);
+    CompoundLayout* layout = type_struct_get_layout(canonical_base.type);
+    uint64_t bytes, bits;
+    compound_layout_member_offset(layout, member, &bytes, &bits);
+
+
     // The type of the expresion we are about to create is the type of the 
     // member that we are referencing.
-    QualifiedType expression_type = declaration_get_type(member); 
+    QualifiedType expression_type = declaration_get_type(member);
     return expression_create_member_access(&sc->ast->ast_allocator,
             operator_loc, lhs, member, expression_type, dot);
 }
@@ -5990,7 +5999,7 @@ Expression* semantic_checker_handle_assignment_expression(SemanticChecker* sc,
             Declaration* decl = expression_reference_get_decl(error);
             diagnostic_error_at(sc->dm, operator_loc,
                     "cannot assign to variable '%s' with const-qualified type",
-                    declaration_get_identifier(decl)->string.ptr);
+                    identifier_cstr(declaration_get_identifier(decl)));
         }
         else
         {
@@ -6811,13 +6820,13 @@ Statement* semantic_checker_handle_return_statement(SemanticChecker* sc,
         {
             diagnostic_error_at(sc->dm, return_location,
                     "void function '%s' should not return void expression",
-                    function->base.identifier->string.ptr);
+                    identifier_cstr(declaration_get_identifier(function)));
         }
         else
         {
             diagnostic_error_at(sc->dm, return_location,
                     "void function '%s' should not return a value",
-                    function->base.identifier->string.ptr);
+                    identifier_cstr(declaration_get_identifier(function)));
 
             // Copy Clang behaviour and create implicit cast to void since this
             // is a warning in Clang.
@@ -6830,7 +6839,7 @@ Statement* semantic_checker_handle_return_statement(SemanticChecker* sc,
         {
             diagnostic_error_at(sc->dm, return_location,
                     "non-void function '%s' should return a value",
-                    function->base.identifier->string.ptr);
+                    identifier_cstr(declaration_get_identifier(function)));
             expression = semantic_checker_handle_error_expression(sc,
                     semi_location);
         }

@@ -406,6 +406,7 @@ Type* type_create_struct(AstAllocator* allocator)
             TYPE_STRUCT, 0, 0, false);
     type->type_struct.decl = NULL;
     type->type_struct.members = NULL;
+    type->type_struct.layout = NULL;
 
     return type;
 }
@@ -442,12 +443,29 @@ void type_struct_set_size(Type* type, size_t size, size_t align)
     type->type_base.type_alignment = align;
 }
 
+void type_struct_set_layout(Type* type, struct CompoundLayout* layout)
+{
+    assert(type_is(type, TYPE_STRUCT) || type_is(type, TYPE_UNION));
+    assert(layout != NULL);
+
+    type->type_struct.layout = layout;
+}
+
+struct CompoundLayout* type_struct_get_layout(Type* type)
+{
+    assert(type_is(type, TYPE_STRUCT) || type_is(type, TYPE_UNION));
+    assert(type->type_struct.layout != NULL);
+
+    return type->type_struct.layout;
+}
+
 Type* type_create_union(AstAllocator* allocator)
 {
     Type* type = type_create_base(allocator, sizeof(TypeCompound),
             TYPE_UNION, 0, 0, false);
     type->type_union.decl = NULL;
     type->type_union.members = NULL;
+    type->type_struct.layout = NULL;
 
     return type;
 }

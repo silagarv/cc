@@ -113,6 +113,11 @@ String* identifier_get_string(Identifier* identifier)
     return &identifier->string;
 }
 
+const char* identifier_cstr(const Identifier* identifier)
+{
+    return identifier->string.ptr;
+}
+
 uint32_t identifier_get_hash(const void* identifier)
 {
     return ((Identifier*) identifier)->hash;
@@ -218,6 +223,8 @@ IdentifierTable identifier_table_create(void)
     // Tokens which are used for builtins / extensions to the language
     identifier_table_insert_keyword(&table, "__attribute__", TOK___attribute__,
             TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "__attribute", TOK___attribute__,
+            TOK_IDENTIFIER);
     identifier_table_insert_keyword(&table, "__extension__", TOK___extension__,
             TOK_IDENTIFIER);
 
@@ -225,6 +232,12 @@ IdentifierTable identifier_table_create(void)
     identifier_table_insert_keyword(&table, "asm", TOK_asm, TOK_IDENTIFIER);
     identifier_table_insert_keyword(&table, "__asm", TOK_asm, TOK_IDENTIFIER);
     identifier_table_insert_keyword(&table, "__asm__", TOK_asm, TOK_IDENTIFIER);
+
+    // All of our compiler builtin identifiers
+    identifier_table_insert_keyword(&table, "__builtin_va_arg",
+            TOK___builtin_va_arg, TOK_IDENTIFIER);
+    identifier_table_insert_keyword(&table, "__builtin_offsetof",
+            TOK___builtin_offsetof, TOK_IDENTIFIER);
 
     // all of our pp tokens that haven't already been covered.
     identifier_table_insert_keyword(&table, "define", TOK_IDENTIFIER,

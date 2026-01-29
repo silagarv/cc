@@ -60,6 +60,7 @@ bool identifier_is_equal(const Identifier* ident1, const Identifier* ident2);
 TokenType identifier_get_keyword(const Identifier* identifier);
 TokenType identifier_get_pp_keyword(const Identifier* identifier);
 String* identifier_get_string(Identifier* identifier);
+const char* identifier_cstr(const Identifier* identifier);
 uint32_t identifier_get_hash(const void* identifier);
 
 // Create an identifier table to intern all of our identifiers

@@ -795,7 +795,7 @@ int declaration_enum_constant_get_value(const Declaration* enum_constant)
 
 Declaration* declaration_create_field(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type,
-        Location colon_location, Expression* expression, size_t bitfield_size,
+        Location colon_location, Expression* expression, uint64_t bitfield_size,
         bool is_flexible)
 {
     Declaration* decl = declaration_create_base(allocator,
@@ -818,7 +818,7 @@ bool declaration_field_has_bitfield(const Declaration* decl)
     return decl->field.has_bitfield;
 }
 
-size_t declaration_field_get_bitfield(const Declaration* decl)
+uint64_t declaration_field_get_bitfield(const Declaration* decl)
 {
     assert(declaration_field_has_bitfield(decl));
 

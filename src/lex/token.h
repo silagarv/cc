@@ -145,6 +145,10 @@ typedef enum TokenType {
     TOK___extension__,
     TOK_asm,
 
+    // Some nice builtins we want to support
+    TOK___builtin_va_arg,
+    TOK___builtin_offsetof,
+
     // Special preprocessing token names
     TOK_PP_define,
     TOK_PP_undef,

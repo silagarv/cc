@@ -165,6 +165,7 @@ typedef struct TypeCompound {
     TypeBase base; // The base type that we have
     TypeCompoundMember* members; // the members of the compound type
     union Declaration* decl; // the declaration of this type
+    struct CompoundLayout* layout;
 } TypeCompound;
 
 // Note: in this all enum types have real_type = int
@@ -310,6 +311,8 @@ union Declaration* qualified_type_struct_get_declaration(QualifiedType* type);
 bool type_struct_is_complete(Type* type);
 void type_struct_set_complete(Type* type);
 void type_struct_set_size(Type* type, size_t size, size_t align);
+void type_struct_set_layout(Type* type, struct CompoundLayout* layout);
+struct CompoundLayout* type_struct_get_layout(Type* type);
 // TODO: make sure we set the members
 
 Type* type_create_union(AstAllocator* allocator);

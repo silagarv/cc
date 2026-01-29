@@ -6,6 +6,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "codegen/gen.h"
 #include "files/filepath.h"
 #include "files/source_manager.h"
 
@@ -69,6 +70,18 @@ int compiler_main(int argc, char** argv)
     parse_translation_unit(&dm, &pp);
     preprocessor_delete(&pp);
     diagnostic_emit_count(&dm);
+
+//     if (diagnostic_manager_get_error_count(&dm) != 0)
+//     {
+//         goto no_codegen;
+//     }
+
+//     codegen_init_llvm();
+
+
+
+// no_codegen:
+//     codegen_finish_llvm();
 
 no_file:
     source_manager_delete(&sm);

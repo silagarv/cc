@@ -23,6 +23,21 @@ LFLAGS = -lm
 IFLAGS = -Isrc
 CFLAGS += $(IFLAGS)
 
+# LLVMCFLAGS = -I/usr/lib/llvm-18/include \
+# 	-D_GNU_SOURCE \
+# 	-D__STDC_CONSTANT_MACROS \
+# 	-D__STDC_FORMAT_MACROS \
+# 	-D__STDC_LIMIT_MACROS
+
+# LLVMLDFLAGS = -L/usr/lib/llvm-18/lib
+
+# LLVMLFLAGS = -lLLVM-18
+
+# CFLAGS += $(LLVMCFLAGS)
+
+# LCFLAGS += $(LLVMLDFLAGS)
+# LFLAGS += $(LLVMLFLAGS)
+
 .Default_Goal: cc
 
 .PHONY: clean
@@ -71,6 +86,8 @@ PARSE = src/parse/ast_allocator.c \
 	src/parse/scope.c \
 	src/parse/parser.c \
 	src/parse/semantic.c
+
+# CODEGEN = src/codegen/gen.c
 
 SRCS = $(UTIL) $(FILES) $(DRIVER) $(LEX) $(PARSE) src/main.c
 
