@@ -8,6 +8,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "lex/identifier_table.h"
 #include "parse/ast_allocator.h"
 #include "parse/declaration.h"
 #include "util/buffer.h"
@@ -1066,10 +1067,13 @@ void type_print(const QualifiedType* t1)
             break;
 
         case TYPE_ENUM:
+        {
+            Declaration* decl = t1->type->type_enum.enum_decl;
             printf("enum %s (entries %d)",
-                    t1->type->type_enum.enum_decl->base.identifier->string.ptr,
+                    identifier_cstr(declaration_get_identifier(decl)),
                     declaration_enum_has_entries(t1->type->type_enum.enum_decl));
             break;
+        }
 
         case TYPE_POINTER:
             printf("pointer to ");
@@ -1082,15 +1086,19 @@ void type_print(const QualifiedType* t1)
             break;
 
         case TYPE_TYPEDEF:
+        {
+            Declaration* decl = t1->type->type_typedef.tdef;
             printf("typename '%s' : ",
-                    t1->type->type_typedef.tdef->base.identifier->string.ptr);
+                    identifier_cstr(declaration_get_identifier(decl)));
             type_print(&t1->type->type_typedef.real_type);
             break;
+        }
 
         case TYPE_STRUCT:
         {
             Declaration* decl = t1->type->type_struct.decl;
-            printf("struct %s ", decl->base.identifier->string.ptr);    
+            printf("struct %s ",
+                    identifier_cstr(declaration_get_identifier(decl)));    
             break;
         }
 

@@ -14,7 +14,7 @@
 
 static uint32_t symbol_table_hash(const void* sym)
 {
-    return ((Identifier*) sym)->hash;
+    return identifier_get_hash(sym);
 }
 
 static bool symbol_table_equal(const void* sym1, const void* sym2)

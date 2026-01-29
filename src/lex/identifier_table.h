@@ -11,24 +11,7 @@
 
 #include "lex/token.h"
 
-// An identifier within the source.
-typedef struct Identifier {
-    // the actual string for this identifier which has been normalised. I.e. all
-    // the ucn's have been converted to UTF-8. (TODO: this...)
-    String string;
-
-    // The underlying token type that we have for this identifier (if relavent)
-    // this will not include any preprocessing tokens and will only include
-    // tokens which will be used by the later stages of the compiler.
-    TokenType type;
-
-    // the type of pp idenifier this is if any.
-    TokenType pp_type; 
-
-    // The hash for this identifier. We precompute this in order to save a bit
-    // of time when trying to find the right identifier in the identifier table.
-    uint32_t hash;
-} Identifier;
+typedef struct Identifier Identifier;
 
 vector_of_decl(Identifier*, Identifier, identifier);
 
