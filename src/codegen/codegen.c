@@ -12,21 +12,21 @@ void codegen_external_variable(const Declaration* declaration)
 {
     assert(declaration_is(declaration, DECLARATION_VARIABLE));
 
-    printf("generating for variable: %s\n",
-            identifier_cstr(declaration_get_identifier(declaration)));
+    // printf("generating for variable: %s\n",
+    //         identifier_cstr(declaration_get_identifier(declaration)));
 
     DeclarationLinkage linkage = declaration_variable_get_linkage(declaration);
     assert(linkage != DECLARATION_LINKAGE_NONE);
 
-    panic("variable codegen not supported");
+    // panic("variable codegen not supported");
 }
 
 void codegen_external_function(const Declaration* declaration)
 {
     assert(declaration_is(declaration, DECLARATION_FUNCTION));
 
-    printf("generating for function: %s\n",
-            identifier_cstr(declaration_get_identifier(declaration)));
+    // printf("generating for function: %s\n",
+    //         identifier_cstr(declaration_get_identifier(declaration)));
 
     DeclarationLinkage linkage = declaration_function_get_linkage(declaration);
     assert(linkage != DECLARATION_LINKAGE_NONE);

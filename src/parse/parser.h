@@ -5,9 +5,12 @@
 #include <stdbool.h>
 
 #include "driver/diagnostic.h"
+#include "files/filepath.h"
 #include "files/location.h"
 #include "files/line_map.h"
 
+#include "files/source_manager.h"
+#include "lex/identifier_table.h"
 #include "lex/preprocessor.h"
 #include "lex/token.h"
 
@@ -22,7 +25,7 @@ typedef struct Parser {
     DiagnosticManager* dm;
 
     // The preprocessor that is used to parse this file.
-    Preprocessor* pp;
+    Preprocessor pp;
 
     // Will need to add context to it as well for parsing loops conditionals
     // and other things
@@ -38,7 +41,7 @@ typedef struct Parser {
     // Stores the ast. This includes all of the statements, expressions,
     // declaration, and anything else that we might need. This is held in one
     // large arena so that we can effeciently free and allocate it.
-    Ast ast;
+    Ast* ast;
 
     // The semantic checker taking care of all of our declarations and needed
     // things for that.
@@ -47,6 +50,10 @@ typedef struct Parser {
     // TODO: track brackets???
 } Parser;
 
-Ast parse_translation_unit(DiagnosticManager* dm, Preprocessor* pp);
+bool parser_create_for_translation_unit(Parser* parser, DiagnosticManager* dm,
+        SourceManager* sm, Filepath main_file, IdentifierTable* ids, Ast* ast);
+void parser_delete(Parser* parser);
+
+void parse_translation_unit(Parser* parser);
 
 #endif /* PARSER_H */

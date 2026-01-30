@@ -63,6 +63,7 @@ FILES = src/files/filepath.c \
 DRIVER = src/driver/diagnostic.c \
 	src/driver/lang.c \
 	src/driver/options.c \
+	src/driver/translation_unit.c \
 	src/driver/driver.c
 
 LEX = src/lex/identifier_table.c \

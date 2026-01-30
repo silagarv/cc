@@ -14,7 +14,7 @@ void codegen_compound_statement(const Statement* stmt)
 {
     assert(statement_is(stmt, STATEMENT_COMPOUND));
 
-    Statement* curr = statement_compound_get_first(stmt);
+    Statement* curr = NULL;//statement_compound_get_first(stmt);
     while (curr != NULL)
     {
         codegen_statement(curr);
@@ -55,7 +55,7 @@ void codegen_if_statement(const Statement* stmt)
 {   
     // First get the condition from the if, evaluate it. Then if it compares
     // to non-zero, take the true branch, otherwise, take the false branch.
-    Expression* expression = NULL;
+    Expression* condition = NULL;
     
 }
 

@@ -74,7 +74,7 @@ static Token* current_token(Parser* parser)
 
 static Token* next_token(Parser* parser)
 {
-    preprocessor_peek_token(parser->pp, &parser->peek_token);
+    preprocessor_peek_token(&parser->pp, &parser->peek_token);
 
     return &parser->peek_token;
 }
@@ -86,7 +86,7 @@ static TokenType current_token_type(Parser* parser)
 
 static TokenType next_token_type(Parser* parser)
 {
-    return preprocessor_peek_next_token_type(parser->pp);
+    return preprocessor_peek_next_token_type(&parser->pp);
 }
 
 static Location current_token_location(Parser* parser)
@@ -148,7 +148,7 @@ static Location consume(Parser* parser)
 
     Location location = current_token_location(parser);
 
-    preprocessor_advance_token(parser->pp, &parser->token);
+    preprocessor_advance_token(&parser->pp, &parser->token);
 
     return location;
 }
@@ -197,7 +197,7 @@ static bool has_match(Parser* parser, const TokenType* types, size_t count)
 
 static bool is_next_match(Parser* parser, TokenType type)
 {
-    return preprocessor_peek_next_token_type(parser->pp) == type;
+    return preprocessor_peek_next_token_type(&parser->pp) == type;
 }
 
 static void recover_many(Parser* parser, TokenType* types, size_t num_types,
@@ -676,7 +676,7 @@ static Expression* parse_string_expression(Parser* parser)
 
     // Attempt the conversion using the information we have here
     StringLiteral string;
-    bool conversion = parse_string_literal(&parser->ast.ast_allocator,
+    bool conversion = parse_string_literal(&parser->ast->ast_allocator,
             &string, parser->dm, toks, locs, wide);
 
     // Make sure to free our vectors after we are done with them.
@@ -912,7 +912,7 @@ static void parse_argument_expression_list(Parser* parser,
     {
         Expression* arg = parse_assignment_expression(parser);
         
-        expression_list_push(&parser->ast.ast_allocator, list, arg);
+        expression_list_push(&parser->ast->ast_allocator, list, arg);
     }
     while (try_match(parser, TOK_COMMA, NULL));
 }
@@ -1776,7 +1776,7 @@ static Statement* parse_compound_statement(Parser* parser)
     assert(is_match(parser, TOK_LCURLY));
 
     // Set-up the new scope for declarations
-    Scope scope = scope_block(&parser->ast.ast_allocator);
+    Scope scope = scope_block(&parser->ast->ast_allocator);
     semantic_checker_push_scope(&parser->sc, &scope);
 
     Statement* stmt = parse_compound_statement_internal(parser);
@@ -1905,7 +1905,7 @@ static Statement* parse_if_statement(Parser* parser)
 
     Location if_loc = consume(parser);
 
-    Scope if_scope = scope_if(&parser->ast.ast_allocator);
+    Scope if_scope = scope_if(&parser->ast->ast_allocator);
     semantic_checker_push_scope(&parser->sc, &if_scope);
 
     Location lparen_loc = LOCATION_INVALID;
@@ -1948,7 +1948,7 @@ static Statement* parse_switch_statement(Parser* parser)
     Location switch_loc = consume(parser);
 
     // Create and push the switch scope
-    Scope switch_scope = scope_switch(&parser->ast.ast_allocator);
+    Scope switch_scope = scope_switch(&parser->ast->ast_allocator);
     semantic_checker_push_scope(&parser->sc, &switch_scope);
 
     Location lparen_loc = LOCATION_INVALID;
@@ -1985,7 +1985,7 @@ static Statement* parse_while_statement(Parser* parser)
     Location while_loc = consume(parser);
 
     // Create and push the scope
-    Scope while_scope = scope_while(&parser->ast.ast_allocator);
+    Scope while_scope = scope_while(&parser->ast->ast_allocator);
     semantic_checker_push_scope(&parser->sc, &while_scope);
 
     Location lparen_loc = LOCATION_INVALID;
@@ -2022,7 +2022,7 @@ static Statement* parse_do_while_statement(Parser* parser)
     // Consume the 'do' and then push the scope.
     Location do_loc = consume(parser);
 
-    Scope do_while_scope = scope_do_while(&parser->ast.ast_allocator);
+    Scope do_while_scope = scope_do_while(&parser->ast->ast_allocator);
     semantic_checker_push_scope(&parser->sc, &do_while_scope);
 
     Statement* body = parse_statement(parser, false);
@@ -2079,7 +2079,7 @@ static Statement* parse_for_statement(Parser* parser)
     }
 
     // Create and push the for scope.
-    Scope for_scope = scope_for(&parser->ast.ast_allocator);
+    Scope for_scope = scope_for(&parser->ast->ast_allocator);
     semantic_checker_push_scope(&parser->sc, &for_scope);
 
     assert(is_match(parser, TOK_LPAREN));
@@ -2326,7 +2326,7 @@ static Designator* parse_member_designator(Parser* parser)
     Identifier* identifier = current_token(parser)->data.identifier;
     Location identifier_location = consume(parser);
 
-    return designator_create_member(&parser->ast.ast_allocator, dot,
+    return designator_create_member(&parser->ast->ast_allocator, dot,
             identifier_location, identifier);
 }
 
@@ -2345,7 +2345,7 @@ static Designator* parse_array_designator(Parser* parser)
     }
 
     // Create the array designator even if we didn't get the rbracket.
-    return designator_create_array(&parser->ast.ast_allocator, lbracket, expr,
+    return designator_create_array(&parser->ast->ast_allocator, lbracket, expr,
             rbracket);
 }
 
@@ -2378,7 +2378,7 @@ static DesignatorList* parse_designator_list(Parser* parser)
         }
 
         // Create our list member that we are going to use.
-        DesignatorList* l = designator_list_create(&parser->ast.ast_allocator,
+        DesignatorList* l = designator_list_create(&parser->ast->ast_allocator,
                 designator);
         
         // Finally, build our designator list.
@@ -2423,7 +2423,7 @@ static InitializerListMember* parse_initializer_list_member(Parser* parser)
     }
 
     // Finally, create the initializer list member. And Return this to caller.
-    return initializer_list_member_create(&parser->ast.ast_allocator, list,
+    return initializer_list_member_create(&parser->ast->ast_allocator, list,
             equal_loc, init);
 }
 
@@ -2543,7 +2543,7 @@ static Declarator parse_declarator(Parser* parser,
         DeclarationSpecifiers* specifiers, DeclaratorContext ctx)
 {
     Declarator declarator = declarator_create(specifiers, ctx,
-            &parser->ast.ast_allocator);
+            &parser->ast->ast_allocator);
 
     // If we don't allow bitfields or if we allow them and we don't match a ':'
     // parse a declarator how we would expect it to. Making sure to parse the
@@ -2569,7 +2569,7 @@ static Declarator parse_declarator(Parser* parser,
 static DeclarationList parse_knr_function_parameters(Parser* parser,
         DeclaratorPiece* piece)
 {
-    Scope prototype = scope_function_prototype(&parser->ast.ast_allocator);
+    Scope prototype = scope_function_prototype(&parser->ast->ast_allocator);
     semantic_checker_push_scope(&parser->sc, &prototype);
 
     while (is_typename_start(parser, current_token(parser)))
@@ -2669,7 +2669,7 @@ static Declaration* parse_function_definition(Parser* parser,
     FunctionScope func_scope = function_scope_create(function);
     sematic_checker_push_function_scope(&parser->sc, &func_scope);
 
-    Scope function_body = scope_block(&parser->ast.ast_allocator);
+    Scope function_body = scope_block(&parser->ast->ast_allocator);
     semantic_checker_push_scope(&parser->sc, &function_body);
 
     // Add all of our important function parameters into this scope.
@@ -2891,7 +2891,7 @@ static void parse_identifier_list(Parser* parser, Declarator* declarator)
 
     // Create the list of parameter declarations that we will use to add our
     // 'declarations' too.
-    DeclarationList parms = declaration_list_create(&parser->ast.ast_allocator);
+    DeclarationList parms = declaration_list_create(&parser->ast->ast_allocator);
     size_t num_parms = 0;
 
     // See if we got an empty parameter list. This is still an old style
@@ -2963,7 +2963,7 @@ static void parse_paramater_type_list(Parser* parser, Declarator* declarator)
     Location dots = LOCATION_INVALID;
 
     // The paramater declarations themselves
-    DeclarationList parms = declaration_list_create(&parser->ast.ast_allocator);
+    DeclarationList parms = declaration_list_create(&parser->ast->ast_allocator);
     size_t num_parms = 0;
     do
     {
@@ -3023,7 +3023,7 @@ static void parse_function_declarator(Parser* parser, Declarator* declarator)
 {
     // Push our function prototype scope so that we can easily reject parameters
     // with duplicate names.
-    Scope function_proto = scope_function_prototype(&parser->ast.ast_allocator);
+    Scope function_proto = scope_function_prototype(&parser->ast->ast_allocator);
     semantic_checker_push_scope(&parser->sc, &function_proto);
 
     // Note the check for elipsis is explained by parse direct-declarator
@@ -3342,7 +3342,7 @@ static void parse_struct_declaration_list(Parser* parser, Declaration* decl,
     }
 
     // Create and push our member scope.
-    Scope member_scope = scope_member(&parser->ast.ast_allocator);
+    Scope member_scope = scope_member(&parser->ast->ast_allocator);
     semantic_checker_push_scope(&parser->sc, &member_scope);
 
     while (!is_match_two(parser, TOK_RCURLY, TOK_EOF))
@@ -4116,10 +4116,10 @@ static bool parse_top_level(Parser* parser)
 static void parse_translation_unit_internal(Parser* parser)
 {
     // Create our file scope which will be used throughout parsing the t-unit
-    Scope externals = scope_extern(&parser->ast.ast_allocator);
+    Scope externals = scope_extern(&parser->ast->ast_allocator);
     semantic_checker_push_externals(&parser->sc, &externals);
 
-    Scope file = scope_file(&parser->ast.ast_allocator);
+    Scope file = scope_file(&parser->ast->ast_allocator);
     semantic_checker_push_scope(&parser->sc, &file);
 
     // Check for case of empty translation unit which is not allowed. Note, this
@@ -4145,10 +4145,10 @@ static void parse_translation_unit_internal(Parser* parser)
     // Ast the last thing we do, set our top level and external declarations so
     // that we are able to keep using these.
     DeclarationList top_level_decls = scope_get_declarations(&file);
-    ast_set_top_level_decls(&parser->ast, top_level_decls);
+    ast_set_top_level_decls(parser->ast, top_level_decls);
     
     DeclarationList external_decls = scope_get_declarations(&externals);
-    ast_set_external_decls(&parser->ast, external_decls);
+    ast_set_external_decls(parser->ast, external_decls);
 
     // Here we can pop and delete since all of our needed decl's are in the top
     // level delcaration vector.
@@ -4159,19 +4159,36 @@ static void parse_translation_unit_internal(Parser* parser)
     scope_delete(&externals);
 }
 
-Ast parse_translation_unit(DiagnosticManager* dm, Preprocessor* pp)
+bool parser_create_for_translation_unit(Parser* parser, DiagnosticManager* dm,
+        SourceManager* sm, Filepath main_file, IdentifierTable* ids, Ast* ast)
 {
-    Parser parser = {0};
-    parser.dm = dm;
-    parser.pp = pp;
-    preprocessor_advance_token(parser.pp, &parser.token);
-    parser.ast = ast_create();
-    parser.sc = sematic_checker_create(dm, &pp->identifiers, &parser.ast);
-    parser.paren_count = 0;
-    parser.bracket_count = 0;
-    parser.brace_count = 0;
+    
+    parser->dm = dm;
+    if (!preprocessor_create(&parser->pp, dm, sm, main_file, ids))
+    {
+        return false;
+    }
+    parser->token = (Token) {0};
+    parser->peek_token = (Token) {0};
+    parser->paren_count = 0;
+    parser->bracket_count = 0;
+    parser->brace_count = 0;
+    parser->ast = ast;
+    parser->sc = sematic_checker_create(dm, ids, ast);
+    
+    return true;
+}
 
-    parse_translation_unit_internal(&parser);
+void parser_delete(Parser* parser)
+{
+    preprocessor_delete(&parser->pp);
+}
 
-    return parser.ast;
+void parse_translation_unit(Parser* parser)
+{
+    // Advance the token initially to ensure that we have something
+    preprocessor_advance_token(&parser->pp, &parser->token);
+
+    // Now we can go and parse the translation unit.
+    parse_translation_unit_internal(parser);
 }

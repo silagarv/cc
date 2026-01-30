@@ -1,6 +1,7 @@
 #ifndef PREPROCESSOR_H
 #define PREPROCESSOR_H
 
+#include "files/filepath.h"
 #include "util/arena.h"
 
 #include "driver/diagnostic.h"
@@ -25,7 +26,7 @@ typedef struct Preprocessor {
     SourceManager* sm;
 
     // The table we are storing all of our identifiers in.
-    IdentifierTable identifiers;
+    IdentifierTable* identifiers;
 
     // The header finder used to search for headers within the source
     HeaderFinder hf;
@@ -46,8 +47,8 @@ typedef struct Preprocessor {
     LexerStack* lexers;
 } Preprocessor;
 
-void preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
-        SourceManager* sm, SourceFile* starting_file);
+bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
+        SourceManager* sm, Filepath main_file, IdentifierTable* ids);
 void preprocessor_delete(Preprocessor* pp);
 
 bool preprocessor_advance_token(Preprocessor* pp, Token* token);

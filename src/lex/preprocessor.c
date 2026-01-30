@@ -100,28 +100,34 @@ static void preprocessor_add_defines(Preprocessor* pp)
     buffer_free(&predefs);
 }
 
-void preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
-        SourceManager* sm, SourceFile* starting_file)
+bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
+        SourceManager* sm, Filepath main_file, IdentifierTable* ids)
 {
-    // preprocessor_add_defines(pp);
+    SourceFile* starting_file = source_manager_create_filepath(sm, main_file);
+    if (starting_file == NULL)
+    {
+        diagnostic_error(dm, "no such file or directory: '%s'", main_file.path);
+        return false;
+    }
 
     pp->dm = dm;
     pp->sm = sm;
-    pp->identifiers = identifier_table_create();
+    pp->identifiers = ids;
     pp->literal_arena = arena_new(ARENA_DEFAULT_CHUNK_SIZE,
             ARENA_DEFAULT_ALIGNMENT);
     pp->pp_allocator = arena_new(ARENA_DEFAULT_CHUNK_SIZE,
             ARENA_DEFAULT_ALIGNMENT);
     pp->lexers = NULL;
-    lexer_create(&pp->lexer, dm, &pp->literal_arena, &pp->identifiers,
+    lexer_create(&pp->lexer, dm, &pp->literal_arena, pp->identifiers,
             starting_file);
+
+    return true;
 }
 
 void preprocessor_delete(Preprocessor* pp)
 {
     arena_delete(&pp->literal_arena);
     arena_delete(&pp->pp_allocator);
-    identifier_table_delete(&pp->identifiers);
 }
 
 bool preprocessor_advance_token(Preprocessor* pp, Token* token)
