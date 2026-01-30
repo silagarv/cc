@@ -31,6 +31,7 @@ static Statement* statement_create_base(AstAllocator* allocator,
 {
     Statement* stmt = ast_allocator_alloc(allocator, size);
     stmt->base.type = type;
+    stmt->base.next = NULL;
 
     return stmt;
 }

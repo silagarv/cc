@@ -105,10 +105,11 @@ static int compiler_driver_process_translation_unit(CompilerDriver* driver,
     LangStandard std = driver->options.standard;
 
     // Okay now create our target (dummy for now)
-    Target t = (Target) {0};
+    Target target = (Target) {0};
 
     // Now we can attempt to create our translation unit.
-    translation_unit_create(tu, input_path, output_path, std, t, dm);
+    translation_unit_create(tu, input_path, output_path, &driver->options,
+            target, dm);
 
     int success = translation_unit_process(tu);
 
@@ -116,56 +117,12 @@ static int compiler_driver_process_translation_unit(CompilerDriver* driver,
 
     return success;
 }
-    
-//     // Get our filepath and attempt to create the file here.
-//     Filepath path;
-//     get_filepath(&path, driver->options.infile);
-//     SourceFile* source = source_manager_create_filepath(&sm, path);
-//     if (!source)
-//     {
-//         diagnostic_error(&driver->dm, "no such file or directory '%s'",
-//                 path.path);
-//         okay = false;
-//         goto no_file;
-//     }
-
-//     // Now attempt to parse the translation unit here.
-//     Preprocessor pp;
-//     preprocessor_create(&pp, &driver->dm, &sm, source);
-
-//     // Parse the translation unit
-//     Ast ast = parse_translation_unit(&driver->dm, &pp);
-
-//     // Finally, check if there were any errors during parsing
-//     if (diagnostic_manager_get_error_count(&driver->dm) != 0)
-//     {
-//         okay = false;
-//         goto no_codegen;
-//     }
-
-//     // Now try to do codegen for the AST...
-//     codegen_translation_unit(&ast);
-
-//     // And make sure to free the ast and the preprocessor
-// no_codegen:
-//     ast_delete(&ast);
-//     preprocessor_delete(&pp);
-
-// no_file:
-//     source_manager_delete(&sm);
-
-//     return okay;
 
 static int compiler_driver_execute(CompilerDriver* driver)
 {
     // First try to parse the translation unit.
     TranslationUnit tu = {0};
-    if (compiler_driver_process_translation_unit(driver, &tu) == false)
-    {
-        return EXIT_FAILURE;
-    }
-
-    return EXIT_SUCCESS;
+    return compiler_driver_process_translation_unit(driver, &tu);
 }
 
 static int compiler_driver_invoke_internal(int argc, char** argv,
@@ -187,5 +144,6 @@ int compiler_driver_invoke(int argc, char** argv)
     CompilerDriver driver = compiler_driver_create();
     int status = compiler_driver_invoke_internal(argc, argv, &driver);
     compiler_driver_free(&driver);
+    
     return status;
 }

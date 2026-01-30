@@ -2,16 +2,19 @@
 
 #include <stdlib.h>
 
+#include "codegen/codegen.h"
 #include "driver/diagnostic.h"
 
+#include "driver/options.h"
 #include "files/source_manager.h"
 
 #include "lex/identifier_table.h"
+
 #include "parse/ast.h"
 #include "parse/parser.h"
 
 bool translation_unit_create(TranslationUnit* tu, Filepath main_file,
-        Filepath out_file, LangStandard std, Target target,
+        Filepath out_file, CompilerOptions* options, Target target,
         DiagnosticManager* dm)
 {
 
@@ -19,7 +22,7 @@ bool translation_unit_create(TranslationUnit* tu, Filepath main_file,
     {
         .main_file = main_file,
         .out_file = out_file,
-        .std = std,
+        .options = options,
         .target = target,
         .dm = dm,
         .sm = source_manager(),
@@ -59,10 +62,13 @@ static bool translation_unit_parse(TranslationUnit* tu)
     // Now we need to see if we can continue on after parsing the translation
     // unit and go to do codegen. If we had no erorrs during parsing or 
     // preprocessing then we are good, otherwise just stop here.
-    if (diagnostic_manager_get_error_count(tu->dm) != 0)
-    {
-        return false;
-    }
+    return diagnostic_manager_get_error_count(tu->dm) == 0;
+}
+
+// TODO: can this even fail?
+static bool translation_unit_codegen(TranslationUnit* tu)
+{
+    codegen_translation_unit(&tu->main_file, &tu->target, tu->dm, &tu->ast);
 
     return true;
 }
@@ -71,12 +77,42 @@ int translation_unit_process(TranslationUnit* tu)
 {
     // First try to parse the translation unit returning failure if that doesn't
     // succeed.
-    if (!translation_unit_parse(tu))
+    if (translation_unit_parse(tu) == false)
     {
         return EXIT_FAILURE;
     }
 
+    // Also check if we are only wanting to do syntax only and no codegeneration
+    // but also make sure we exit with success.
+    if (tu->options->syntax_only)
+    {
+        return EXIT_SUCCESS;
+    }
+
     // Now we can attempt to do code generation with the translation unit
+    if (translation_unit_codegen(tu) == false)
+    {
+        return EXIT_FAILURE;
+    }
+
+    // Now we need to see if the -S option was specified
+    if (tu->options->dump_assembly)
+    {
+        // Dump the assembly we are about to generate
+        return EXIT_SUCCESS;
+    }
+
+    // Okay now we have done the codegeneration we need to take the generated
+    // llvm and transform it into an object file
+
+    // Now check if we need to do any linking at all
+    if (tu->options->compile_only)
+    {
+        return EXIT_SUCCESS;
+    }
+
+    // Okay, now we have done all the compiling, we just need to do the linking
+    // TODO: how tf do we do the linking... but we will cross that bridge later
 
     return EXIT_SUCCESS;
 }

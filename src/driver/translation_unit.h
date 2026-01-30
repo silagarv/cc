@@ -1,6 +1,7 @@
 #ifndef TRANSLATION_UNIT_H
 #define TRANSLATION_UNIT_H
 
+#include "driver/options.h"
 #include "driver/target.h"
 #include "driver/diagnostic.h"
 #include "driver/lang.h"
@@ -19,8 +20,8 @@ typedef struct TranslationUnit {
     // The path of the filename that we would like to output to
     Filepath out_file;
 
-    // The language we are wanting to compile this translation unit for
-    LangStandard std;
+    // The options for the compilation of this translation unit
+    CompilerOptions* options;
 
     // Our target information so that we can initialize and parse correctly in
     // both the frontend and back end
@@ -45,7 +46,7 @@ typedef struct TranslationUnit {
 } TranslationUnit;
 
 bool translation_unit_create(TranslationUnit* tu, Filepath main_file,
-        Filepath out_file, LangStandard std, Target target,
+        Filepath out_file, CompilerOptions* options, Target target,
         DiagnosticManager* dm);
 void translation_unit_delete(TranslationUnit* tu);
 

@@ -56,11 +56,54 @@ static bool argument_starts_with(const char* value, const char* arg)
     return strncmp(value, arg, value_length) == 0;
 }
 
+static bool f_argument(const char* f, const char* arg)
+{
+    if (!argument_starts_with("-f", arg))
+    {
+        return false;
+    }
+
+    // Ignore the -f part;
+    arg += strlen("-f");
+
+    // Return if we are that
+    return argument_is(f, arg);
+}
+
+static bool fyes_no_argument(const char* fyes_no, const char* arg, bool* truth)
+{
+    if (!argument_starts_with("-f", arg))
+    {
+        return false;
+    }
+
+    // Ignore the -f part;
+    arg += strlen("-f");
+
+    bool no = argument_starts_with("no-", arg);
+    if (no == true)
+    {
+        arg += strlen("no-");
+    }
+
+    // Now we need to see if we are the fyes_no part
+    if (!argument_is(fyes_no, arg))
+    {
+        return false;
+    }
+
+    // Set the truth to be no if no and yes if yes
+    *truth = !no;
+    
+    return true;
+}
+
 static CompilerOptions compiler_options_create(void)
 {
     CompilerOptions opts =
     {
         .standard = LANG_STANDARD_DEFAULT,
+        .syntax_only = false,
         .werror = false,
         .infile = NULL,
         .outfile = NULL,
@@ -204,6 +247,54 @@ static bool handle_standard(CompilerOptions* opts, DiagnosticManager* dm,
     return true;
 }
 
+static bool handle_syntax_only(CompilerOptions* opts, DiagnosticManager* dm,
+        CommandLineState* state, char* argument)
+{
+    if (!f_argument("syntax-only", argument))
+    {
+        return false;
+    }
+
+    // eat the argumen
+    state_eat_argument(state);
+
+    opts->syntax_only = true;
+
+    return true;
+}
+
+static bool handle_s(CompilerOptions* opts, DiagnosticManager* dm,
+        CommandLineState* state, char* argument)
+{
+    if (!argument_is("-S", argument))
+    {
+        return false;
+    }
+
+    // eat the argumen
+    state_eat_argument(state);
+
+    opts->dump_assembly = true;
+    
+    return true;
+}
+
+static bool handle_c(CompilerOptions* opts, DiagnosticManager* dm,
+        CommandLineState* state, char* argument)
+{
+    if (!argument_is("-c", argument))
+    {
+        return false;
+    }
+
+    // eat the argumen
+    state_eat_argument(state);
+
+    opts->compile_only = true;
+    
+    return true;
+}
+
 static void parse_compiler_option(CompilerOptions* opts, DiagnosticManager* dm,
         CommandLineState* state)
 {
@@ -225,10 +316,23 @@ static void parse_compiler_option(CompilerOptions* opts, DiagnosticManager* dm,
     {
         return;
     }
+    else if (handle_syntax_only(opts, dm, state, current_arg))
+    {
+        return;
+    }
+    else if (handle_s(opts, dm, state, current_arg))
+    {
+        return;
+    }
+    else if (handle_c(opts, dm, state, current_arg))
+    {
+        return;
+    }
 
     // We didn't find anything so eat the argument and error.
     diagnostic_error(dm, "unknown argument '%s'", current_arg);
     state_eat_argument(state);
+    state->options_okay = false;
 }
 
 bool parse_compiler_options(CompilerOptions* opts, DiagnosticManager* dm,

@@ -7,6 +7,10 @@
 typedef struct CompilerOptions {
     LangStandard standard;
 
+    bool syntax_only;
+    bool dump_assembly;
+    bool compile_only;
+
     bool werror;
 
     char* infile;

@@ -14,12 +14,10 @@ void codegen_compound_statement(const Statement* stmt)
 {
     assert(statement_is(stmt, STATEMENT_COMPOUND));
 
-    Statement* curr = NULL;//statement_compound_get_first(stmt);
-    while (curr != NULL)
+    Statement* curr = statement_compound_get_first(stmt);
+    for (; curr != NULL; curr = statement_get_next(curr))
     {
         codegen_statement(curr);
-
-        curr = statement_get_next(curr);
     }
 }
 

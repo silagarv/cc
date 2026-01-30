@@ -1750,13 +1750,11 @@ static Statement* parse_compound_statement_internal(Parser* parser)
 
         // Make sure to ignore completely empty statement like 'int;' so that
         // we don't segfault as these are represented as NULL
-        if (next == NULL)
+        if (next != NULL)
         {
-            continue;
+            statement_set_next(current, next);
+            current = next;
         }
-
-        statement_set_next(current, next);
-        current = next;
     }
 
     Location r_curly = LOCATION_INVALID;
