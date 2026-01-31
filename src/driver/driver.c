@@ -1,5 +1,6 @@
 #include "driver.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -21,6 +22,15 @@
 #include "parse/ast.h"
 
 #include "codegen/codegen.h"
+#include "util/panic.h"
+
+// An enum of our compiler actions we can do. Noting that this may grow over 
+// time.
+typedef enum CompilerDriverAction {
+    DRIVER_ACTION_HELP,
+    DRIVER_ACTION_VERSION,
+    DRIVER_ACTION_COMPILE
+} CompilerDriverAction;
 
 typedef struct CompilerDriver {
     // The diagnostic manager for this driver
@@ -53,6 +63,35 @@ void compiler_driver_free(CompilerDriver* driver)
 TranslationUnit* compiler_driver_tu_allocate(CompilerDriver* driver)
 {
     return arena_allocate_size(&driver->arena, sizeof(TranslationUnit));
+}
+
+CompilerDriverAction compiler_driver_determine_action(const CompilerDriver* d)
+{
+    if (d->options.help)
+    {
+        return DRIVER_ACTION_HELP;
+    }
+
+    if (d->options.version)
+    {
+        return DRIVER_ACTION_VERSION;
+    }
+
+    return DRIVER_ACTION_COMPILE;
+}
+
+static int compiler_driver_do_help(CompilerDriver* driver)
+{
+    // TODO: finish the help
+    fprintf(stderr, "Usage: cc [options] file\n");
+    return EXIT_SUCCESS;
+}
+
+static int compiler_driver_do_version(CompilerDriver* driver)
+{
+    // TODO: finish the version section
+    fprintf(stderr, "cc version 0.0.0\n");
+    return EXIT_SUCCESS;
 }
 
 static bool get_filepath(Filepath* path, const char* name, bool output,
@@ -103,6 +142,7 @@ static int compiler_driver_process_translation_unit(CompilerDriver* driver,
     }
 
     LangStandard std = driver->options.standard;
+    assert(std != LANG_STANDARD_DEFAULT);
 
     // Okay now create our target (dummy for now)
     Target target = (Target) {0};
@@ -118,11 +158,32 @@ static int compiler_driver_process_translation_unit(CompilerDriver* driver,
     return success;
 }
 
-static int compiler_driver_execute(CompilerDriver* driver)
+static int compiler_driver_do_compile(CompilerDriver* driver)
 {
     // First try to parse the translation unit.
     TranslationUnit tu = {0};
     return compiler_driver_process_translation_unit(driver, &tu);
+}
+
+static int compiler_driver_execute(CompilerDriver* driver)
+{
+    // Determine what action to do based on our command line arguments and go
+    // and then execute that action
+    switch (compiler_driver_determine_action(driver))
+    {
+        case DRIVER_ACTION_HELP:
+            return compiler_driver_do_help(driver);
+
+        case DRIVER_ACTION_VERSION:
+            return compiler_driver_do_version(driver);
+
+        case DRIVER_ACTION_COMPILE:
+            return compiler_driver_do_compile(driver);
+
+        default:
+            panic("invalid compiler action generated");
+            return EXIT_FAILURE;
+    }
 }
 
 static int compiler_driver_invoke_internal(int argc, char** argv,
@@ -134,8 +195,12 @@ static int compiler_driver_invoke_internal(int argc, char** argv,
         return EXIT_FAILURE;
     }
 
+    // Finish options set up here with our diagnostics engine if we got these
+    diagnostic_manager_set_disable_warnings(&driver->dm, driver->options.w);
+    diagnostic_manager_set_werror(&driver->dm, driver->options.werror);
+
     // Now we know we have good options we can go ahead and invoke the compiler
-    // on the options.
+    // on the options and return the result of doing that.
     return compiler_driver_execute(driver);
 }
 

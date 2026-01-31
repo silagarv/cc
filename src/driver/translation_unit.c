@@ -68,19 +68,30 @@ static bool translation_unit_parse(TranslationUnit* tu)
 // TODO: can this even fail?
 static bool translation_unit_codegen(TranslationUnit* tu)
 {
-    codegen_translation_unit(&tu->main_file, &tu->target, tu->dm, &tu->ast);
+    codegen_translation_unit(&tu->main_file, &tu->target, tu->dm, tu->options,
+            &tu->ast);
 
     return true;
 }
 
 int translation_unit_process(TranslationUnit* tu)
 {
-    // First try to parse the translation unit returning failure if that doesn't
-    // succeed.
+    // First check if we are only meant to preprocess and handle that
+    if (tu->options->preprocess_only)
+    {
+        diagnostic_error(tu->dm, "preprocessing is not yet supported; "
+                "compilation aborted");
+        return EXIT_FAILURE;
+    }
+
+    // Then try to parse the translation unit to see if we are even able to do
+    // code generation.
     if (translation_unit_parse(tu) == false)
     {
         return EXIT_FAILURE;
     }
+
+    // TODO: dump ast at this point? Yes, need to add flag for that.
 
     // Also check if we are only wanting to do syntax only and no codegeneration
     // but also make sure we exit with success.

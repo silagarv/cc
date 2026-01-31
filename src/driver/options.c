@@ -115,17 +115,27 @@ static CompilerOptions compiler_options_create(void)
 static void compiler_options_finish(CompilerOptions* opts,
         DiagnosticManager* dm, CommandLineState* state)
 {
-    // Make sure we have an input file
+    // Make sure we have an input file if we aren't going to do any of the other
+    // options like version or help through!
     if (opts->infile == NULL)
     {
-        diagnostic_error(dm, "no input files");
-        state->options_okay = false;
+        if (!(opts->help || opts->version))
+        {
+            diagnostic_error(dm, "no input files");
+            state->options_okay = false;
+        }
     }
 
     // Set the default language if required
     if (opts->standard == LANG_STANDARD_DEFAULT)
     {
         opts->standard = LANG_STANDARD_C99;
+    }
+
+    // Check the optimisation level and give a sensible default level
+    if (opts->opt_level == OPT_LEVEL_UNSPECIFIED)
+    {
+        opts->opt_level = OPT_LEVEL_0;
     }
 }
 
@@ -233,9 +243,8 @@ static bool handle_standard(CompilerOptions* opts, DiagnosticManager* dm,
             opts->standard = standards[i].standard;
             if (standards[i].standard != LANG_STANDARD_C99)
             {
-                diagnostic_error(dm, "only c99 is supported but got given "
-                        "'%s'", remaining);
-                state->options_okay = false;
+                diagnostic_warning(dm, "only ISO C99 is supported but got "
+                        "given '%s'; ignoring argument", remaining);
             }
             return true;
         }
@@ -295,6 +304,157 @@ static bool handle_c(CompilerOptions* opts, DiagnosticManager* dm,
     return true;
 }
 
+static bool handle_e(CompilerOptions* opts, DiagnosticManager* dm,
+        CommandLineState* state, char* argument)
+{
+    if (!argument_is("-E", argument))
+    {
+        return false;
+    }
+
+    // eat the argumen
+    state_eat_argument(state);
+
+    opts->preprocess_only = true;
+    
+    return true;
+}
+
+static bool handle_help(CompilerOptions* opts, DiagnosticManager* dm,
+        CommandLineState* state, char* argument)
+{
+    if (!argument_is("--help", argument))
+    {
+        return false;
+    }
+
+    // eat the argumen
+    state_eat_argument(state);
+
+    opts->help = true;
+    
+    return true;
+}
+
+static bool handle_version(CompilerOptions* opts, DiagnosticManager* dm,
+        CommandLineState* state, char* argument)
+{
+    if (!argument_is("--version", argument))
+    {
+        return false;
+    }
+
+    // eat the argumen
+    state_eat_argument(state);
+
+    opts->version = true;
+    
+    return true;
+}
+
+static bool handle_opt_level(CompilerOptions* opts, DiagnosticManager* dm,
+        CommandLineState* state, char* argument)
+{
+    if (!argument_starts_with("-O", argument))
+    {
+        return false;
+    }
+
+    // Make sure to eat the argument
+    state_eat_argument(state);
+
+    // Otherwise we now need to determine the optimisation level
+    char* moved_argument = argument + strlen("-O");
+    if (argument_is("", moved_argument))
+    {
+        // Special case of '-O' enable level 1 optimisations.
+        opts->opt_level = OPT_LEVEL_1;
+    }
+    else if (argument_is("0", moved_argument))
+    {
+        opts->opt_level = OPT_LEVEL_0;
+    }
+    else if (argument_is("1", moved_argument))
+    {
+        opts->opt_level = OPT_LEVEL_1;
+    }
+    else if (argument_is("2", moved_argument))
+    {
+        opts->opt_level = OPT_LEVEL_2;
+    }
+    else if (argument_is("3", moved_argument))
+    {
+        opts->opt_level = OPT_LEVEL_3;
+    }
+    else if (argument_is("g", moved_argument))
+    {
+        opts->opt_level = OPT_LEVEL_G;
+    }
+    else if (argument_is("s", moved_argument))
+    {
+        opts->opt_level = OPT_LEVEL_S;
+    }
+    else if (argument_is("z", moved_argument))
+    {
+        opts->opt_level = OPT_LEVEL_Z;
+    }
+    else if (argument_is("fast", moved_argument))
+    {
+        opts->opt_level = OPT_LEVEL_FAST;
+    }
+    else
+    {
+        diagnostic_error(dm, "invalid value '%s' in '%s'",
+                moved_argument, argument);
+        state->options_okay = false;
+    }
+
+    return true;
+}
+
+static bool handle_w(CompilerOptions* opts, DiagnosticManager* dm,
+        CommandLineState* state, char* argument)
+{
+    if (!argument_is("-w", argument))
+    {
+        return false;
+    }
+
+    // Make sure to eat the argument
+    state_eat_argument(state);
+
+    opts->w = true;
+
+    return true;
+}
+
+static bool handle_werror(CompilerOptions* opts, DiagnosticManager* dm,
+        CommandLineState* state, char* argument)
+{
+    if (!argument_is("-Werror", argument))
+    {
+        return false;
+    }
+
+    // Make sure to eat the argument
+    state_eat_argument(state);
+
+    opts->werror = true;
+
+    return true;
+}
+
+static bool handle_unknown(CompilerOptions* opts, DiagnosticManager* dm,
+        CommandLineState* state, char* argument)
+{
+    // We didn't find anything so eat the argument and error.
+    diagnostic_error(dm, "unknown argument '%s'", argument);
+    state_eat_argument(state);
+    state->options_okay = false;
+
+    return true;
+}
+
 static void parse_compiler_option(CompilerOptions* opts, DiagnosticManager* dm,
         CommandLineState* state)
 {
@@ -328,11 +488,38 @@ static void parse_compiler_option(CompilerOptions* opts, DiagnosticManager* dm,
     {
         return;
     }
-
-    // We didn't find anything so eat the argument and error.
-    diagnostic_error(dm, "unknown argument '%s'", current_arg);
-    state_eat_argument(state);
-    state->options_okay = false;
+    else if (handle_e(opts, dm, state, current_arg))
+    {
+        return;
+    }
+    else if (handle_help(opts, dm, state, current_arg))
+    {
+        return;
+    }
+    else if (handle_version(opts, dm, state, current_arg))
+    {
+        return;
+    }
+    else if (handle_opt_level(opts, dm, state, current_arg))
+    {
+        return;
+    }
+    else if (handle_w(opts, dm, state, current_arg))
+    {
+        return;
+    }
+    else if (handle_werror(opts, dm, state, current_arg))
+    {
+        return;
+    }
+    else if (handle_unknown(opts, dm, state, current_arg))
+    {
+        return;
+    }
+    else
+    {
+        panic("unhandled command line argument");
+    }
 }
 
 bool parse_compiler_options(CompilerOptions* opts, DiagnosticManager* dm,

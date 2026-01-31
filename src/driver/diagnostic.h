@@ -50,11 +50,13 @@ typedef struct DiagnosticManager {
     size_t error_count;
 
     bool werror;
+    bool disable_warnings;
 } DiagnosticManager;
 
 DiagnosticManager diagnostic_manager_init(SourceManager* sm);
 void diagnostic_manager_set_sm(DiagnosticManager* dm, SourceManager* sm);
 void diagnostic_manager_set_werror(DiagnosticManager* dm, bool value);
+void diagnostic_manager_set_disable_warnings(DiagnosticManager* dm, bool value);
 
 size_t diagnostic_manager_get_warning_count(const DiagnosticManager* dm);
 size_t diagnostic_manager_get_error_count(const DiagnosticManager* dm);

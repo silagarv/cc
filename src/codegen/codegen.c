@@ -10,8 +10,14 @@
 #include "codegen/codegen_statement.h"
 #include "codegen/codegen_declaration.h"
 
+static void codegen_translation_unit_internal(CodegenContext* state)
+{
+    
+        
+}
+
 void codegen_translation_unit(const Filepath* input_file, const Target* target,
-        DiagnosticManager* dm, const Ast* ast)
+        DiagnosticManager* dm, const CompilerOptions* options, const Ast* ast)
 {
     // In order to generate any code we will need to traverse all declarations
     // that could be used for such. If it is an external decl it is a top level

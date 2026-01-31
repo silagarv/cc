@@ -70,6 +70,11 @@ void diagnostic_manager_set_werror(DiagnosticManager* dm, bool value)
     dm->werror = value;
 }
 
+void diagnostic_manager_set_disable_warnings(DiagnosticManager* dm, bool value)
+{
+    dm->disable_warnings = value;
+}
+
 size_t diagnostic_manager_get_warning_count(const DiagnosticManager* dm)
 {
     return dm->warning_count;
@@ -172,6 +177,12 @@ void diagnostic_error(DiagnosticManager* dm, const char* fmt, ...)
 
 void diagnostic_warning(DiagnosticManager* dm, const char* fmt, ...)
 {
+    // In clang disabling warnings takes priority over having them at all
+    if (dm->disable_warnings)
+    {
+        return;
+    }
+
     va_list ap;
     va_start(ap, fmt);
     diagnostic_internal(dm, dm->werror ? DIAGNOSTIC_ERROR : DIAGNOSTIC_WARNING,
@@ -237,6 +248,12 @@ void diagnostic_error_at(DiagnosticManager* dm, Location loc,
 void diagnostic_warning_at(DiagnosticManager* dm, Location loc,
         const char* fmt, ...)
 {
+    // In clang disabling warnings takes priority over having them at all
+    if (dm->disable_warnings)
+    {
+        return;
+    }
+
     va_list ap;
     va_start(ap, fmt);
     diagnostic_internal_at(dm,
