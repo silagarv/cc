@@ -23,20 +23,14 @@ LFLAGS = -lm
 IFLAGS = -Isrc
 CFLAGS += $(IFLAGS)
 
-# LLVMCFLAGS = -I/usr/lib/llvm-18/include \
-# 	-D_GNU_SOURCE \
-# 	-D__STDC_CONSTANT_MACROS \
-# 	-D__STDC_FORMAT_MACROS \
-# 	-D__STDC_LIMIT_MACROS
+# Get our llvm flags for using it and add them to our makefile
+LLVMCFLAGS = $(shell llvm-config --cflags)
+LLVMLDFLAGS = $(shell llvm-config --ldflags)
+LLVMLIBS = $(shell llvm-config --libs)
 
-# LLVMLDFLAGS = -L/usr/lib/llvm-18/lib
-
-# LLVMLFLAGS = -lLLVM-18
-
-# CFLAGS += $(LLVMCFLAGS)
-
-# LCFLAGS += $(LLVMLDFLAGS)
-# LFLAGS += $(LLVMLFLAGS)
+CFLAGS += $(LLVMCFLAGS)
+LFLAGS += $(LLVMLDFLAGS)
+LFLAGS += $(LLVMLIBS)
 
 .Default_Goal: cc
 
@@ -89,10 +83,13 @@ PARSE = src/parse/ast_allocator.c \
 	src/parse/parser.c \
 	src/parse/semantic.c
 
-CODEGEN = src/codegen/codegen.c \
-	src/codegen/codegen_expression.c \
-	src/codegen/codegen_statement.c \
-	src/codegen/codegen_declaration.c
+CODEGEN = src/codegen/codegen.c
+
+CODEGEN_LLVM = src/codegen/codegen_llvm/codegen_llvm.c \
+	src/codegen/codegen_llvm/codegen_declaration.c \
+	src/codegen/codegen_llvm/codegen_statement.c
+
+CODEGEN += $(CODEGEN_LLVM)
 
 SRCS = $(UTIL) $(FILES) $(DRIVER) $(LEX) $(PARSE) $(CODEGEN) src/main.c
 

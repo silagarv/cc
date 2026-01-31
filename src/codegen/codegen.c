@@ -1,35 +1,47 @@
 #include "codegen.h"
 
-#include <assert.h>
+#include "util/arena.h"
 
-#include "lex/identifier_table.h"
-
-#include "parse/declaration.h"
-#include "parse/statement.h"
-
-#include "codegen/codegen_statement.h"
-#include "codegen/codegen_declaration.h"
-
-static void codegen_translation_unit_internal(CodegenContext* state)
+CodegenContext codegen_context_create(const Filepath* in, const Filepath* out,
+        const Target* target, DiagnosticManager* dm,
+        const CompilerOptions* options, const Ast* ast)
 {
-    
-        
+    // Create our code generation context completely giving it an arean to use
+    // for any allocations that it might have to do.
+    CodegenContext context = (CodegenContext)
+    {
+        .arena = arena_new(ARENA_DEFAULT_CHUNK_SIZE, ARENA_DEFAULT_ALIGNMENT),
+        .input_file = in,
+        .output_file = out,
+        .target = target,
+        .dm = dm,
+        .options = options,
+        .ast = ast,
+        .current_external = NULL,
+        .codegen_okay = true,
+        .backend_specific = NULL
+    };
+
+    return context;
 }
 
-void codegen_translation_unit(const Filepath* input_file, const Target* target,
-        DiagnosticManager* dm, const CompilerOptions* options, const Ast* ast)
+void codegen_context_delete(CodegenContext* context)
 {
-    // In order to generate any code we will need to traverse all declarations
-    // that could be used for such. If it is an external decl it is a top level
-    // declaration that is not for example a struct, typedef, etc...
-    DeclarationList external_decls = ast_get_external_decls(ast);
-    
-    DeclarationListEntry* entry = declaration_list_iter(&external_decls);
-    for (; entry != NULL; entry = declaration_list_next(entry))
-    {
-        // Get and generate code for the external declaration.
-        Declaration* decl = declaration_list_entry_get(entry);
-        codegen_external_declaration(decl);
-    }
+    // TODO: do nothing since the arena will be placed in the codegen result...    
+}
+
+CodegenResult* codegen_translation_unit(const Filepath* in, const Filepath* out,
+        const Target* target, DiagnosticManager* dm,
+        const CompilerOptions* options, const Ast* ast,
+        EmitTranslationUnitFunc emit)
+{
+    // Create our context, use our emitting function and then delete the 
+    // context once we are done.
+    CodegenContext context = codegen_context_create(in, out, target, dm,
+            options, ast);
+    CodegenResult* result = emit(&context);
+    codegen_context_delete(&context);
+
+    return result;
 }
 

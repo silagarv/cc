@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "codegen/codegen.h"
+#include "codegen/codegen_llvm/codegen_llvm.h"
 #include "driver/diagnostic.h"
 
 #include "driver/options.h"
@@ -40,6 +41,9 @@ void translation_unit_delete(TranslationUnit* tu)
     source_manager_delete(&tu->sm);
     identifier_table_delete(&tu->ids);
     ast_delete(&tu->ast);
+
+    // TODO: make more backend specific
+    llvm_delete_codegen_result(tu->result);
 }
 
 static bool translation_unit_parse(TranslationUnit* tu)
@@ -68,10 +72,11 @@ static bool translation_unit_parse(TranslationUnit* tu)
 // TODO: can this even fail?
 static bool translation_unit_codegen(TranslationUnit* tu)
 {
-    codegen_translation_unit(&tu->main_file, &tu->target, tu->dm, tu->options,
-            &tu->ast);
+    tu->result = codegen_translation_unit(&tu->main_file,
+            &tu->out_file, &tu->target, tu->dm, tu->options, &tu->ast,
+            llvm_emit_translation_unit);
 
-    return true;
+    return tu->result != NULL;
 }
 
 int translation_unit_process(TranslationUnit* tu)
@@ -109,7 +114,8 @@ int translation_unit_process(TranslationUnit* tu)
     // Now we need to see if the -S option was specified
     if (tu->options->dump_assembly)
     {
-        // Dump the assembly we are about to generate
+        // Dump the assembly we are about to generate (TODO: we will need a
+        // backend specific struct in the CompilerDriver to do this i think)
         return EXIT_SUCCESS;
     }
 

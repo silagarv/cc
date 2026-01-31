@@ -15,6 +15,8 @@ typedef struct Filepath {
 
 Filepath filepath_from_cstring(const char* path);
 
+const char* filepath_get_cstr(const Filepath* path);
+
 bool filepath_is_absolute(const Filepath* path);
 bool filepath_is_directory(const Filepath* path);
 

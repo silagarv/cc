@@ -16,6 +16,11 @@ Filepath filepath_from_cstring(const char* path)
     return fp;
 }
 
+const char* filepath_get_cstr(const Filepath* path)
+{
+    return path->path;
+}
+
 bool filepath_is_absolute(const Filepath* path)
 {
     return (path->path[0] == '/');

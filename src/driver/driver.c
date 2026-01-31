@@ -5,9 +5,11 @@
 #include <string.h>
 #include <assert.h>
 
+#include "util/panic.h"
+#include "util/arena.h"
+
 #include "driver/lang.h"
 #include "files/filepath.h"
-#include "util/arena.h"
 
 #include "driver/diagnostic.h"
 #include "driver/options.h"
@@ -22,7 +24,9 @@
 #include "parse/ast.h"
 
 #include "codegen/codegen.h"
-#include "util/panic.h"
+
+// TODO: get rid of below include
+#include <llvm-c/Core.h>
 
 // An enum of our compiler actions we can do. Noting that this may grow over 
 // time.
@@ -186,6 +190,15 @@ static int compiler_driver_execute(CompilerDriver* driver)
     }
 }
 
+static void compiler_driver_finish_init(CompilerDriver* driver)
+{
+    // Finish options set up here with our diagnostics engine if we got these
+    diagnostic_manager_set_disable_warnings(&driver->dm, driver->options.w);
+    diagnostic_manager_set_werror(&driver->dm, driver->options.werror);
+
+    // TODO: set up backend specific stuff?
+}
+
 static int compiler_driver_invoke_internal(int argc, char** argv,
         CompilerDriver* driver)
 {
@@ -195,9 +208,9 @@ static int compiler_driver_invoke_internal(int argc, char** argv,
         return EXIT_FAILURE;
     }
 
-    // Finish options set up here with our diagnostics engine if we got these
-    diagnostic_manager_set_disable_warnings(&driver->dm, driver->options.w);
-    diagnostic_manager_set_werror(&driver->dm, driver->options.werror);
+    // Finish the initialisation of our driver and then go ahead and execute
+    // the options.
+    compiler_driver_finish_init(driver);
 
     // Now we know we have good options we can go ahead and invoke the compiler
     // on the options and return the result of doing that.
@@ -209,6 +222,10 @@ int compiler_driver_invoke(int argc, char** argv)
     CompilerDriver driver = compiler_driver_create();
     int status = compiler_driver_invoke_internal(argc, argv, &driver);
     compiler_driver_free(&driver);
+
+    // TODO: get rid of this eventually, since this is mainly here for testing
+    // purposes to ensure we aren't leaking memory elsewhere.
+    LLVMShutdown();
     
     return status;
 }

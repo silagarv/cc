@@ -13,6 +13,8 @@
 
 #include "parse/ast.h"
 
+#include "codegen/codegen.h"
+
 typedef struct TranslationUnit {
     // The path of the main file that we are wanting to compiler
     Filepath main_file;
@@ -41,6 +43,9 @@ typedef struct TranslationUnit {
 
     // The ast that we have for this translation unit
     Ast ast;
+
+    // The code generation result that we have gotten.
+    CodegenResult* result;
 
     // Other required information
 } TranslationUnit;
