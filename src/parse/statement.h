@@ -280,6 +280,9 @@ Statement* statement_create_expression(AstAllocator* allocator,
 Statement* statement_create_if(AstAllocator* allocator, Location if_location,
         Location left_paren, Location right_paren, Location else_location,
         Expression* condition, Statement* true_part, Statement* false_part);
+Expression* statement_if_get_condition(const Statement* stmt);
+Statement* statement_if_get_true_part(const Statement* stmt);
+Statement* statement_if_get_false_part(const Statement* stmt);
 
 Statement* statement_create_while(AstAllocator* allocator, 
         Location while_location, Location left_paren, Location right_paren,

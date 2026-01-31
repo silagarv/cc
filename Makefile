@@ -86,6 +86,8 @@ PARSE = src/parse/ast_allocator.c \
 CODEGEN = src/codegen/codegen.c
 
 CODEGEN_LLVM = src/codegen/codegen_llvm/codegen_llvm.c \
+	src/codegen/codegen_llvm/codegen_util.c \
+	src/codegen/codegen_llvm/codegen_expression.c \
 	src/codegen/codegen_llvm/codegen_declaration.c \
 	src/codegen/codegen_llvm/codegen_statement.c
 

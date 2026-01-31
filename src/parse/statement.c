@@ -158,6 +158,27 @@ Statement* statement_create_if(AstAllocator* allocator, Location if_location,
     return stmt;
 }
 
+Expression* statement_if_get_condition(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_IF));
+
+    return stmt->if_stmt.expression;
+}
+
+Statement* statement_if_get_true_part(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_IF));
+
+    return stmt->if_stmt.true_part;
+}
+
+Statement* statement_if_get_false_part(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_IF));
+
+    return stmt->if_stmt.false_part;
+}
+
 Statement* statement_create_while(AstAllocator* allocator, 
         Location while_location, Location left_paren, Location right_paren,
         Expression* condition)
