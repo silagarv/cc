@@ -9,25 +9,24 @@
 #include "files/source_manager.h"
 
 // An enum containing all of the diagnostics that we have.
-typedef enum DiagnosticType {
-    DIAGNOSTIC,
-} DiagnosticType;
+typedef enum DiagnosticWarning {
+    DIAG_WARNING_UNKNOWN = -1, // Represents and unknown warning -1 so it won't
+                               // be counted by the 'count'
+    DIAG_WARNING_OTHER, // legit any unknown warning!
+    DIAG_WARNING_COUNT, // To represent the cound of all warnings
+    DIAG_WARNING_ALL, // A pseudo warning which actually cosntrols a bunch
+    DIAG_WARNING_EXTRA, // All of the -Wextra options
+    DIAG_WARNING_PEDANTIC, // For our pedantic options
+} DiagnosticWarning;
 
-// An enum to keep track of the diagnostic state
+// An enum to keep track of the diagnostic state. Must be a bitfield since we
+// can have a warning as an error but that doesn't mean that it will be 
+// triggered
 typedef enum DiagnosticState {
-    DIAGNOSTIC_STATE_OFF, // Off means will never trigger
-    DIAGNOSTIC_STATE_ON, // On means will trigger a diagnostic for this
-    DIAGNOSTIC_STATE_ERROR // Error means we will trigger a warning as an error
+    DIAG_STATE_OFF = 0, // Off means will never trigger
+    DIAG_STATE_ON = 1 << 0, // On means will trigger a diagnostic for this
+    DIAG_STATE_ERROR = 1 << 2 // trigger a warning as an error
 } DiagnosticState;
-
-// The diagnostic option we would like to control
-typedef struct DiagnosticOption {
-    DiagnosticType type; // The option that this is for
-    DiagnosticState state; // The state of this diagnostic
-    const char* name; // the name of the option e.g. "shadow for -Wshadow"
-    const char* diag; // The diagnostic text that this corrosponds to.
-    bool error; // Treat this as an error always
-} DiagnosticOption;
 
 // Structure to store the diagnostic colours that we will use.
 typedef struct DiagnosticColours {
@@ -51,7 +50,11 @@ typedef struct DiagnosticManager {
 
     bool werror;
     bool disable_warnings;
+
+    DiagnosticState options[DIAG_WARNING_COUNT];
 } DiagnosticManager;
+
+DiagnosticWarning diagnostic_string_to_warning(const char* string);
 
 DiagnosticManager diagnostic_manager_init(SourceManager* sm);
 void diagnostic_manager_set_sm(DiagnosticManager* dm, SourceManager* sm);

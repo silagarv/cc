@@ -2,6 +2,7 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
 #include <stddef.h>
 #include <unistd.h>
 #include <assert.h>
@@ -11,6 +12,29 @@
 #include "files/line_map.h"
 #include "files/location.h"
 #include "files/source_manager.h"
+
+// The diagnostic option we would like to control
+typedef struct DiagnosticOption {
+    DiagnosticWarning type; // The option that this is for
+    DiagnosticState state; // The state of this diagnostic
+    const char* name; // the name of the option e.g. "shadow for -Wshadow"
+    const char* diag; // The diagnostic text that this corrosponds to.
+} DiagnosticOption;
+
+// Make this constant since this should never need to change
+static const DiagnosticOption warnings[DIAG_WARNING_COUNT] =
+{
+    [DIAG_WARNING_OTHER] = (DiagnosticOption)
+        {
+            .type = DIAG_WARNING_OTHER,
+            .state = DIAG_STATE_ON, 
+            .name = "other",
+            .diag = "%s"
+        },
+};
+
+// Also keep a count of the warnings
+static size_t warnings_count = DIAG_WARNING_COUNT;
 
 typedef enum DiagnosticKind {
     DIAGNOSTIC_FATAL,
@@ -46,6 +70,42 @@ static const DiagnosticColours colour_on =
     .reset_all = "\033[0m"
 };
 
+static bool string_is(const char* str1, const char* str2)
+{
+    return strcmp(str1, str2) == 0;
+}
+
+DiagnosticWarning diagnostic_string_to_warning(const char* string)
+{
+    // Check for any possible grouped warnings
+    if (string_is(string, "") || string_is(string, "all"))
+    {
+        return DIAG_WARNING_ALL;
+    }
+
+    if (string_is(string, "extra"))
+    {
+        return DIAG_WARNING_EXTRA;
+    }
+
+    if (string_is(string, "pedantic"))
+    {
+        return DIAG_WARNING_PEDANTIC;
+    }
+
+    // Finally as a last resort go through all of the warnings that we could 
+    // possible have
+    for (size_t i = 0; i < warnings_count; i++)
+    {
+        if (string_is(string, warnings[i].name))
+        {
+            return warnings[i].type;
+        }
+    }
+
+    return DIAG_WARNING_UNKNOWN;
+}
+
 DiagnosticManager diagnostic_manager_init(SourceManager* sm)
 {
     DiagnosticManager dm;
@@ -55,6 +115,7 @@ DiagnosticManager diagnostic_manager_init(SourceManager* sm)
     dm.warning_count = 0;
     dm.error_count = 0;
 
+    dm.disable_warnings = false;
     dm.werror = false;
 
     return dm;

@@ -428,6 +428,62 @@ static bool handle_w(CompilerOptions* opts, DiagnosticManager* dm,
     return true;
 }
 
+static bool handle_warning(CompilerOptions* opts, DiagnosticManager* dm,
+        CommandLineState* state, char* argument)
+{
+    if (!argument_starts_with("-W", argument))
+    {
+        return false;
+    }
+
+    // eat the argument since we don't need it anymore
+    state_eat_argument(state);
+
+    // Save the original argument in case we might need it later...
+    char* orginal = argument;
+
+    // Skip the -W prefix
+    argument += strlen("-W");
+
+    // Special case for -Werror since we want to be special in our handling of
+    // that...
+    if (argument_is("error", argument))
+    {
+        opts->werror = true;
+        return true;        
+    }
+
+    bool no = false;
+    bool error = false;
+
+    // Check if we get a no prefix to disable a warning
+    if (argument_starts_with("no-", argument))
+    {
+        no = true;
+        argument += strlen("no-");
+    }
+
+    // Also check if we get an error= prefix to handle that
+    if (argument_starts_with("error=", argument))
+    {
+        error = true;
+        argument += strlen("error=");
+    }
+
+    // Now attempt to get the name of the warning option
+    DiagnosticWarning warning = diagnostic_string_to_warning(argument);
+
+    // For now just print a warning about not knowing about the warning option
+    // if it wasn't known and do nothing about any of the other warnings
+    if (warning == DIAG_WARNING_UNKNOWN)
+    {
+        diagnostic_warning(dm, "unknown warning option '-W%s%s'",
+                error ? "error=" : "", argument);
+    }
+
+    return true;
+}
+
 static bool handle_werror(CompilerOptions* opts, DiagnosticManager* dm,
         CommandLineState* state, char* argument)
 {
@@ -448,7 +504,7 @@ static bool handle_unknown(CompilerOptions* opts, DiagnosticManager* dm,
         CommandLineState* state, char* argument)
 {
     // We didn't find anything so eat the argument and error.
-    diagnostic_error(dm, "unknown argument '%s'", argument);
+    diagnostic_error(dm, "unknown argument: '%s'", argument);
     state_eat_argument(state);
     state->options_okay = false;
 
@@ -508,7 +564,7 @@ static void parse_compiler_option(CompilerOptions* opts, DiagnosticManager* dm,
     {
         return;
     }
-    else if (handle_werror(opts, dm, state, current_arg))
+    else if (handle_warning(opts, dm, state, current_arg))
     {
         return;
     }
