@@ -978,14 +978,14 @@ void declaration_function_set_definition(Declaration* declaration,
     declaration->function.definition = definition;
 }
 
-Declaration* declaration_function_get_definition(Declaration* declaration)
+Declaration* declaration_function_get_definition(const Declaration* declaration)
 {
     assert(declaration_is(declaration, DECLARATION_FUNCTION));
 
     return declaration->function.definition;
 }
 
-bool declaration_function_has_definition(Declaration* declaration)
+bool declaration_function_has_definition(const Declaration* declaration)
 {
     assert(declaration_is(declaration, DECLARATION_FUNCTION));
 

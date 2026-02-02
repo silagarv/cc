@@ -320,6 +320,38 @@ static bool handle_e(CompilerOptions* opts, DiagnosticManager* dm,
     return true;
 }
 
+static bool handle_h(CompilerOptions* opts, DiagnosticManager* dm,
+        CommandLineState* state, char* argument)
+{
+    if (!argument_is("-H", argument))
+    {
+        return false;
+    }
+
+    // eat the argumen
+    state_eat_argument(state);
+
+    opts->print_headers = true;
+    
+    return true;
+}
+
+static bool handle_p(CompilerOptions* opts, DiagnosticManager* dm,
+        CommandLineState* state, char* argument)
+{
+    if (!argument_is("-P", argument))
+    {
+        return false;
+    }
+
+    // eat the argumen
+    state_eat_argument(state);
+
+    opts->no_line_markers = true;
+    
+    return true;
+}
+
 static bool handle_help(CompilerOptions* opts, DiagnosticManager* dm,
         CommandLineState* state, char* argument)
 {
@@ -431,16 +463,18 @@ static bool handle_w(CompilerOptions* opts, DiagnosticManager* dm,
 static bool handle_warning(CompilerOptions* opts, DiagnosticManager* dm,
         CommandLineState* state, char* argument)
 {
-    if (!argument_starts_with("-W", argument))
+    // Must start with -W but don't get any or the miscelanious options for
+    // adding arguments to assembler, preprocessor, or linker
+    if (!argument_starts_with("-W", argument)
+        || argument_starts_with("-Wa,", argument)
+        || argument_starts_with("-Wp,", argument)
+        || argument_starts_with("-Wl,", argument))
     {
         return false;
     }
 
     // eat the argument since we don't need it anymore
     state_eat_argument(state);
-
-    // Save the original argument in case we might need it later...
-    char* orginal = argument;
 
     // Skip the -W prefix
     argument += strlen("-W");
@@ -480,22 +514,6 @@ static bool handle_warning(CompilerOptions* opts, DiagnosticManager* dm,
         diagnostic_warning(dm, "unknown warning option '-W%s%s'",
                 error ? "error=" : "", argument);
     }
-
-    return true;
-}
-
-static bool handle_werror(CompilerOptions* opts, DiagnosticManager* dm,
-        CommandLineState* state, char* argument)
-{
-    if (!argument_is("-Werror", argument))
-    {
-        return false;
-    }
-
-    // Make sure to eat the argument
-    state_eat_argument(state);
-
-    opts->werror = true;
 
     return true;
 }
@@ -545,6 +563,14 @@ static void parse_compiler_option(CompilerOptions* opts, DiagnosticManager* dm,
         return;
     }
     else if (handle_e(opts, dm, state, current_arg))
+    {
+        return;
+    }
+    else if (handle_h(opts, dm, state, current_arg))
+    {
+        return;
+    }
+    else if (handle_p(opts, dm, state, current_arg))
     {
         return;
     }

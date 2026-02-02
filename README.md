@@ -1,21 +1,19 @@
 # CC - C Frontend
 
 ## Overview
-This is my currently work in process, c frontend. This was started as a personal intrest after taking a compilers course at uni and I have been wroking on this for a few months now.
-It is written in c99 and the goal is to eventually be able to parse all c99 code (including hopefully itself). The project is self contained with no dependencies, except clang, and
-make.
+This is my currently work in process, c compiler. This was started as a personal intrest after taking a compilers course at uni and I have been working on this for a few months now.
+It is written in C99 and the goal is to eventually be able to parse all c99 code (including hopefully itself). The project relies on LLVM to generate code in order to hopefully learm more about it.
 
-Currently, the program is able to read, lex, and parse most typical c99 constructs and does some ast building and creation. However, declaration handling is not yet complete, but this
-is in progress.
+Currently, the program is able to read, lex, and parse most typical c99 constructs and does most ast building and creation and has the starts of code generation to LLVM IR. However, initialization is almost not implemented at all apart from some basic checking.
 
-Currently, the program will look for a file named 'test.c' in the working directory and then attempt to parse that file, as a command line driver is planned for the future.
+Currently, the the command line driver is pretty limited where is can parse some warning options but ignores them.
 
-This project take inspiration from the clang compiler, particularly in the code for parsing declarations, and in how locations are tracked. It should be noted that no code is copied from
-he project and is originally my own work. Additionally, it should be noted that many of the error messages have also been copied directly from clang as well for fimilarity.
+This project take inspiration from the clang compiler and aims to be as correct as possible with helpful error messages.
 
 ## Building
 Requirements
-- c99 compiler
+- C99 compiler
+- LLVM
 - make
 
 To building, run 'make' in the cc directory and it wll output an executable named 'cc'
@@ -23,6 +21,7 @@ To building, run 'make' in the cc directory and it wll output an executable name
 ## Current TODO
 - Declaration parsing
     - also include a second list in struct / union decl's for all decls inside it
+    - properly create a declaration group as part of our declarations so that we are able to emit the creation of those instead of just returning the last declaration.
 
 - Semantic
     - expressions
@@ -35,8 +34,7 @@ To building, run 'make' in the cc directory and it wll output an executable name
     - Finish proper switch statement building
 
 ## Later TODO
-- Command-line driver
-- Code generation?
-- Tuning and naming of warning options
+- Fully featured command-line driver
 - Printing of source in diagnostics where relavent
 - Preprocessor support
+- Multiple target support

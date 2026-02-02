@@ -17,10 +17,19 @@
 
 LLVMTypeRef llvm_get_type(CodegenContext* context, const QualifiedType* type)
 {
+    CodegenLLVM* llvm = context->backend_specific;
+    LLVMContextRef c = llvm->context;
+
     // Before doing anything get the real base type for this
     QualifiedType real_type = qualified_type_get_canonical(type);
 
-    return NULL;
+    if (!qualified_type_is(&real_type, TYPE_S_INT))
+    {
+        panic("can only use int32's for now!!!");
+    }
+
+    // Simply get the int32 type for now
+    return LLVMInt32TypeInContext(c);
 }
 
 LLVMTypeRef llvm_create_function_type(CodegenContext* context,

@@ -21,6 +21,11 @@ void statement_set_next(Statement* stmt, Statement* next)
     stmt->base.next = next;
 }
 
+bool statement_has_next(const Statement* stmt)
+{
+    return stmt->base.next != NULL;
+}
+
 Statement* statement_get_next(const Statement* stmt)
 {
     return stmt->base.next;
@@ -352,5 +357,29 @@ bool statement_is(const Statement* stmt, StatementType type)
     assert(stmt);
 
     return stmt->base.type == type;
+}
+
+bool statement_is_empty(const Statement* stmt)
+{
+    if (stmt == NULL)
+    {
+        return false;
+    }
+
+    if (statement_is(stmt, STATEMENT_EMPTY))
+    {
+        return true;
+    }
+
+    if (statement_is(stmt, STATEMENT_COMPOUND))
+    {
+        Statement* first = statement_compound_get_first(stmt);
+        if (first == NULL)
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 

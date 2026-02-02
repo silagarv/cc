@@ -38,6 +38,10 @@ typedef struct CompilerOptions {
     bool werror;
     bool w;
 
+    // Some prerprocessor options
+    bool print_headers;
+    bool no_line_markers;
+
     // The initial outfile and infile
     char* infile;
     char* outfile;

@@ -547,8 +547,8 @@ void declaration_function_set_body(Declaration* declaraiton,
 union Statement* declaration_function_get_body(const Declaration* declaration);
 void declaration_function_set_definition(Declaration* declaration,
         Declaration* definition);
-Declaration* declaration_function_get_definition(Declaration* declaration);
-bool declaration_function_has_definition(Declaration* declaration);
+Declaration* declaration_function_get_definition(const Declaration* decl);
+bool declaration_function_has_definition(const Declaration* declaration);
 bool declaration_function_is_knr(const Declaration* declaration);
 DeclarationList declaration_function_get_paramaters(const Declaration* func);
 

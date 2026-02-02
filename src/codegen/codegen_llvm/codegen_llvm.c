@@ -2,12 +2,12 @@
 
 #include <stdio.h>
 
+#include "driver/diagnostic.h"
 #include "util/arena.h"
 
 #include "files/filepath.h"
 
 #include "parse/ast.h"
-#include "parse/ast_allocator.h"
 #include "parse/declaration.h"
 
 #include "codegen/codegen.h"
@@ -15,6 +15,8 @@
 
 #include <llvm-c/Core.h>
 #include <llvm-c/Types.h>
+#include <llvm-c/Analysis.h>
+#include <llvm-c/ErrorHandling.h>
 
 static CodegenLLVM* create_codegen_context_llvm(CodegenContext* context)
 {
@@ -47,12 +49,30 @@ static CodegenResult* llvm_finish_codegen(CodegenContext* context)
 {
     // Otherwise get our backend specific data and create our codegen result.
     CodegenLLVM* c = context->backend_specific;
+    LLVMModuleRef m = c->module;
+
+    // Once we have fully finished dump the assembly if requested
+    if (context->options->dump_assembly)
+    {
+        LLVMDumpModule(c->module);
+    }
+
+    // See if we correctly build the module.
+    char* error = NULL;
+    if (LLVMVerifyModule(m, LLVMReturnStatusAction, &error))
+    {
+        diagnostic_error(context->dm, "LLVM module is invalid:\n\n%s",
+                error);
+        context->codegen_okay = false;
+    }
+    LLVMDisposeMessage(error);
 
     // If the codegen had some errors with it just free all of the memory that
     // llvm used.
     if (context->codegen_okay == false)
     {
         delete_codegen_context_llvm(c);
+        arena_delete(&context->arena);
         return NULL;
     }
 
@@ -87,19 +107,12 @@ static void llvm_emit_translation_unit_internal(CodegenContext* context)
 
 CodegenResult* llvm_emit_translation_unit(CodegenContext* context)
 {
-    printf("entering codegen llvm!\n");
-
     // First start by initializing our backend specific data so that llvm is
     // able to work correctly.
     context->backend_specific = create_codegen_context_llvm(context);
 
     // Now do the internal code generation
     llvm_emit_translation_unit_internal(context);
-
-    // TODO: for now we just dump this here!!!
-    printf("DUMPING MODULE...\n");
-    LLVMDumpModule(((CodegenLLVM*)context->backend_specific)->module);
-    printf("DUMPING DONE...\n");
 
     // Finally, finish code generation any product a codegen result for us to
     // use for later.

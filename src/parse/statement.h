@@ -252,6 +252,7 @@ vector_of_decl(Statement*, Statement, statement);
 
 StatementType statement_get_kind(const Statement* stmt);
 void statement_set_next(Statement* stmt, Statement* next);
+bool statement_has_next(const Statement* stmt);
 Statement* statement_get_next(const Statement* stmt);
 
 Statement* statement_create_error(AstAllocator* allocator);
@@ -332,5 +333,8 @@ Statement* statement_create_declaration(AstAllocator* allocator,
         Location semi_location, Declaration* declaration);
 
 bool statement_is(const Statement* stmt, StatementType type);
+
+// This function checks if the statement is trivially empty. e.g '{}' or ';'
+bool statement_is_empty(const Statement* stmt);
 
 #endif /* STATEMENT_H */

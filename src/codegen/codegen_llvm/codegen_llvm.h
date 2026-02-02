@@ -25,6 +25,9 @@ typedef struct CodegenLLVM {
     // The current function that we are generating code for
     LLVMValueRef function;
 
+    // The current basic block
+    LLVMBasicBlockRef basic_block;
+
     // TODO: add stuff for types, functions, and the current basic blocks etc...
 } CodegenLLVM;
 
