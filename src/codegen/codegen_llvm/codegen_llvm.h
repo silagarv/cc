@@ -1,12 +1,18 @@
 #ifndef CODEGEN_LLVM_H
 #define CODEGEN_LLVM_H
 
+#include "parse/declaration.h"
 #include "util/arena.h"
+#include "util/hash_map.h"
 
 #include "codegen/codegen.h"
 
 #include <llvm-c/Core.h>
 #include <llvm-c/Types.h>
+
+typedef struct DeclToValueRef {
+    HashMap map;
+} DeclToValueRef;
 
 // A struct which allows for codegeneration by llvm specifically so that we
 // don't create a codegenerator which is tightly coupled to llvm.
@@ -28,6 +34,9 @@ typedef struct CodegenLLVM {
     // The current basic block
     LLVMBasicBlockRef basic_block;
 
+    // TODO: add a hashmap from declaration to LLVMValueRef...
+    DeclToValueRef map;
+
     // TODO: add stuff for types, functions, and the current basic blocks etc...
 } CodegenLLVM;
 
@@ -42,5 +51,10 @@ typedef struct CodegenResultLLVM {
 
 CodegenResult* llvm_emit_translation_unit(CodegenContext* context);
 void llvm_delete_codegen_result(CodegenResult* result);
+
+void llvm_codegen_add_declaration(CodegenContext* context,
+        const Declaration* decl, LLVMValueRef value);
+LLVMValueRef llvm_codegen_get_declaration(CodegenContext* context,
+        const Declaration* decl);
 
 #endif /* CODEGEN_LLVM_H */

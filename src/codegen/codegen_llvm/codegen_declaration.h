@@ -5,7 +5,9 @@
 
 #include "codegen/codegen.h"
 
-void llvm_codegen_declaration(CodegenContext* context,
+#include <llvm-c/Types.h>
+
+LLVMValueRef llvm_codegen_declaration(CodegenContext* context,
         const Declaration* declaration);
 void llvm_codegen_external_declaration(CodegenContext* context,
         const Declaration* declaration);

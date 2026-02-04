@@ -1,9 +1,12 @@
 #include "codegen_llvm.h"
 
+#include <stdint.h>
 #include <stdio.h>
 
 #include "driver/diagnostic.h"
+
 #include "util/arena.h"
+#include "util/hash_map.h"
 
 #include "files/filepath.h"
 
@@ -17,6 +20,21 @@
 #include <llvm-c/Types.h>
 #include <llvm-c/Analysis.h>
 #include <llvm-c/ErrorHandling.h>
+
+uint32_t hash_decl(const void* decl)
+{
+    return (uintptr_t) decl & UINT32_MAX;
+}
+
+bool cmp_decl(const void* d1, const void* d2)
+{
+    return d1 == d2;
+}
+
+static DeclToValueRef create_decl_map(void)
+{
+    return (DeclToValueRef) { hash_map_create(hash_decl, cmp_decl, NULL) };
+}
 
 static CodegenLLVM* create_codegen_context_llvm(CodegenContext* context)
 {
@@ -32,7 +50,8 @@ static CodegenLLVM* create_codegen_context_llvm(CodegenContext* context)
         .context = c,
         .module = LLVMModuleCreateWithNameInContext(name, c),
         .builder = LLVMCreateBuilderInContext(c),
-        .function = NULL
+        .function = NULL,
+        .map = create_decl_map()
     };
     
     return llvm;
@@ -63,9 +82,13 @@ static CodegenResult* llvm_finish_codegen(CodegenContext* context)
     {
         diagnostic_error(context->dm, "LLVM module is invalid:\n\n%s",
                 error);
+        diagnostic_note(context->dm, "compile with '-S' to inspect LLVM IR");
         context->codegen_okay = false;
     }
     LLVMDisposeMessage(error);
+
+    // For whatever we do we can free our hashmap and remove all of it's decls
+    hash_map_delete(&c->map.map);
 
     // If the codegen had some errors with it just free all of the memory that
     // llvm used.
@@ -136,3 +159,18 @@ void llvm_delete_codegen_result(CodegenResult* result)
 
     arena_delete(&r->arena);
 }
+
+void llvm_codegen_add_declaration(CodegenContext* context,
+        const Declaration* decl, LLVMValueRef value)
+{
+    CodegenLLVM* llvm = context->backend_specific;
+    hash_map_insert(&llvm->map.map, (void*) decl, value);
+}
+
+LLVMValueRef llvm_codegen_get_declaration(CodegenContext* context,
+        const Declaration* decl)
+{
+    CodegenLLVM* llvm = context->backend_specific;
+    return hash_map_get(&llvm->map.map, (void*) decl);
+}
+

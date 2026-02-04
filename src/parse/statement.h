@@ -277,6 +277,7 @@ Statement* statement_compound_get_first(const Statement* stmt);
 
 Statement* statement_create_expression(AstAllocator* allocator, 
         Location semi_location, Expression* expression);
+Expression* statement_expression_get(const Statement* stmt);
 
 Statement* statement_create_if(AstAllocator* allocator, Location if_location,
         Location left_paren, Location right_paren, Location else_location,
@@ -331,6 +332,7 @@ Statement* statement_create_empty(AstAllocator* allocator,
 
 Statement* statement_create_declaration(AstAllocator* allocator,
         Location semi_location, Declaration* declaration);
+Declaration* statement_declaration_get(const Statement* stmt);
 
 bool statement_is(const Statement* stmt, StatementType type);
 

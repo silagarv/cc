@@ -146,6 +146,13 @@ Statement* statement_create_expression(AstAllocator* allocator,
     return stmt;
 }
 
+Expression* statement_expression_get(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_EXPRESSION));
+
+    return stmt->expression_stmt.expression;
+}
+
 Statement* statement_create_if(AstAllocator* allocator, Location if_location,
         Location left_paren, Location right_paren, Location else_location,
         Expression* condition, Statement* true_part, Statement* false_part)
@@ -350,6 +357,13 @@ Statement* statement_create_declaration(AstAllocator* allocator,
     stmt->declaration_stmt.declaration = declaration;
 
     return stmt;
+}
+
+Declaration* statement_declaration_get(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_DECLARATION));
+
+    return stmt->declaration_stmt.declaration;
 }
 
 bool statement_is(const Statement* stmt, StatementType type)

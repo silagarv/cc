@@ -5,19 +5,76 @@
 #include "codegen/codegen_llvm/codegen_llvm.h"
 #include "codegen/codegen_llvm/codegen_util.h"
 
+#include "driver/diagnostic.h"
+#include "lex/identifier_table.h"
 #include "parse/declaration.h"
 #include "parse/statement.h"
 
 #include "codegen/codegen.h"
 #include "codegen/codegen_llvm/codegen_statement.h"
+#include "parse/type.h"
 
 #include <llvm-c/Core.h>
 #include <llvm-c/Types.h>
+#include <stddef.h>
 
-void llvm_codegen_declaration(CodegenContext* context,
+// should only be used for local declarations
+LLVMValueRef llvm_codegen_variable_declaration(CodegenContext* context,
+        const Declaration* variable)
+{
+    assert(declaration_is(variable, DECLARATION_VARIABLE));
+    assert(!declaration_variable_has_linkage(variable));
+
+    // Specific code for static locals might be needed
+    if (declaration_get_storage_class(variable) == STORAGE_STATIC)
+    {
+        panic("unable to handle static locals yet!");
+    }
+
+    // First get the llvm codegen from the context
+    CodegenLLVM* llvm = context->backend_specific;
+    LLVMContextRef c = llvm->context;
+    LLVMBuilderRef b = llvm->builder;   
+    LLVMBasicBlockRef bb = llvm->basic_block;
+    
+    // Now get all of the information we need to create the alloca
+    QualifiedType type = declaration_get_type(variable);
+    LLVMTypeRef llvm_ty = llvm_get_type(context, &type);
+
+    // Now create the alloca
+    LLVMPositionBuilderAtEnd(b, bb);
+    LLVMValueRef var_alloca = LLVMBuildAlloca(b, llvm_ty, "");
+
+    // TODO: here we should build the initializer as well! but that will not 
+    // be done
+    if (declaration_variable_has_initializer(variable))
+    {
+        Identifier* id = declaration_get_identifier(variable);
+        diagnostic_warning_at(context->dm, declaration_get_location(variable),
+                "initializer cannot be created for '%s'; this is not "
+                "implemented", identifier_cstr(id));
+    }
+
+    // Finally, once everything is build we need to insert this into our 
+    // declaration to value ref map so that we are able to remember this for
+    // later and reference it :)
+    llvm_codegen_add_declaration(context, variable, var_alloca);
+
+    return var_alloca;
+}
+
+LLVMValueRef llvm_codegen_declaration(CodegenContext* context,
         const Declaration* declaration)
 {
+    switch (declaration_get_kind(declaration))
+    {
+        case DECLARATION_VARIABLE:
+            return llvm_codegen_variable_declaration(context, declaration);
 
+        default:
+            panic("unable to codegen this declaration type yet!");
+            return NULL;
+    }
 }
 
 static LLVMLinkage translate_linkage_to_llvm(DeclarationLinkage linkage)
@@ -44,6 +101,7 @@ static void llvm_codegen_external_function(CodegenContext* context,
     // First get the llvm codegen from the context
     CodegenLLVM* llvm = context->backend_specific;
     LLVMModuleRef module = llvm->module;
+    LLVMContextRef c = llvm->context;
 
     // First get the name of the function that we are wanting to codegen for
     Identifier* id = declaration_get_identifier(declaration);
@@ -57,10 +115,18 @@ static void llvm_codegen_external_function(CodegenContext* context,
     DeclarationLinkage linkage = declaration_function_get_linkage(declaration);
     LLVMSetLinkage(fn, translate_linkage_to_llvm(linkage));
 
-    // Also set the inline status
-    bool is_inline = declaration_function_is_inline(declaration);
-    // TODO: ???
+    // Also set the inline status if we had it by getting the 'inlinehint' 
+    // attribute and adding it to the function.
+    if (declaration_function_is_inline(declaration))
+    {
+        unsigned inline_id = LLVMGetEnumAttributeKindForName("inlinehint",
+                strlen("inlinehint"));
+        LLVMAttributeRef attr = LLVMCreateEnumAttribute(c, inline_id, 0);
+        LLVMAddAttributeAtIndex(fn, LLVMAttributeFunctionIndex, attr);
+    }
 
+    // TODO: at this point should we add the funciton to our list of decls???
+    
     // Now we have created the function type set the be specific context
     llvm->function = fn;
 

@@ -5393,12 +5393,6 @@ Expression* semantic_checker_handle_relational_expression(SemanticChecker* sc,
         semantic_checker_do_usual_arithmetic_conversions(sc, &lhs, &rhs,
                 false);        
     }
-    else
-    {
-        // We already know that the pointer types are compatible with each other
-        // so I don't believe that any addition modifications to the expressions
-        // needs to happed :)
-    }
 
     // The type of relational expressions should be 'int', so get this and 
     // create the expression
@@ -5586,19 +5580,24 @@ Expression* semantic_checker_handle_arithmetic_expression(SemanticChecker* sc,
         ExpressionType type, Expression* lhs, Location operator_loc,
         Expression* rhs)
 {
+    // TODO: we will have to go back and fix any errors as they come up with
+    // TODO: arithmetic expressions and doing double lvalue to rvalue conversion
+    // TODO: since the below had to be commented out otherwise lvalue rvalue
+    // TODO: conversion happeded twice?
+
     // First try to lvalue convert each expressions bailing if this fails for
     // either of them.
-    lhs = semantic_checker_func_array_lvalue_convert(sc, lhs);
-    if (expression_is_invalid(lhs))
-    {
-        return semantic_checker_handle_error_expression(sc, operator_loc);
-    }
+    // lhs = semantic_checker_func_array_lvalue_convert(sc, lhs);
+    // if (expression_is_invalid(lhs))
+    // {
+    //     return semantic_checker_handle_error_expression(sc, operator_loc);
+    // }
 
-    rhs = semantic_checker_func_array_lvalue_convert(sc, rhs);
-    if (expression_is_invalid(rhs))
-    {
-        return semantic_checker_handle_error_expression(sc, operator_loc);
-    }
+    // rhs = semantic_checker_func_array_lvalue_convert(sc, rhs);
+    // if (expression_is_invalid(rhs))
+    // {
+    //     return semantic_checker_handle_error_expression(sc, operator_loc);
+    // }
 
     // Dispatch based on the type of expression that we have into more specific
     // functions which handle the logic. Noting that in the functions we are
