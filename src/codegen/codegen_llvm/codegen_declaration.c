@@ -1,22 +1,23 @@
 #include "codegen_declaration.h"
 
+#include <stddef.h>
 #include <assert.h>
 
-#include "codegen/codegen_llvm/codegen_llvm.h"
-#include "codegen/codegen_llvm/codegen_util.h"
-
 #include "driver/diagnostic.h"
+
 #include "lex/identifier_table.h"
+
+#include "parse/type.h"
 #include "parse/declaration.h"
 #include "parse/statement.h"
 
 #include "codegen/codegen.h"
+#include "codegen/codegen_llvm/codegen_llvm.h"
+#include "codegen/codegen_llvm/codegen_util.h"
 #include "codegen/codegen_llvm/codegen_statement.h"
-#include "parse/type.h"
 
 #include <llvm-c/Core.h>
 #include <llvm-c/Types.h>
-#include <stddef.h>
 
 // should only be used for local declarations
 LLVMValueRef llvm_codegen_variable_declaration(CodegenContext* context,
@@ -34,7 +35,8 @@ LLVMValueRef llvm_codegen_variable_declaration(CodegenContext* context,
     // First get the llvm codegen from the context
     CodegenLLVM* llvm = context->backend_specific;
     LLVMContextRef c = llvm->context;
-    LLVMBuilderRef b = llvm->builder;   
+    LLVMBuilderRef b = llvm->builder;
+    LLVMValueRef fn = llvm->function;
     LLVMBasicBlockRef bb = llvm->basic_block;
     
     // Now get all of the information we need to create the alloca

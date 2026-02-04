@@ -58,7 +58,7 @@ LLVMTypeRef llvm_get_type(CodegenContext* context, const QualifiedType* type)
             return LLVMDoubleTypeInContext(c);
 
         case TYPE_LONG_DOUBLE:
-            return LLVMFP128TypeInContext(c);
+            return LLVMX86FP80TypeInContext(c);
 
         case TYPE_IMAGINARY:
         case TYPE_COMPLEX:

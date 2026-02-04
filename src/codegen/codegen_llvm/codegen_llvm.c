@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <assert.h>
 
 #include "driver/diagnostic.h"
 
@@ -51,7 +52,8 @@ static CodegenLLVM* create_codegen_context_llvm(CodegenContext* context)
         .module = LLVMModuleCreateWithNameInContext(name, c),
         .builder = LLVMCreateBuilderInContext(c),
         .function = NULL,
-        .map = create_decl_map()
+        .map = create_decl_map(),
+        .jump_target = NULL
     };
     
     return llvm;
@@ -66,9 +68,13 @@ static void delete_codegen_context_llvm(CodegenLLVM* llvm)
 
 static CodegenResult* llvm_finish_codegen(CodegenContext* context)
 {
+
+
     // Otherwise get our backend specific data and create our codegen result.
     CodegenLLVM* c = context->backend_specific;
     LLVMModuleRef m = c->module;
+
+    assert(c->jump_target == NULL);
 
     // Once we have fully finished dump the assembly if requested
     if (context->options->dump_assembly)
@@ -82,7 +88,7 @@ static CodegenResult* llvm_finish_codegen(CodegenContext* context)
     {
         diagnostic_error(context->dm, "LLVM module is invalid:\n\n%s",
                 error);
-        diagnostic_note(context->dm, "compile with '-S' to inspect LLVM IR");
+        diagnostic_note(context->dm, "run with '-S' to dump LLVM IR");
         context->codegen_okay = false;
     }
     LLVMDisposeMessage(error);
@@ -174,3 +180,51 @@ LLVMValueRef llvm_codegen_get_declaration(CodegenContext* context,
     return hash_map_get(&llvm->map.map, (void*) decl);
 }
 
+void llvm_codegen_push_break_continue(CodegenContext* context,
+        LLVMBasicBlockRef br, LLVMBasicBlockRef cont)
+{
+    CodegenLLVM* llvm = context->backend_specific;
+    
+    JumpTarget* new_target = arena_allocate_size(&context->arena,
+            sizeof(JumpTarget));
+    new_target->previous = llvm->jump_target;
+    new_target->continue_target = cont;
+    new_target->break_target = br;
+
+    llvm->jump_target = new_target;
+}
+
+void llvm_codegen_push_break(CodegenContext* context, LLVMBasicBlockRef bb)
+{
+    // Get the previous continue which could be nothing, noting that this could
+    // happen for example pushing a switch not in a loop
+    CodegenLLVM* llvm = context->backend_specific;
+    JumpTarget* prev = llvm->jump_target;
+    LLVMBasicBlockRef prev_cont = prev == NULL ? NULL : prev->continue_target;
+    
+    JumpTarget* new_target = arena_allocate_size(&context->arena,
+            sizeof(JumpTarget));
+    new_target->previous = llvm->jump_target;
+    new_target->continue_target = prev_cont;
+    new_target->break_target = bb;
+
+    llvm->jump_target = new_target;
+}
+
+void llvm_codegen_pop_jumps(CodegenContext* context)
+{
+    CodegenLLVM* llvm = context->backend_specific;
+    llvm->jump_target = llvm->jump_target->previous;
+}
+
+LLVMBasicBlockRef llvm_codegen_get_break(const CodegenContext* context)
+{
+    CodegenLLVM* llvm = context->backend_specific;
+    return llvm->jump_target->break_target;
+}
+
+LLVMBasicBlockRef llvm_codegen_get_continue(const CodegenContext* context)
+{
+    CodegenLLVM* llvm = context->backend_specific;
+    return llvm->jump_target->continue_target;
+}

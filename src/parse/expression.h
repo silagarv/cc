@@ -324,6 +324,7 @@ IntegerValue expression_integer_get_value(const Expression* expression);
     
 Expression* expression_create_float(AstAllocator* allocator, Location location,
         FloatingValue value, QualifiedType type);
+FloatingValue expression_float_get_value(const Expression* expression);
 
 Expression* expression_create_character(AstAllocator* allocator,
         Location location, CharValue value, QualifiedType expr_type);

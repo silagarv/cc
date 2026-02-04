@@ -15,6 +15,7 @@
 
 #include <llvm-c/Core.h>
 #include <llvm-c/Types.h>
+#include <stdint.h>
 
 static LLVMValueRef llvm_codegen_integer_constant(CodegenContext* ctx,
         const Expression* expression)
@@ -23,6 +24,8 @@ static LLVMValueRef llvm_codegen_integer_constant(CodegenContext* ctx,
 
     CodegenLLVM* llvm = ctx->backend_specific;
     LLVMContextRef c = llvm->context;
+    LLVMBuilderRef b = llvm->builder;
+    LLVMBasicBlockRef bb = llvm->basic_block;
 
     // Get the expression type and thus the llvm type for the integer constant
     QualifiedType expr_type = expression_get_qualified_type(expression);
@@ -33,7 +36,73 @@ static LLVMValueRef llvm_codegen_integer_constant(CodegenContext* ctx,
     unsigned long long n = integer_value_get_value(&val);
 
     // TODO: should correctly get if the value is sign extended here!
+    LLVMPositionBuilderAtEnd(b, bb);
     return LLVMConstInt(llvm_ty, n, false);    
+}
+
+static LLVMValueRef llvm_codegen_floating_constant(CodegenContext* ctx,
+        const Expression* expression)
+{
+    assert(expression_is(expression, EXPRESSION_FLOATING_CONSTANT));
+
+    CodegenLLVM* llvm = ctx->backend_specific;
+    LLVMContextRef c = llvm->context;
+    LLVMBuilderRef b = llvm->builder;
+    LLVMBasicBlockRef bb = llvm->basic_block;
+
+    // Get the expression type and thus the llvm type for the integer constant
+    QualifiedType expr_type = expression_get_qualified_type(expression);
+    LLVMTypeRef llvm_ty = llvm_get_type(ctx, &expr_type);
+
+    // Then get the actual integer value itself and then generate the constant
+    FloatingValue float_value = expression_float_get_value(expression);
+    double n = (double) floating_value_get_value(&float_value);
+    LLVMPositionBuilderAtEnd(b, bb);
+    return LLVMConstReal(llvm_ty, n);    
+}
+
+static LLVMValueRef llvm_codegen_character_constant(CodegenContext* ctx,
+        const Expression* expression)
+{
+    assert(expression_is(expression, EXPRESSION_CHARACTER_CONSTANT));
+
+    CodegenLLVM* llvm = ctx->backend_specific;
+    LLVMContextRef c = llvm->context;
+    LLVMBuilderRef b = llvm->builder;
+    LLVMBasicBlockRef bb = llvm->basic_block;
+
+    // Get the expression type and thus the llvm type for the integer constant
+    QualifiedType expr_type = expression_get_qualified_type(expression);
+    LLVMTypeRef llvm_ty = llvm_get_type(ctx, &expr_type);
+
+    // Then get the actual integer value itself and then generate the constant
+    CharValue char_value = expression_character_get_value(expression);
+    uint64_t n = char_value_get_value(&char_value);
+
+    // TODO: should correctly get if the value is sign extended here!
+    LLVMPositionBuilderAtEnd(b, bb);
+    return LLVMConstInt(llvm_ty, n, false);    
+}
+
+static LLVMValueRef llvm_codegen_enumeration_constant(CodegenContext* ctx,
+        const Expression* expression)
+{
+    assert(expression_is(expression, EXPRESSION_ENUMERATION_CONSTANT));
+
+    CodegenLLVM* llvm = ctx->backend_specific;
+    LLVMContextRef c = llvm->context;
+    LLVMBuilderRef b = llvm->builder;
+    LLVMBasicBlockRef bb = llvm->basic_block;
+
+    // Get the expression type and thus the llvm type for the integer constant
+    QualifiedType expr_type = expression_get_qualified_type(expression);
+    LLVMTypeRef llvm_ty = llvm_get_type(ctx, &expr_type);
+
+    // Then get the actual integer value itself and then generate the constant
+    int value = expression_enum_constant_get_value(expression);
+    // TODO: should correctly get if the value is sign extended here!
+    LLVMPositionBuilderAtEnd(b, bb);
+    return LLVMConstInt(llvm_ty, value, false);    
 }
 
 LLVMValueRef llvm_codegen_reference_expression(CodegenContext* ctx, 
@@ -71,6 +140,63 @@ LLVMValueRef llvm_codegen_lvalue_cast(CodegenContext* c, const Expression* e)
 
     Expression* inner = expression_lvalue_cast_get_inner(e);
     return llvm_codegen_reference_expression(c, inner);
+}
+
+LLVMOpcode llvm_cast_determine_opcode(const QualifiedType* to,
+        const QualifiedType* from)
+{
+    assert(!qualified_type_is_compatible_no_quals(to, from));
+
+    // All of our options are above...
+    // LLVMTrunc          = 30,
+    // LLVMZExt           = 31,
+    // LLVMSExt           = 32,
+    // LLVMFPToUI         = 33,
+    // LLVMFPToSI         = 34,
+    // LLVMUIToFP         = 35,
+    // LLVMSIToFP         = 36,
+    // LLVMFPTrunc        = 37,
+    // LLVMFPExt          = 38,
+    // LLVMPtrToInt       = 39,
+    // LLVMIntToPtr       = 40,
+    // LLVMBitCast        = 41,
+    // LLVMAddrSpaceCast  = 60,
+    panic("casts are not fully implemented yet!");
+    return LLVMZExt;
+}
+
+LLVMValueRef llvm_codegen_cast(CodegenContext* ctx, const Expression* e,
+        ExpressionType kind)
+{
+    assert(expression_is(e, EXPRESSION_CAST)
+            || expression_is(e, EXPRESSION_CAST_IMPLICIT));
+
+    // Typical llvm setup
+    CodegenLLVM* llvm = ctx->backend_specific;
+    LLVMContextRef c = llvm->context;
+    LLVMBuilderRef b = llvm->builder;
+    LLVMBasicBlockRef bb = llvm->basic_block;
+
+    QualifiedType type = expression_get_qualified_type(e);
+    LLVMTypeRef llvm_ty = llvm_get_type(ctx, &type);
+
+    Expression* castee = NULL;
+    if (kind == EXPRESSION_CAST)
+    {
+        castee = expression_cast_get_inner(e);
+    }
+    else
+    {
+        castee = expression_implicit_cast_get_inner(e);
+    }
+
+    LLVMValueRef llvm_castee = llvm_codegen_expression(ctx, castee);
+
+    QualifiedType castee_type = expression_get_qualified_type(castee);
+    LLVMOpcode cast_type = llvm_cast_determine_opcode(&type, &castee_type);
+
+    LLVMPositionBuilderAtEnd(b, bb);
+    return LLVMBuildCast(b, cast_type, llvm_castee, llvm_ty, "");
 }
 
 LLVMValueRef llvm_codegen_parentheses(CodegenContext* c, const Expression* e)
@@ -114,6 +240,12 @@ LLVMIntPredicate expression_kind_to_int_predicate(ExpressionType expr_type,
     }
 }
 
+LLVMRealPredicate expression_kind_to_real_predicate(ExpressionType expr_type)
+{
+    panic("unimplemented function");
+    return 0;
+}
+
 LLVMValueRef llvm_codegen_comparison(CodegenContext* ctx, const Expression* e,
         ExpressionType kind)
 {
@@ -142,17 +274,22 @@ LLVMValueRef llvm_codegen_comparison(CodegenContext* ctx, const Expression* e,
     assert(qualified_type_is_compatible_no_quals(&lhs_type, &rhs_type));
 
     LLVMPositionBuilderAtEnd(b, bb);
+    if (qualified_type_is_pointer(&lhs_type))
+    {
+        // TODO: This
+        return NULL;
+    }
     if (qualified_type_is_integer(&lhs_type))
     {
         LLVMIntPredicate cmp_type = expression_kind_to_int_predicate(kind,
-            &lhs_type);
+                &lhs_type);
         return LLVMBuildICmp(b, cmp_type, llvm_lhs, llvm_rhs, "");
     }
     else
     {   
-        panic("unable to handle floating point comparisons yet");
         // Build a comparison between real numbers
-        return NULL;
+        LLVMRealPredicate cmp_type = expression_kind_to_real_predicate(kind);
+        return LLVMBuildFCmp(b, cmp_type, llvm_lhs, llvm_rhs, "");
     }   
 }
 
@@ -167,15 +304,21 @@ LLVMValueRef llvm_codegen_expression(CodegenContext* c, const Expression* e)
             panic("unimplemented arrays!");
             return NULL;
 
-        case EXPRESSION_ENUMERATION_CONSTANT:
+        case EXPRESSION_INTEGER_CONSTANT:
+            return llvm_codegen_integer_constant(c, e);
+
         case EXPRESSION_FLOATING_CONSTANT:
+            return llvm_codegen_floating_constant(c, e);
+
         case EXPRESSION_CHARACTER_CONSTANT:
+            return llvm_codegen_character_constant(c, e);
+
+        case EXPRESSION_ENUMERATION_CONSTANT:
+            return llvm_codegen_enumeration_constant(c, e);
+
         case EXPRESSION_STRING_LITERAL:
             panic("unimplemented!");
             return NULL;
-
-        case EXPRESSION_INTEGER_CONSTANT:
-            return llvm_codegen_integer_constant(c, e);
 
         case EXPRESSION_REFERENCE:
             // TODO: this ideally shouldn't be naked but is it a true error???
@@ -184,6 +327,12 @@ LLVMValueRef llvm_codegen_expression(CodegenContext* c, const Expression* e)
         case EXPRESSION_LVALUE_CAST:
             return llvm_codegen_lvalue_cast(c, e);
 
+        case EXPRESSION_CAST:
+        case EXPRESSION_CAST_IMPLICIT:
+            return llvm_codegen_cast(c, e, kind);
+
+            
+
             EXPRESSION_ARRAY_ACCESS,
             EXPRESSION_FUNCTION_CALL,
             EXPRESSION_MEMBER_ACCESS,
@@ -191,8 +340,6 @@ LLVMValueRef llvm_codegen_expression(CodegenContext* c, const Expression* e)
             EXPRESSION_COMPOUND_LITERAL,
             EXPRESSION_SIZEOF_TYPE,
             EXPRESSION_SIZEOF_EXPRESSION,
-            EXPRESSION_CAST,
-            EXPRESSION_CAST_IMPLICIT;
 
             // Unary operations
             EXPRESSION_UNARY_ADDRESS,

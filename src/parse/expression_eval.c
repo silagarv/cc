@@ -311,7 +311,8 @@ bool expression_fold_to_integer_constant(const Expression* expression,
             // integer type.
             if (expression_is(castee, EXPRESSION_FLOATING_CONSTANT))
             {
-                value->value = (int64_t) castee->floating.value.value;
+                FloatingValue float_val = expression_float_get_value(castee);
+                value->value = (int64_t) floating_value_get_value(&float_val);
                 return true;
             }
 

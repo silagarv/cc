@@ -5588,16 +5588,16 @@ Expression* semantic_checker_handle_arithmetic_expression(SemanticChecker* sc,
     // First try to lvalue convert each expressions bailing if this fails for
     // either of them.
     // lhs = semantic_checker_func_array_lvalue_convert(sc, lhs);
-    // if (expression_is_invalid(lhs))
-    // {
-    //     return semantic_checker_handle_error_expression(sc, operator_loc);
-    // }
+    if (expression_is_invalid(lhs))
+    {
+        return semantic_checker_handle_error_expression(sc, operator_loc);
+    }
 
     // rhs = semantic_checker_func_array_lvalue_convert(sc, rhs);
-    // if (expression_is_invalid(rhs))
-    // {
-    //     return semantic_checker_handle_error_expression(sc, operator_loc);
-    // }
+    if (expression_is_invalid(rhs))
+    {
+        return semantic_checker_handle_error_expression(sc, operator_loc);
+    }
 
     // Dispatch based on the type of expression that we have into more specific
     // functions which handle the logic. Noting that in the functions we are

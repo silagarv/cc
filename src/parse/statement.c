@@ -214,6 +214,16 @@ void statement_while_set_body(Statement* while_statement, Statement* body)
     while_statement->while_stmt.body = body;
 }
 
+Expression* statement_while_get_condition(const Statement* statement)
+{
+    return statement->while_stmt.expression;
+}
+
+Statement* statement_while_get_body(const Statement* statement)
+{
+    return statement->while_stmt.body;
+}
+
 // Note: a do while has extremely limited information when created but gets
 // all of its information later...
 Statement* statement_create_do_while(AstAllocator* allocator,
@@ -235,6 +245,16 @@ void statement_do_while_set_body(Statement* do_while_statement,
     do_while_statement->do_while_stmt.right_paren = right_paren;
     do_while_statement->do_while_stmt.expression = condition;
     do_while_statement->do_while_stmt.body = body;  
+}
+
+Expression* statement_do_while_get_condition(const Statement* statement)
+{
+    return statement->do_while_stmt.expression;
+}
+
+Statement* statement_do_while_get_body(const Statement* statement)
+{
+    return statement->do_while_stmt.body;
 }
 
 Statement* statement_create_for(AstAllocator* allocator, Location for_location,

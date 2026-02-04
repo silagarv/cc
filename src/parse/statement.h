@@ -289,17 +289,19 @@ Statement* statement_if_get_false_part(const Statement* stmt);
 Statement* statement_create_while(AstAllocator* allocator, 
         Location while_location, Location left_paren, Location right_paren,
         Expression* condition);
-
 void statement_while_set_body(Statement* while_statement, Statement* body);
+Expression* statement_while_get_condition(const Statement* statement);
+Statement* statement_while_get_body(const Statement* statement);
 
 // Note: a do while has extremely limited information when created but gets
 // all of its information later...
 Statement* statement_create_do_while(AstAllocator* allocator,
         Location do_location);
-
 void statement_do_while_set_body(Statement* do_while_statement,
         Location while_location, Location left_paren, Location right_paren,
         Expression* condition, Statement* body);
+Expression* statement_do_while_get_condition(const Statement* statement);
+Statement* statement_do_while_get_body(const Statement* statement);
 
 Statement* statement_create_for(AstAllocator* allocator, Location for_location,
         Location left_paren, Location right_paren, Statement* init,

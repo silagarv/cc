@@ -302,6 +302,14 @@ Expression* expression_create_enum_constant(AstAllocator* allocator,
     return expr;
 }
 
+int expression_enum_constant_get_value(const Expression* expr)
+{
+    assert(expression_is(expr, EXPRESSION_ENUMERATION_CONSTANT));
+
+    Declaration* decl = expr->reference.declaration;
+    return declaration_enum_constant_get_value(decl);
+}
+
 Expression* expression_create_reference(AstAllocator* allocator,
         Identifier* identifier, Location location,
         union Declaration* declaration, QualifiedType expr_type)
@@ -371,6 +379,13 @@ Expression* expression_create_float(AstAllocator* allocator, Location location,
     expr->floating.value = value;
 
     return expr;
+}
+
+FloatingValue expression_float_get_value(const Expression* expression)
+{
+    assert(expression_is(expression, EXPRESSION_FLOATING_CONSTANT));
+
+    return expression->floating.value;
 }
 
 Expression* expression_create_character(AstAllocator* allocator,

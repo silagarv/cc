@@ -38,6 +38,11 @@ uint64_t char_value_get_value(const CharValue* val)
     return val->value;
 }
 
+long double floating_value_get_value(const FloatingValue* val)
+{
+    return val->value;
+}
+
 ValueType literal_value_get_type(const LiteralValue* value)
 {
     return value->type;
@@ -1050,11 +1055,18 @@ bool parse_char_literal(CharValue* value, DiagnosticManager* dm,
                 "multiple characters");
         fatal_error = true;
     }
-
+    
     if (!wide && val > INT_MAX)
     {
         diagnostic_warning_at(dm, loc,
                 "character constant too long for its type");
+    }
+
+    // Okay if we had a normal character constant do a cast to char and then to
+    // int to get the value that we should be getting.
+    if (num_digits == 1)
+    {
+        val = (int)((char) val);
     }
 
     if (fatal_error)

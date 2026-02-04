@@ -96,6 +96,8 @@ uint64_t integer_value_get_value(const IntegerValue* val);
 
 uint64_t char_value_get_value(const CharValue* val);
 
+long double floating_value_get_value(const FloatingValue* val);
+
 ValueType literal_value_get_type(const LiteralValue* value);
 
 bool parse_preprocessing_number(LiteralValue* value, DiagnosticManager* dm,
