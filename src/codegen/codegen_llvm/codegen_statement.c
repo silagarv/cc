@@ -254,7 +254,37 @@ void llvm_codegen_goto_statement(CodegenContext* context, Statement* stmt)
 {
     assert(statement_is(stmt, STATEMENT_GOTO));
     
-    // TODO: will need to get the current target to goto to...
+    // Get all of the context we need in order to generate this 'return'
+    CodegenLLVM* llvm = context->backend_specific;
+    LLVMContextRef c = llvm->context;
+    LLVMBuilderRef b = llvm->builder;
+    LLVMValueRef fn = llvm->function;
+    LLVMBasicBlockRef bb = llvm->basic_block;
+
+    // First get the label declaration from the goto.
+    Declaration* label = statement_goto_get(stmt);
+
+    // Then we will need to loopuk the declaration and create a declaration for
+    // the basic block if it does not already exist. Otherwise, if it exists
+    // simply convert it to a basic block so that we can use it.
+    LLVMValueRef vbb = llvm_codegen_get_declaration(context, label);
+    LLVMBasicBlockRef label_bb = NULL;
+    if (vbb == NULL)
+    {
+        label_bb = LLVMCreateBasicBlockInContext(c, "");
+    }
+    else
+    {
+        label_bb = LLVMValueAsBasicBlock(vbb);
+    }
+
+    // Okay now what we need to do it to create an unconditional jump to that 
+    // basic block
+    LLVMPositionBuilderAtEnd(b, bb);
+    LLVMBuildBr(b, label_bb);
+
+    // Now we will append another basic block onto the function
+    llvm->basic_block = LLVMAppendBasicBlockInContext(c, fn, "");
 }
 
 void llvm_codegen_continue_statement(CodegenContext* context, Statement* stmt)
@@ -344,6 +374,57 @@ void llvm_codegen_decl_statement(CodegenContext* context, Statement* stmt)
 void llvm_codegen_label_statement(CodegenContext* context, Statement* stmt)
 {
     assert(statement_is(stmt, STATEMENT_LABEL));
+
+    // Get all of the context we need in order to generate this 'return'
+    CodegenLLVM* llvm = context->backend_specific;
+    LLVMContextRef c = llvm->context;
+    LLVMBuilderRef b = llvm->builder;
+    LLVMValueRef fn = llvm->function;
+    LLVMBasicBlockRef current_bb = llvm->basic_block;
+
+    // Get the label declaration from this statement
+    Declaration* label = statement_label_get(stmt);
+    Statement* body = statement_label_get_body(stmt);
+
+    // Okay we now need to look up if we have already created code for this 
+    // label yet or not. If we have not seen a previous goto then append the
+    // block to the end and add the declaration in, otherwise append the block
+    // we had previously created.
+    LLVMValueRef label_vr = llvm_codegen_get_declaration(context, label);
+    LLVMBasicBlockRef label_bb = NULL;
+    if (label_vr == NULL)
+    {
+        label_bb = LLVMAppendBasicBlockInContext(c, fn, "");
+
+        label_vr = LLVMBasicBlockAsValue(label_bb);
+        llvm_codegen_add_declaration(context, label, label_vr);
+    }
+    else
+    {
+        label_bb = LLVMValueAsBasicBlock(label_vr);
+        LLVMAppendExistingBasicBlock(fn, label_bb);
+    }
+
+    // Now we need to end the current back block and produce a jump to this but,
+    // only do this if the previous basic block DID NOT have a terminator. e.g
+    // the folloing could occur:
+    //                 void foo(void) {
+    //                     ...
+    //                     return;
+    //                 label:
+    //                     ...
+    //                 }
+    if (LLVMGetBasicBlockTerminator(current_bb) == NULL)
+    {
+        LLVMPositionBuilderAtEnd(b, current_bb);
+        LLVMBuildBr(b, label_bb);
+    }
+
+    // Okay we have now build an unconditional jump to this basic block which is
+    // good. We now just need to generate the code for this label. So set this
+    // to be the current basic block and just generate the statement
+    llvm->basic_block = label_bb;
+    llvm_codegen_statement(context, body);
 }
 
 void llvm_codegen_case_statement(CodegenContext* context, Statement* stmt)

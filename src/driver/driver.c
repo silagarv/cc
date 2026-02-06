@@ -219,6 +219,7 @@ static int compiler_driver_invoke_internal(int argc, char** argv,
 
 int compiler_driver_invoke(int argc, char** argv)
 {
+    // Now attempt to create and run our driver.
     CompilerDriver driver = compiler_driver_create();
     int status = compiler_driver_invoke_internal(argc, argv, &driver);
     compiler_driver_free(&driver);

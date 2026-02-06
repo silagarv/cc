@@ -1,5 +1,6 @@
 #include "codegen_expression.h"
 
+#include <stdint.h>
 #include <assert.h>
 
 #include "util/panic.h"
@@ -15,9 +16,8 @@
 
 #include <llvm-c/Core.h>
 #include <llvm-c/Types.h>
-#include <stdint.h>
 
-static LLVMValueRef llvm_codegen_integer_constant(CodegenContext* ctx,
+LLVMValueRef llvm_codegen_integer_constant(CodegenContext* ctx,
         const Expression* expression)
 {
     assert(expression_is(expression, EXPRESSION_INTEGER_CONSTANT));
@@ -40,7 +40,7 @@ static LLVMValueRef llvm_codegen_integer_constant(CodegenContext* ctx,
     return LLVMConstInt(llvm_ty, n, false);    
 }
 
-static LLVMValueRef llvm_codegen_floating_constant(CodegenContext* ctx,
+LLVMValueRef llvm_codegen_floating_constant(CodegenContext* ctx,
         const Expression* expression)
 {
     assert(expression_is(expression, EXPRESSION_FLOATING_CONSTANT));
@@ -61,7 +61,7 @@ static LLVMValueRef llvm_codegen_floating_constant(CodegenContext* ctx,
     return LLVMConstReal(llvm_ty, n);    
 }
 
-static LLVMValueRef llvm_codegen_character_constant(CodegenContext* ctx,
+LLVMValueRef llvm_codegen_character_constant(CodegenContext* ctx,
         const Expression* expression)
 {
     assert(expression_is(expression, EXPRESSION_CHARACTER_CONSTANT));
@@ -197,6 +197,127 @@ LLVMValueRef llvm_codegen_cast(CodegenContext* ctx, const Expression* e,
 
     LLVMPositionBuilderAtEnd(b, bb);
     return LLVMBuildCast(b, cast_type, llvm_castee, llvm_ty, "");
+}
+
+LLVMValueRef llvm_codegen_multiplication(CodegenContext* ctx, LLVMValueRef lhs,
+        LLVMValueRef rhs, const QualifiedType* type)
+{
+    // llvm setup
+    CodegenLLVM* llvm = ctx->backend_specific;
+    LLVMContextRef c = llvm->context;
+    LLVMBuilderRef b = llvm->builder;
+    LLVMBasicBlockRef bb = llvm->basic_block;
+
+    LLVMPositionBuilderAtEnd(b, bb);
+    if (qualified_type_is_floating(type))
+    {
+        return LLVMBuildFMul(b, lhs, rhs, "");
+    }
+    else
+    {
+        assert(qualified_type_is_integer(type));
+        return LLVMBuildMul(b, lhs, rhs, "");
+    }
+}
+
+LLVMValueRef llvm_codegen_division(CodegenContext* ctx, LLVMValueRef lhs,
+        LLVMValueRef rhs, const QualifiedType* type)
+{
+    // llvm setup
+    CodegenLLVM* llvm = ctx->backend_specific;
+    LLVMContextRef c = llvm->context;
+    LLVMBuilderRef b = llvm->builder;
+    LLVMBasicBlockRef bb = llvm->basic_block;
+
+    LLVMPositionBuilderAtEnd(b, bb);
+    if (qualified_type_is_floating(type))
+    {
+        return LLVMBuildFDiv(b, lhs, rhs, "");
+    }
+    else if (qualified_type_is_integer(type))
+    {
+        if (qualified_type_is_signed(type))
+        {
+            return LLVMBuildSDiv(b, lhs, rhs, "");
+        }
+        else
+        {
+            assert(qualified_type_is_unsigned(type));
+            return LLVMBuildUDiv(b, lhs, rhs, "");
+        }
+    }
+    else
+    {
+        panic("unreachable");
+        return NULL;
+    }
+}
+
+LLVMValueRef llvm_codegen_modulus(CodegenContext* ctx, LLVMValueRef lhs,
+        LLVMValueRef rhs, const QualifiedType* type)
+{
+    assert(qualified_type_is_integer(type));
+
+    // llvm setup
+    CodegenLLVM* llvm = ctx->backend_specific;
+    LLVMContextRef c = llvm->context;
+    LLVMBuilderRef b = llvm->builder;
+    LLVMBasicBlockRef bb = llvm->basic_block;
+
+    LLVMPositionBuilderAtEnd(b, bb);
+    if (qualified_type_is_signed(type))
+    {
+        return LLVMBuildSRem(b, lhs, rhs, "");
+    }
+    else
+    {
+        assert(qualified_type_is_unsigned(type));
+        return LLVMBuildURem(b, lhs, rhs, "");
+    }
+}
+
+LLVMValueRef llvm_codegen_multiplicative(CodegenContext* ctx,
+        const Expression* e, ExpressionType kind)
+{
+    assert(expression_is(e, EXPRESSION_BINARY_TIMES)
+            || expression_is(e, EXPRESSION_BINARY_DIVIDE)
+            || expression_is(e, EXPRESSION_BINARY_MODULO));
+                 
+    // llvm setup
+    CodegenLLVM* llvm = ctx->backend_specific;
+    LLVMContextRef c = llvm->context;
+    LLVMBuilderRef b = llvm->builder;
+    LLVMBasicBlockRef bb = llvm->basic_block;
+
+    // Build both the lhs and rhs
+    Expression* lhs = expression_binary_get_lhs(e);
+    LLVMValueRef llvm_lhs = llvm_codegen_expression(ctx, lhs);
+
+    Expression* rhs = expression_binary_get_rhs(e);
+    LLVMValueRef llvm_rhs = llvm_codegen_expression(ctx, rhs);
+
+    QualifiedType type = expression_get_qualified_type(e);
+    switch (kind)
+    {
+        case EXPRESSION_BINARY_TIMES:
+            return llvm_codegen_multiplication(ctx, llvm_lhs, llvm_rhs, &type);
+
+        case EXPRESSION_BINARY_DIVIDE:
+            return llvm_codegen_division(ctx, llvm_lhs, llvm_rhs, &type);
+
+        case EXPRESSION_BINARY_MODULO:
+            return llvm_codegen_modulus(ctx, llvm_lhs, llvm_rhs, &type);
+
+        default:
+            panic("unreachale");
+            return NULL;
+    }
+}
+
+LLVMValueRef llvm_codegen_additive(CodegenContext* ctx, const Expression* e,
+        ExpressionType kind)
+{
+    return NULL;
 }
 
 LLVMValueRef llvm_codegen_parentheses(CodegenContext* c, const Expression* e)
@@ -353,25 +474,28 @@ LLVMValueRef llvm_codegen_expression(CodegenContext* c, const Expression* e)
             EXPRESSION_UNARY_POST_INCREMENT,
             EXPRESSION_UNARY_POST_DECREMENT;
 
-            // arithmeric
-            EXPRESSION_BINARY_TIMES,
-            EXPRESSION_BINARY_DIVIDE,
-            EXPRESSION_BINARY_MODULO,
-            EXPRESSION_BINARY_ADD,
-            EXPRESSION_BINARY_SUBTRACT;
+        // arithmeric
+        case EXPRESSION_BINARY_TIMES:
+        case EXPRESSION_BINARY_DIVIDE:
+        case EXPRESSION_BINARY_MODULO:
+            return llvm_codegen_multiplicative(c, e, kind);
+
+        case EXPRESSION_BINARY_ADD:
+        case EXPRESSION_BINARY_SUBTRACT:
+            return llvm_codegen_additive(c, e, kind);
 
             // Shifts
             EXPRESSION_BINARY_SHIFT_LEFT,
             EXPRESSION_BINARY_SHIFT_RIGHT;
 
-            // Comparisons
-            case EXPRESSION_BINARY_LESS_THAN:
-            case EXPRESSION_BINARY_GREATER_THAN:
-            case EXPRESSION_BINARY_LESS_THAN_EQUAL:
-            case EXPRESSION_BINARY_GREATER_THAN_EQUAL:
-            case EXPRESSION_BINARY_EQUAL:
-            case EXPRESSION_BINARY_NOT_EQUAL:
-                return llvm_codegen_comparison(c, e, kind);
+        // Comparisons
+        case EXPRESSION_BINARY_LESS_THAN:
+        case EXPRESSION_BINARY_GREATER_THAN:
+        case EXPRESSION_BINARY_LESS_THAN_EQUAL:
+        case EXPRESSION_BINARY_GREATER_THAN_EQUAL:
+        case EXPRESSION_BINARY_EQUAL:
+        case EXPRESSION_BINARY_NOT_EQUAL:
+            return llvm_codegen_comparison(c, e, kind);
 
             // Bitwise operations
             EXPRESSION_BINARY_AND,

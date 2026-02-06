@@ -46,7 +46,7 @@ void translation_unit_delete(TranslationUnit* tu)
     llvm_delete_codegen_result(tu->result);
 }
 
-static bool translation_unit_parse(TranslationUnit* tu)
+bool translation_unit_parse(TranslationUnit* tu)
 {
     // Attempt to create the parser exiting early if we fail
     Parser parser;
@@ -70,7 +70,7 @@ static bool translation_unit_parse(TranslationUnit* tu)
 }
 
 // TODO: can this even fail?
-static bool translation_unit_codegen(TranslationUnit* tu)
+bool translation_unit_codegen(TranslationUnit* tu)
 {
     tu->result = codegen_translation_unit(&tu->main_file,
             &tu->out_file, &tu->target, tu->dm, tu->options, &tu->ast,

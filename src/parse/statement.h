@@ -260,6 +260,8 @@ Statement* statement_create_error(AstAllocator* allocator);
 Statement* statement_create_label(AstAllocator* allocator, 
         Location identifier_location, Location colon_location,
         Declaration* label_decl, Statement* body);
+Declaration* statement_label_get(const Statement* stmt);
+Statement* statement_label_get_body(const Statement* stmt);
 
 Statement* statement_create_case(AstAllocator* allocator, 
         Location case_location, Location colon_location, Expression* expr,
@@ -317,6 +319,7 @@ void statement_switch_set_body(Statement* switch_statement, Statement* body);
 
 Statement* statement_create_goto(AstAllocator* allocator, 
         Location goto_location, Location semi_location, Declaration* label);
+Declaration* statement_goto_get(const Statement* stmt);
 
 Statement* statement_create_contine(AstAllocator* allocator,
         Location continue_location, Location semi_location);

@@ -371,7 +371,8 @@ static bool handle_help(CompilerOptions* opts, DiagnosticManager* dm,
 static bool handle_version(CompilerOptions* opts, DiagnosticManager* dm,
         CommandLineState* state, char* argument)
 {
-    if (!argument_is("--version", argument))
+    if (!argument_is("--version", argument)
+            && !argument_is("-version", argument))
     {
         return false;
     }

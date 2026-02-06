@@ -6869,6 +6869,16 @@ Statement* semantic_checker_handle_label_statement(SemanticChecker* sc,
         Location identifier_location, Location colon_location,
         Declaration* label_declaration, Statement* statement)
 {
+    // This can happen when we get a statement followed by an empty declaration
+    // e.g. label: int; This will crash the codegenerator since it tries to
+    // generate a NULL statement. This fixes that we have something more 
+    // expected after wards instread
+    if (statement == NULL)
+    {
+        statement = statement_create_empty(&sc->ast->ast_allocator,
+                colon_location);
+    }
+
     return statement_create_label(&sc->ast->ast_allocator, identifier_location,
                 colon_location, label_declaration, statement);
 }

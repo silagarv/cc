@@ -62,6 +62,20 @@ Statement* statement_create_label(AstAllocator* allocator,
     return stmt;
 }
 
+Declaration* statement_label_get(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_LABEL));
+
+    return stmt->label_stmt.label;
+}
+
+Statement* statement_label_get_body(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_LABEL));
+
+    return stmt->label_stmt.statement;
+}
+
 Statement* statement_create_case(AstAllocator* allocator, 
         Location case_location, Location colon_location, Expression* expr,
         ExpressionIntegerValue value, Statement* body)
@@ -315,6 +329,13 @@ Statement* statement_create_goto(AstAllocator* allocator,
     stmt->goto_stmt.label = label;
 
     return stmt;
+}
+
+Declaration* statement_goto_get(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_GOTO));
+
+    return stmt->goto_stmt.label;
 }
 
 Statement* statement_create_contine(AstAllocator* allocator, 

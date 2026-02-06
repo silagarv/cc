@@ -333,6 +333,7 @@ size_t qualified_type_get_size(const QualifiedType* type);
 size_t qualified_type_get_align(const QualifiedType* type);
 
 bool qualified_type_is_integer(const QualifiedType* type);
+bool qualified_type_is_floating(const QualifiedType* type);
 size_t qualified_type_get_rank(const QualifiedType* type);
 bool qualified_type_is_signed(const QualifiedType* type);
 bool qualified_type_is_unsigned(const QualifiedType* type);

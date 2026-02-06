@@ -624,6 +624,30 @@ bool qualified_type_is_integer(const QualifiedType* type)
     }
 }
 
+bool qualified_type_is_floating(const QualifiedType* type)
+{
+    if (type->type == NULL)
+    {
+        return false;
+    }
+    
+    // Get the canonical type to ignore typedefs
+    QualifiedType real_type = qualified_type_get_canonical(type);
+    real_type = qualified_type_get_canonical(&real_type);
+    assert(real_type.type);
+    assert(qualified_type_get_kind(&real_type) != TYPE_TYPEDEF);
+    switch (qualified_type_get_kind(&real_type))
+    {        
+        case TYPE_FLOAT:
+        case TYPE_DOUBLE:
+        case TYPE_LONG_DOUBLE:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
 size_t qualified_type_get_rank(const QualifiedType* type)
 {
     assert(qualified_type_is_integer(type));
