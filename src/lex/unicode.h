@@ -8,8 +8,11 @@
 
 #include "lex/char_help.h"
 
-bool utf8_to_utf32(unsigned char** current_ptr, const unsigned char* end, utf32* value);
+bool is_valid_utf32(utf32 value);
+void ucn_add_to_buffer(utf32 value, Buffer* to_add);
 
-bool ucn_add_to_buffer(utf32 value, Buffer to_add);
+bool utf8_to_utf32(unsigned char** current_ptr, const unsigned char* end,
+        utf32* value);
+
 
 #endif /* UNICODE_H */

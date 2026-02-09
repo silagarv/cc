@@ -42,13 +42,13 @@ typedef struct Preprocessor {
     // The lexer -> but todo, create a lexer stack or something
     Lexer lexer;
 
+    // The stack of lexers we are using for this preprocessor
+    LexerStack* lexers;
+
     // The Arena that we are going to use for allocating all of our preprocessor
     // information onto particularaly for our macro tables and those kinds of
     // things.
     Arena pp_allocator;
-
-    // The stack of lexers we are using for this preprocessor
-    LexerStack* lexers;
 } Preprocessor;
 
 bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,

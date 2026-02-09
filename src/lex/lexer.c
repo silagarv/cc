@@ -341,61 +341,62 @@ static TokenData lexer_create_literal_node(Lexer* lexer, Buffer* buffer)
     return data;
 }
 
-static bool try_lex_ucn(Lexer* lexer, Token* token, Buffer* buffer, utf32* value)
+// Try to lex a UCN, we assume the calling functions already saw a '\' so we 
+// are then doing the next steps. Then we only advance the lexer some steps
+// forward if we determine that we actually have a UCN, AND if we have a buffer
+// to add the universal character name into.
+static bool try_lex_ucn(Lexer* lexer, Location slash_loc, Buffer* buffer,
+        bool identifier, utf32* value)
 {
-    assert(get_curr_char(lexer) == '\\');
-
-    // First save the current point in the case the ucn is invalid
-    char* save_point = get_position(lexer);
-
-    // Skip over the '\\'
-    consume_char(lexer);
-
-    // Now get the next character and check if it is a u
-    const char ucn_type = get_next_char(lexer);
-
-    // We didn't get a ucn. Restore the save point and continue
-    if (ucn_type != 'U' && ucn_type != 'u')
+    // Now we attempt to try and read the ucn
+    size_t size = 0;
+    char current = get_char_and_size(lexer, &size);
+    if (current != 'u' && current != 'U')
     {
-        set_position(lexer, save_point);
-
         return false;
     }
 
-    // Now we know we want to lex a ucn so try and store the result in a temp
-    // buffer until we can confirm it is valid
-    const size_t required_digits = (ucn_type == 'U') ? 8 : 4;
-    char ucn_buffer[MAX_UCN_LENGTH];
-
-    size_t num_digits;
-    for (num_digits = 0; num_digits < required_digits; num_digits++)
+    // Now we should also check if we are in c89 mode and reject the potential
+    // ucn. Note that clang doesn't actually check the ammount of digits is
+    // what it should be
+    if (!lang_opts_c99(lexer->lang))
     {
-        char current = get_next_char(lexer);
+        // TODO: this diagnostic can trigger twice in C90 mode for some reason
+        if (buffer == NULL)
+        {
+            diagnostic_warning_at(lexer->dm, slash_loc, "universal "
+                    "character names are only valid in C99; treating as '\\' "
+                    "followed by identifier");
+        }
+        return false;
+    }
+
+    // Save the ucn type
+    char ucn_type = current;
+
+    // Now setup our buffers for stuff
+    size_t required_digits = (current == 'U') ? 8 : 4;
+    char ucn_buffer[MAX_UCN_LENGTH] = {0};
+
+    for (size_t num_digits = 0; num_digits < required_digits; num_digits++)
+    {
+        current = get_char_and_size(lexer, &size);
 
         // If we didn't get a hex digit we can just return and leave early
         if (!is_hexadecimal(current))
         {
-            set_position(lexer, save_point);
-
+            // Again only warn when we aren't trying to put it into an 
+            // identifier since it will do it twice
+            if (buffer == NULL)
+            {
+                diagnostic_warning_at(lexer->dm, slash_loc, "incomplete "
+                        "universal character name; treating as '\\' followed "
+                        "by identifier");
+            }
             return false;
         }
 
         ucn_buffer[num_digits] = current;
-    }
-
-    assert(num_digits == required_digits);
-
-    // TODO: we actually want to convert to utf8 and add the the buffer instead
-    // TODO: we also need to make the lexing of identifiers a bit different
-    // since we are going to do this as well
-
-    // If were here we know we got the required number of digits so let's add
-    // them to our buffer along with the leading '\u' or '\U' :)
-    buffer_add_char(buffer, '\\');
-    buffer_add_char(buffer, ucn_type);  
-    for (size_t i = 0; i < required_digits; i++)
-    {
-        buffer_add_char(buffer, ucn_buffer[i]);
     }
 
     // Now we also need to calculate the value of the universal character to
@@ -405,6 +406,43 @@ static bool try_lex_ucn(Lexer* lexer, Token* token, Buffer* buffer, utf32* value
     {
         *value *= 16;
         *value += convert_hexadecimal(ucn_buffer[i]);
+    }
+
+    // If were here we know we got the required number of digits so let's add
+    // them to our buffer along with the leading '\u' or '\U' :)
+    // Also, don't forget to eat the UCN if we are here and only if we are 
+    // adding to the buffer as well. Since otherwise we will eat it if we are
+    // simply trying to test for the present of a UCN
+    if (buffer != NULL)
+    {
+        // Check for invalid UCN's here but allow invalid in numbers since we
+        // will not convert then anyways
+        if (identifier && !is_valid_ucn(*value))
+        {
+            diagnostic_error_at(lexer->dm, slash_loc, "character <U+%0*X> "
+                    "not allowed in an identifier", required_digits, *value);
+        }
+
+        // Non-identifiers should be added this was as well as any invalid 
+        // unicode instead of being ignored
+        if (!identifier || !is_valid_utf32(*value))
+        {
+            // For numbers simply add the UCN to the end of the buffer 
+            // unconverted since that is what GCC and Clang do and do the same
+            // for invalid utf32 since that seems reasonable.
+            buffer_add_char(buffer, '\\');
+            buffer_add_char(buffer, ucn_type);  
+            for (size_t i = 0; i < required_digits; i++)
+            {
+                buffer_add_char(buffer, ucn_buffer[i]);
+            }
+        }
+        else
+        {
+            ucn_add_to_buffer(*value, buffer);
+        }   
+
+        seek(lexer, size);
     }
 
     return true;
@@ -423,15 +461,15 @@ static bool lex_number(Lexer* lexer, Token* token, char* start)
     // eventually
     while (true)
     {
-        char current = get_curr_char(lexer);
+        char* save_pos = get_position(lexer);
+        char current = get_next_char(lexer);
 
         if (is_identifier(current) || current == '.')
         {
             buffer_add_char(&number, current);
-            consume_char(lexer);
 
-            if (current == 'e' || current == 'E' 
-                    || current == 'p' || current == 'P')
+            if (current == 'e' || current == 'E' || current == 'p' 
+                    || current == 'P')
             {
                 current = get_curr_char(lexer);
                 if (current == '-' || current == '+')
@@ -446,24 +484,19 @@ static bool lex_number(Lexer* lexer, Token* token, char* start)
 
         if (current == '\\')
         {
-            uint32_t value;
-            if (!try_lex_ucn(lexer, token, &number, &value))
+            Location slash_loc = get_location_from(lexer, save_pos);
+            utf32 value;
+            if (!try_lex_ucn(lexer, slash_loc, &number, false, &value))
             {
+                set_position(lexer, save_pos);
                 break;
             }
 
-            // If we got a correct ammount of numbers then we consider it well
-            // formed even if it fails the next check of the range being valid
-            // TODO: check ucn range
-            if (!is_valid_ucn(value))
-            {
-                // TODO: implement error on invalid ucn value...
-
-                // panic("invalid ucn value");
-            }
             continue;
         }
 
+        // Restore the lexers save position if we get to the end of the number
+        set_position(lexer, save_pos);
         break;
     }
 
@@ -500,13 +533,13 @@ static bool lex_identifier(Lexer* lexer, Token* token, char* start)
     // TODO: handle universal characters
     while (true)
     {
-        char current = get_curr_char(lexer);
+        char* save_pos = get_position(lexer);
+        char current = get_next_char(lexer);
         
         // Simple identifier like character
         if (is_identifier(current))
         {
             buffer_add_char(&identifier, current);
-            consume_char(lexer);
             continue;
         }
 
@@ -514,30 +547,20 @@ static bool lex_identifier(Lexer* lexer, Token* token, char* start)
         // then we can continue
         if (current == '\\')
         {
-            char peek = peek_char(lexer);
-            if (peek != 'u' && peek != 'U')
-            {
-                break;                
-            }
-
             utf32 value;
-            if (!try_lex_ucn(lexer, token, &identifier, &value))
+            Location slash_loc = get_location_from(lexer, save_pos);
+            if (!try_lex_ucn(lexer, slash_loc, &identifier, true, &value))
             {
+                set_position(lexer, save_pos);
                 break;
             }
 
-            // If we got a correct ammount of numbers then we consider it well
-            // formed even if it fails the next check of the range being valid
-            // TODO: check ucn range
-            if (!is_valid_ucn(value))
-            {
-                // TODO: implement error on invalid ucn value...
-
-                // panic("invalid ucn value");
-            }
             continue;
         }
 
+        // Reset the position of the lexer in order to rewind the fact that we
+        // got that character
+        set_position(lexer, save_pos);
         break;
     }
 
@@ -545,13 +568,10 @@ static bool lex_identifier(Lexer* lexer, Token* token, char* start)
     // TODO: we wan't to improve this to not allocate / deallocate alot so we
     // may in the future reuse this buffer would be nice
     buffer_make_cstr(&identifier);
+
     String string = string_from_buffer(&identifier);
-
-    // printf("string is: %s\n", string.ptr);
-
     token->data.identifier = identifier_table_lookup(lexer->identifiers,
             &string);
-
     string_free(&string);
 
     classify_identifier(token);
@@ -728,7 +748,8 @@ retry_lexing:;
         do 
         {
             consume_curr_char_raw(lexer);
-        } while (is_horizontal_whitespace(get_curr_char_raw(lexer)));
+        }
+        while (is_horizontal_whitespace(get_curr_char_raw(lexer)));
     }
 
     // Set up the token here...
@@ -1262,15 +1283,19 @@ retry_lexing:;
         case ',': token->type = TOK_COMMA; break;
         case '~': token->type = TOK_TILDE; break;
 
-        case '\\': // TODO: ucn starting an identifier
-            curr = get_curr_char(lexer);
-            if (curr == 'u')
+        case '\\':
+        {
+            utf32 value;
+            Location slash_loc = get_location_from(lexer, token_start);
+            if (try_lex_ucn(lexer, slash_loc, NULL, true, &value))
             {
-                panic("currently a ucn cannot start an identifier");
+                lex_identifier(lexer, token, token_start);
+                break;
             }
 
             // RESET TO '\\' FOR NOW ONLY TO CREATE AN UNKNOWN TOKEN TYPE
             curr = '\\';
+        }
 
             /* FALLTHROUGH */
 
@@ -1324,6 +1349,7 @@ bool lexer_peek(Lexer* lexer, Token* token)
 
 TokenType lexer_get_next_next_type(Lexer* lexer)
 {
+    // TODO: save flags???
     char* original_position = get_position(lexer);
 
     // No need to free and data since any literal is stored in the pp's literal

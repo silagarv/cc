@@ -6,9 +6,14 @@
 #include <stdint.h>
 
 #include "lex/char_help.h"
+#include "util/buffer.h"
 #include "util/panic.h"
 
 #define UTF8_REPLACEMENT_CHAR 0xFFFD
+
+#define UNICODE_MAX 0x10FFFF
+#define UNICODE_SURROGATE_LOW 0xD800
+#define UNICODE_SURROGATE_HIGH 0xDFFF
 
 #define UTF8_1_CHAR_MIN 0x00
 #define UTF8_1_CHAR_MAX 0x7F
@@ -21,6 +26,61 @@
 
 #define UTF8_4_CHAR_MIN 0x10000
 #define UTF8_4_CHAR_MAX 0x10FFFF
+
+bool is_valid_utf32(utf32 value)
+{
+    if (value > UNICODE_MAX)
+    {
+        return false;
+    }
+
+    if (value >= UNICODE_SURROGATE_LOW && value <= UNICODE_SURROGATE_HIGH)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+void ucn_add_to_buffer(utf32 value, Buffer* to_add)
+{
+    assert(is_valid_utf32(value));
+
+    unsigned char utf8buff[sizeof(utf32)] = {0};
+    size_t num_digits = 0;
+
+    if (value <= UTF8_1_CHAR_MAX)
+    {
+        num_digits = 1;
+        utf8buff[0] = (unsigned char) value;
+    }
+    else if (value <= UTF8_2_CHAR_MAX)
+    {
+        num_digits = 2;
+        utf8buff[0] = (unsigned char) (0xC0 | (value >> 6));
+        utf8buff[1] = (unsigned char) (0x80 | (value & 0x3F));
+    }
+    else if (value <= UTF8_3_CHAR_MAX)
+    {
+        num_digits = 3;
+        utf8buff[0] = (unsigned char) (0xE0 | (value >> 12));
+        utf8buff[1] = (unsigned char) (0x80 | ((value >> 6) & 0x3F));
+        utf8buff[2] = (unsigned char) (0x80 | (value & 0x3F));
+    }
+    else
+    {
+        num_digits = 4;
+        utf8buff[0] = (unsigned char) (0xF0 | (value >> 18));
+        utf8buff[1] = (unsigned char) (0x80 | ((value >> 12) & 0x3F));
+        utf8buff[2] = (unsigned char) (0x80 | ((value >> 6) & 0x3F));
+        utf8buff[3] = (unsigned char) (0x80 | (value & 0x3F));
+    }
+
+    for (size_t i = 0; i < num_digits; i++)
+    {
+        buffer_add_char(to_add, (char) utf8buff[i]);
+    }
+}
 
 // TODO: make a working unicode converter
 
@@ -142,9 +202,3 @@ bool utf8_to_utf32(unsigned char** current_ptr, const unsigned char* end, utf32*
     return true;
 }
 
-bool ucn_add_to_buffer(utf32 value, Buffer to_add)
-{
-    // TODO: implement this
-
-    return false;
-}
