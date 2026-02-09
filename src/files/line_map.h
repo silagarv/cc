@@ -30,6 +30,7 @@ typedef struct LineMap {
 LineMap line_map_create(FileBuffer* file, Location base_location);
 void line_map_delete(LineMap* map);
 
+LocationRange* line_map_get_location_range(const LineMap* map, Location loc);
 ResolvedLocation line_map_resolve_location(const LineMap* map, Location loc);
 
 uint32_t line_map_resolve_line(const LineMap* map, Location loc);

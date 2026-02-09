@@ -3,6 +3,7 @@
 
 #include "driver/diagnostic.h"
 
+#include "driver/lang.h"
 #include "files/location.h"
 #include "lex/identifier_table.h"
 #include "parse/expression.h"
@@ -25,6 +26,9 @@ typedef struct SemanticChecker {
     // The diagnostic manager for this semantic checker
     DiagnosticManager* dm;
 
+    // The language we are compiling for
+    LangOptions* lang;
+
     // The identifier table store in the preprocessor so that we can create
     // anonymous types if needed
     IdentifierTable* identifiers;
@@ -46,7 +50,7 @@ typedef struct SemanticChecker {
     SwitchStack* switches;
 } SemanticChecker;
 
-SemanticChecker sematic_checker_create(DiagnosticManager* dm,
+SemanticChecker sematic_checker_create(DiagnosticManager* dm, LangOptions* opts,
         IdentifierTable* identifiers, Ast* ast);
 
 void declaration_specifiers_finish(SemanticChecker* sc,

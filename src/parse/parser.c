@@ -1590,8 +1590,11 @@ static Statement* parse_statement_after_label(Parser* parser, const char* ctx)
 {
     if (is_match(parser, TOK_RCURLY))
     {
-        diagnostic_warning_at(parser->dm, current_token_location(parser),
-                "%s at end of compound statement is a C23 extension", ctx);
+        if (!lang_opts_c23(parser->lang))
+        {
+            diagnostic_warning_at(parser->dm, current_token_location(parser),
+                    "%s at end of compound statement is a C23 extension", ctx);
+        }
     
         // Return an empty statement so we can actually build the label without
         // error.
@@ -1600,8 +1603,11 @@ static Statement* parse_statement_after_label(Parser* parser, const char* ctx)
     }
     else if (is_typename_start(parser, current_token(parser)))
     {
-        diagnostic_warning_at(parser->dm, current_token_location(parser),
-                "%s followed by a declaration is a C23 extension", ctx);
+        if (!lang_opts_c23(parser->lang))
+        {
+            diagnostic_warning_at(parser->dm, current_token_location(parser),
+                    "%s followed by a declaration is a C23 extension", ctx);
+        }
         // Don't return and go on to parse a statement after.
     }
     else if (!is_statement_start(parser, current_token(parser)))
@@ -2433,8 +2439,12 @@ static Initializer* parse_initializer_list(Parser* parser)
     // empty list returning from the function early.
     if (try_match(parser, TOK_RCURLY, &rcurly))
     {
-        diagnostic_warning_at(parser->dm, lcurly,
+        if (lang_opts_c23(parser->lang))
+        {
+            diagnostic_warning_at(parser->dm, lcurly,
                 "use of an empty initializer is a C23 extension");
+        }
+        
         // TODO: i think this return can be removed here and change the
         // try_match to an is_match
         return semantic_checker_initializer_from_list(&parser->sc, lcurly,
@@ -2880,6 +2890,7 @@ static Declaration* parse_init_declarator_list(Parser* parser,
 static void parse_identifier_list(Parser* parser, Declarator* declarator)
 {
     assert(is_match(parser, TOK_LPAREN));
+    assert(!lang_opts_c23(parser->lang));
 
     Location lparen_loc = consume(parser);
     Location rparen_loc = LOCATION_INVALID;
@@ -2960,6 +2971,14 @@ static void parse_paramater_type_list(Parser* parser, Declarator* declarator)
     // The paramater declarations themselves
     DeclarationList parms = declaration_list_create(&parser->ast->ast_allocator);
     size_t num_parms = 0;
+
+    // Skip the parameter list entirely after we have initialized everything
+    if (is_match(parser, TOK_RPAREN))
+    {
+        goto after_parms;
+    }
+
+    // Parse the parameter list
     do
     {
         // First check if we have elipsis
@@ -2969,7 +2988,7 @@ static void parse_paramater_type_list(Parser* parser, Declarator* declarator)
 
             // Check that we have a parameter. If not error, but we will try to
             // recover and ignore the error to be a bit better
-            if (num_parms == 0)
+            if (num_parms == 0 && !lang_opts_c23(parser->lang))
             {
                 diagnostic_error_at(parser->dm, dots,
                         "ISO C requires a named parameter before '...'");
@@ -2981,6 +3000,7 @@ static void parse_paramater_type_list(Parser* parser, Declarator* declarator)
         {
             diagnostic_error_at(parser->dm, current_token_location(parser),
                     "expected parameter declarator");
+            recover_two(parser, TOK_COMMA, TOK_RPAREN, RECOVER_STOP_AT_SEMI);
             continue;
         }
 
@@ -2993,17 +3013,14 @@ static void parse_paramater_type_list(Parser* parser, Declarator* declarator)
     }
     while (try_match(parser, TOK_COMMA, NULL));
 
+after_parms:;
+
     // Match the end of the parameter list
-    if (!is_match(parser, TOK_RPAREN))
+    Location rparen_loc;
+    if (!try_match(parser, TOK_RPAREN, &rparen_loc))
     {
-        diagnostic_error_at(parser->dm, current_token_location(parser),
-                "expected ')'");
+        diagnostic_error_at(parser->dm, rparen_loc, "expected ')'");
         recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI);
-    }
-    Location rparen_loc = LOCATION_INVALID;
-    if (is_match(parser, TOK_RPAREN))
-    {
-        rparen_loc = consume(parser);
     }
 
     // Push the function type onto the end of the declarator
@@ -3021,12 +3038,11 @@ static void parse_function_declarator(Parser* parser, Declarator* declarator)
     Scope function_proto = scope_function_prototype(&parser->ast->ast_allocator);
     semantic_checker_push_scope(&parser->sc, &function_proto);
 
-    // Note the check for elipsis is explained by parse direct-declarator
-    bool typename = is_typename_start(parser, next_token(parser));
-
     // Note: we check for elipsis to help improve a possible bad parse's error
     // mesasage so that we parse it correctly as a function declarator.
-    if (typename || is_next_match(parser, TOK_ELIPSIS))
+    if (is_typename_start(parser, next_token(parser))
+            || is_next_match(parser, TOK_ELIPSIS)
+            || lang_opts_c23(parser->lang))
     {
         parse_paramater_type_list(parser, declarator);
     }
@@ -3098,8 +3114,7 @@ static void parse_array_declarator(Parser* parser, Declarator* declarator)
     if (!try_match(parser, TOK_RBRACKET, &rbracket_loc))
     {
         diagnostic_error_at(parser->dm, rbracket_loc, "expected ']'");
-        recover(parser, TOK_RBRACKET, RECOVER_STOP_AT_SEMI);
-        return; // ???
+        recover(parser, TOK_RBRACKET, RECOVER_STOP_AT_SEMI | RECOVER_EAT_TOKEN);
     }
 
     declarator_push_array(declarator, lbracket_loc, rbracket_loc, static_loc,
@@ -4171,7 +4186,7 @@ bool parser_create_for_translation_unit(Parser* parser, DiagnosticManager* dm,
     parser->bracket_count = 0;
     parser->brace_count = 0;
     parser->ast = ast;
-    parser->sc = sematic_checker_create(dm, ids, ast);
+    parser->sc = sematic_checker_create(dm, opts, ids, ast);
     
     return true;
 }

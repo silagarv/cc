@@ -6,6 +6,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "driver/lang.h"
 #include "parse/ast_allocator.h"
 #include "parse/compound_layout_calculator.h"
 #include "parse/expression_eval.h"
@@ -25,12 +26,13 @@
 #include "parse/initializer.h"
 #include "parse/literal_parser.h"
 
-SemanticChecker sematic_checker_create(DiagnosticManager* dm, 
+SemanticChecker sematic_checker_create(DiagnosticManager* dm, LangOptions* opts,
         IdentifierTable* identifiers, Ast* ast)
 {
     SemanticChecker sc = (SemanticChecker)
     {
         .dm = dm,
+        .lang = opts,
         .identifiers = identifiers,
         .ast = ast,
         .scope = NULL,
@@ -706,9 +708,14 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
     switch (specifiers->type_spec_type)
     {
         case TYPE_SPECIFIER_NONE:
-            diagnostic_error_at(sc->dm, location,
-                    "type specifier missing, defaults to 'int'; ISO C99 and "
-                    "later do not support implicit int");
+            // Note: if we use c89 for the condition that is implied by all of
+            // the other standards
+            if (lang_opts_c99(sc->lang))
+            {
+                diagnostic_warning_at(sc->dm, location, "type specifier "
+                    "missing, defaults to 'int'; ISO C99 and later do not "
+                    "support implicit int");
+            }
             type = builtins->type_signed_int;
             break;
 
@@ -940,7 +947,8 @@ static QualifiedType process_array_type(SemanticChecker* sc, Declarator* d,
     bool need_ice = (ctx == DECL_CTX_FILE || ctx == DECL_CTX_STRUCT);
     bool is_ice = expression && expression_is_integer_constant(expression);
 
-    if (expression)
+    // Make sure we have a valid expression
+    if (expression && expression_is_valid(expression))
     {
         QualifiedType expr_type = expression_get_qualified_type(expression);
         if (!qualified_type_is_integer(&expr_type))
@@ -960,10 +968,9 @@ static QualifiedType process_array_type(SemanticChecker* sc, Declarator* d,
 
             if (int_value == 0)
             {
-                diagnostic_error_at(sc->dm, expression_get_location(expression),
-                        "ISO C forbids zero-sized arrays");
-                *invalid = true;
-                return semantic_checker_get_int_type(sc);
+                diagnostic_warning_at(sc->dm,
+                        expression_get_location(expression),
+                        "zero size arrays are an extension");
             }
             else if (int_value < 0)
             {
@@ -1227,6 +1234,14 @@ QualifiedType semantic_checker_process_type(SemanticChecker* sc,
                 panic("unexpected declarator piece type");
                 break;
         }
+    }
+
+    // Warn if we get a knr function
+    if (qualified_type_is(&type, TYPE_FUNCTION) && type_function_get_knr(&type))
+    {
+        diagnostic_warning_at(sc->dm, declarator_location, "a function "
+                "declaration without a prototype is deprecated in all versions "
+                "of C");
     }
 
     // If we had something that makes this invalid we need to set the declarator
@@ -2371,11 +2386,11 @@ void semantic_checker_add_function_parameters(SemanticChecker* sc,
         {            
             semantic_checker_insert_ordinairy(sc, decl);
         }
-        else
+        else if (!lang_opts_c23(sc->lang))
         {
-            diagnostic_error_at(sc->dm, decl->base.location,
-                    "paramater name must not be omitted in a function "
-                    "definition");
+            diagnostic_warning_at(sc->dm, decl->base.location,
+                    "omiting the parameter name in a function definition is "
+                    "a C23 extension");
         }
     }
 }
@@ -2611,7 +2626,13 @@ static void semantic_checker_finish_external(SemanticChecker* sc,
     // If the type never gets complete then issue a warning for an incomplete
     // definition. Note that declaration may already have a warning for this.
     QualifiedType type = declaration_get_type(declaration);
-    if (!qualified_type_is_complete(&type))
+    if (!qualified_type_is_complete(&type) && qualified_type_is_array(&type))
+    {
+        // TODO: go and actually set the type to be the correct type
+        diagnostic_warning_at(sc->dm, declaration_get_location(declaration),
+                "tentative array definition assumed to have one element");
+    }
+    else if (!qualified_type_is_complete(&type))
     {
         diagnostic_error_at(sc->dm, declaration_get_location(declaration),
                 "tentative definition of '%s' has type that is never completed",

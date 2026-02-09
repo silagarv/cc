@@ -20,7 +20,7 @@ bool location_is_file(Location loc)
 
 bool location_is_macro(Location loc)
 {
-    return ((loc & (1 << 31)) != 0);
+    return ((loc & (1U << 31)) != 0);
 }
 
 // Check if a location range contains a specific location

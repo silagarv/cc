@@ -135,7 +135,7 @@ static int location_range_compare(const void* loc, const void* loc_range)
     return 1;
 }
 
-static LocationRange* line_map_get_location_range(const LineMap* map, Location loc)
+LocationRange* line_map_get_location_range(const LineMap* map, Location loc)
 {
     assert(location_range_contains(&map->range, loc));
 
