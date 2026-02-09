@@ -1,11 +1,12 @@
 #ifndef PREPROCESSOR_H
 #define PREPROCESSOR_H
 
-#include "files/filepath.h"
 #include "util/arena.h"
 
 #include "driver/diagnostic.h"
+#include "driver/lang.h"
 
+#include "files/filepath.h"
 #include "files/source_manager.h"
 
 #include "lex/identifier_table.h"
@@ -18,6 +19,9 @@ typedef struct LexerStack LexerStack;
 
 typedef struct Preprocessor {
     DiagnosticManager* dm;
+
+    // The language we are trying to preprocess
+    LangOptions* lang;
 
     // Source manager for us to be able to manage all of the source that we
     // are going to use in the preprocessor. This is not owned by the 
@@ -48,7 +52,8 @@ typedef struct Preprocessor {
 } Preprocessor;
 
 bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
-        SourceManager* sm, Filepath main_file, IdentifierTable* ids);
+        LangOptions* opts, SourceManager* sm, Filepath main_file,
+        IdentifierTable* ids);
 void preprocessor_delete(Preprocessor* pp);
 
 bool preprocessor_advance_token(Preprocessor* pp, Token* token);

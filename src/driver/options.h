@@ -20,6 +20,8 @@ typedef enum OptimisationLevel {
 typedef struct CompilerOptions {
     // The language standard that we want to use
     LangStandard standard;
+    bool strict;
+    bool gnu;
 
     // The level of optimisations that we are going for
     OptimisationLevel opt_level;
@@ -38,7 +40,7 @@ typedef struct CompilerOptions {
     bool werror;
     bool w;
 
-    // Some prerprocessor options
+    // Some prerprocessor options for when using -E
     bool print_headers;
     bool no_line_markers;
 

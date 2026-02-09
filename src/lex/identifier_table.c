@@ -4,6 +4,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "driver/lang.h"
 #include "util/xmalloc.h"
 #include "util/str.h"
 #include "util/hash.h"
@@ -165,7 +166,7 @@ static void identifier_table_insert_keyword(IdentifierTable* table,
 }
 
 // Create an identifier table to intern all of our identifiers
-IdentifierTable identifier_table_create(void)
+IdentifierTable identifier_table_create(LangOptions* opts)
 {
     // Create the table which is just a hashmap wrapped in a nice structure to
     // help add some safety to it.
@@ -175,11 +176,32 @@ IdentifierTable identifier_table_create(void)
                 identifier_table_compare_function, identifier_table_free)
     };
 
+    // TODO: this list is incomplete for PP identifiers C99+
+    if (lang_opts_c23(opts))
+    {
+        identifier_table_insert_keyword(&table, "alignas", TOK_alignas,
+                TOK_IDENTIFIER);
+    }
+    if (lang_opts_c23(opts))
+    {
+        identifier_table_insert_keyword(&table, "alignof", TOK_alignof,
+                TOK_IDENTIFIER);
+    }
     identifier_table_insert_keyword(&table, "auto", TOK_auto, TOK_IDENTIFIER);
     identifier_table_insert_keyword(&table, "break", TOK_break, TOK_IDENTIFIER);
+    if (lang_opts_c23(opts))
+    {
+        identifier_table_insert_keyword(&table, "bool", TOK_bool,
+                TOK_IDENTIFIER);
+    }
     identifier_table_insert_keyword(&table, "case", TOK_case, TOK_IDENTIFIER);
     identifier_table_insert_keyword(&table, "char", TOK_char, TOK_IDENTIFIER);
     identifier_table_insert_keyword(&table, "const", TOK_const, TOK_IDENTIFIER);
+    if (lang_opts_c23(opts))
+    {
+        identifier_table_insert_keyword(&table, "constexpr", TOK_constexpr,
+                TOK_IDENTIFIER);
+    }
     identifier_table_insert_keyword(&table, "continue", TOK_continue,
             TOK_IDENTIFIER);
     identifier_table_insert_keyword(&table, "default", TOK_default,
@@ -191,18 +213,34 @@ IdentifierTable identifier_table_create(void)
     identifier_table_insert_keyword(&table, "enum", TOK_enum, TOK_IDENTIFIER);
     identifier_table_insert_keyword(&table, "extern", TOK_extern,
             TOK_IDENTIFIER);
+    if (lang_opts_c23(opts))
+    {
+        identifier_table_insert_keyword(&table, "false", TOK_false,
+                TOK_IDENTIFIER);
+    }
     identifier_table_insert_keyword(&table, "float", TOK_float, TOK_IDENTIFIER);
     identifier_table_insert_keyword(&table, "for", TOK_for, TOK_IDENTIFIER);
     identifier_table_insert_keyword(&table, "goto", TOK_goto, TOK_IDENTIFIER);
     identifier_table_insert_keyword(&table, "if", TOK_if, TOK_PP_if);
-    identifier_table_insert_keyword(&table, "inline", TOK_inline,
-            TOK_IDENTIFIER);
+    if (lang_opts_c99(opts))
+    {
+        identifier_table_insert_keyword(&table, "inline", TOK_inline,
+                TOK_IDENTIFIER);
+    }
     identifier_table_insert_keyword(&table, "int", TOK_int, TOK_IDENTIFIER);
     identifier_table_insert_keyword(&table, "long", TOK_long, TOK_IDENTIFIER);
+    if (lang_opts_c99(opts))
+    {
+        identifier_table_insert_keyword(&table, "nullptr", TOK_nullptr,
+                TOK_IDENTIFIER);
+    }
     identifier_table_insert_keyword(&table, "register", TOK_register,
             TOK_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "restrict", TOK_restrict,
-            TOK_IDENTIFIER);
+    if (lang_opts_c99(opts))
+    {
+        identifier_table_insert_keyword(&table, "restrict", TOK_restrict,
+                TOK_IDENTIFIER);
+    }
     identifier_table_insert_keyword(&table, "return", TOK_return,
             TOK_IDENTIFIER);
     identifier_table_insert_keyword(&table, "short", TOK_short,
@@ -213,12 +251,37 @@ IdentifierTable identifier_table_create(void)
             TOK_IDENTIFIER);
     identifier_table_insert_keyword(&table, "static", TOK_static,
             TOK_IDENTIFIER);
+    if (lang_opts_c23(opts))
+    {
+        identifier_table_insert_keyword(&table, "static_assert",
+                TOK_static_assert, TOK_IDENTIFIER);
+    }
     identifier_table_insert_keyword(&table, "struct", TOK_struct,
             TOK_IDENTIFIER);
     identifier_table_insert_keyword(&table, "switch", TOK_switch,
             TOK_IDENTIFIER);
+    if (lang_opts_c23(opts))
+    {
+        identifier_table_insert_keyword(&table, "thread_local",
+                TOK_thread_local, TOK_IDENTIFIER);
+    }
+    if (lang_opts_c23(opts))
+    {
+        identifier_table_insert_keyword(&table, "true", TOK_true,
+                TOK_IDENTIFIER);
+    }
     identifier_table_insert_keyword(&table, "typedef", TOK_typedef,
             TOK_IDENTIFIER);
+    if (lang_opts_c23(opts))
+    {
+        identifier_table_insert_keyword(&table, "typeof", TOK_typeof,
+                TOK_IDENTIFIER);
+    }
+    if (lang_opts_c23(opts))
+    {
+        identifier_table_insert_keyword(&table, "typeof_unqual",
+                TOK_typeof_unqual, TOK_IDENTIFIER);
+    }
     identifier_table_insert_keyword(&table, "union", TOK_union,
             TOK_IDENTIFIER);
     identifier_table_insert_keyword(&table, "unsigned", TOK_unsigned,
@@ -229,11 +292,76 @@ IdentifierTable identifier_table_create(void)
             TOK_IDENTIFIER);
     identifier_table_insert_keyword(&table, "while", TOK_while,
             TOK_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "_Bool", TOK__Bool, TOK_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "_Complex", TOK__Complex,
-            TOK_IDENTIFIER);
-    identifier_table_insert_keyword(&table, "_Imaginary", TOK__Imaginary,
-            TOK_IDENTIFIER);
+    if (lang_opts_c11(opts))
+    {
+        identifier_table_insert_keyword(&table, "_Alignas", TOK__Alignas,
+                TOK_IDENTIFIER);
+    }
+    if (lang_opts_c11(opts))
+    {
+        identifier_table_insert_keyword(&table, "_Alignof", TOK__Alignof,
+                TOK_IDENTIFIER);
+    }
+    if (lang_opts_c11(opts))
+    {
+        identifier_table_insert_keyword(&table, "_Atomic", TOK__Atomic,
+                TOK_IDENTIFIER);
+    }
+    if (lang_opts_c23(opts))
+    {
+        identifier_table_insert_keyword(&table, "_Bitint", TOK__Bitint,
+                TOK_IDENTIFIER);
+    }
+    if (lang_opts_c99(opts))
+    {
+        identifier_table_insert_keyword(&table, "_Bool", TOK__Bool,
+                TOK_IDENTIFIER);
+    }
+    if (lang_opts_c99(opts))
+    {
+        identifier_table_insert_keyword(&table, "_Complex", TOK__Complex,
+                TOK_IDENTIFIER);
+    }
+    if (lang_opts_c23(opts))
+    {
+        identifier_table_insert_keyword(&table, "_Decimal128", TOK__Decimal128,
+                TOK_IDENTIFIER);
+    }
+    if (lang_opts_c23(opts))
+    {
+        identifier_table_insert_keyword(&table, "_Decimal32", TOK__Decimal32,
+                TOK_IDENTIFIER);
+    }
+    if (lang_opts_c23(opts))
+    {
+        identifier_table_insert_keyword(&table, "_Decimal64", TOK__Decimal64,
+                TOK_IDENTIFIER);
+    }
+    if (lang_opts_c11(opts))
+    {
+        identifier_table_insert_keyword(&table, "_Generic", TOK__Generic,
+                TOK_IDENTIFIER);
+    }
+    if (lang_opts_c99(opts))
+    {
+        identifier_table_insert_keyword(&table, "_Imaginary", TOK__Imaginary,
+                TOK_IDENTIFIER);
+    }
+    if (lang_opts_c11(opts))
+    {
+        identifier_table_insert_keyword(&table, "_Noreturn", TOK__Noreturn,
+                TOK_IDENTIFIER);
+    }
+    if (lang_opts_c11(opts))
+    {
+        identifier_table_insert_keyword(&table, "_Static_assert",
+                TOK__Static_assert, TOK_IDENTIFIER);
+    }
+    if (lang_opts_c11(opts))
+    {
+        identifier_table_insert_keyword(&table, "_Thread_local",
+                TOK__Thread_local, TOK_IDENTIFIER);
+    }
 
     // Predefined identifier for functions
     identifier_table_insert_keyword(&table, "__func__", TOK___func__,

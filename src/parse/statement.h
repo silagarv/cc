@@ -269,6 +269,7 @@ Statement* statement_create_case(AstAllocator* allocator,
 void statement_case_set_next(Statement* stmt, Statement* next);
 Statement* statement_case_get_next(const Statement* stmt);
 ExpressionIntegerValue statement_case_get_value(const Statement* stmt);
+Statement* statement_case_get_body(const Statement* stmt);
 
 Statement* statement_create_default(AstAllocator* allocator,
         Location default_location, Location colon_location, Statement* body);
@@ -308,14 +309,20 @@ Statement* statement_do_while_get_body(const Statement* statement);
 Statement* statement_create_for(AstAllocator* allocator, Location for_location,
         Location left_paren, Location right_paren, Statement* init,
         Expression* cond, Expression* inc);
-
 void statement_for_set_body(Statement* for_statement, Statement* body);
+Statement* statement_for_get_init(const Statement* stmt);
+Expression* statement_for_get_condition(const Statement* stmt);
+Expression* statement_for_get_inc(const Statement* stmt);
+Statement* statement_for_get_body(const Statement* stmt);
 
 Statement* statement_create_switch(AstAllocator* allocator, 
         Location switch_location, Location left_paren, Location right_paren,
         Expression* cond);
-
 void statement_switch_set_body(Statement* switch_statement, Statement* body);
+Expression* statement_switch_get_condition(const Statement* stmt);
+Statement* statement_switch_get_body(const Statement* stmt);
+Statement* statement_switch_get_cases(const Statement* stmt);
+Statement* statement_switch_get_default(const Statement* stmt);
 
 Statement* statement_create_goto(AstAllocator* allocator, 
         Location goto_location, Location semi_location, Declaration* label);

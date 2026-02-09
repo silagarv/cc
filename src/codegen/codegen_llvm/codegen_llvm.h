@@ -19,6 +19,9 @@ typedef struct JumpTarget {
 
     LLVMBasicBlockRef continue_target;
     LLVMBasicBlockRef break_target;
+
+    // If the current break is a switch this will be the switch to add to
+    LLVMValueRef current_switch;
 } JumpTarget;
 
 // A struct which allows for codegeneration by llvm specifically so that we
@@ -46,6 +49,8 @@ typedef struct CodegenLLVM {
 
     // TODO: add stuff for types, functions, and the current basic blocks etc...
     JumpTarget* jump_target;
+
+    
 } CodegenLLVM;
 
 // Struct which should be cast to a codegen result when returning from llvm
@@ -67,9 +72,11 @@ LLVMValueRef llvm_codegen_get_declaration(CodegenContext* context,
 
 void llvm_codegen_push_break_continue(CodegenContext* context,
         LLVMBasicBlockRef br, LLVMBasicBlockRef cont);
-void llvm_codegen_push_break(CodegenContext* context, LLVMBasicBlockRef bb);
+void llvm_codegen_push_break(CodegenContext* context, LLVMBasicBlockRef bb,
+        LLVMValueRef switch_val);
 void llvm_codegen_pop_jumps(CodegenContext* context);
 LLVMBasicBlockRef llvm_codegen_get_break(const CodegenContext* context);
 LLVMBasicBlockRef llvm_codegen_get_continue(const CodegenContext* context);
+LLVMValueRef llvm_codegen_get_switch(const CodegenContext* context);
 
 #endif /* CODEGEN_LLVM_H */

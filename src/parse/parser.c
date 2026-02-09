@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "driver/lang.h"
 #include "util/panic.h"
 
 #include "driver/diagnostic.h"
@@ -1590,7 +1591,7 @@ static Statement* parse_statement_after_label(Parser* parser, const char* ctx)
     if (is_match(parser, TOK_RCURLY))
     {
         diagnostic_warning_at(parser->dm, current_token_location(parser),
-                "%s at end of compound statement", ctx);
+                "%s at end of compound statement is a C23 extension", ctx);
     
         // Return an empty statement so we can actually build the label without
         // error.
@@ -1600,7 +1601,7 @@ static Statement* parse_statement_after_label(Parser* parser, const char* ctx)
     else if (is_typename_start(parser, current_token(parser)))
     {
         diagnostic_warning_at(parser->dm, current_token_location(parser),
-                "%s followed by a declaration", ctx);
+                "%s followed by a declaration is a C23 extension", ctx);
         // Don't return and go on to parse a statement after.
     }
     else if (!is_statement_start(parser, current_token(parser)))
@@ -1735,22 +1736,18 @@ static Statement* parse_compound_statement_internal(Parser* parser)
 
     Statement* first = NULL;
     Statement* current = NULL;
-    
-    if (!is_match_two(parser, TOK_RCURLY, TOK_EOF))
-    {
-        first = parse_statement(parser, true);
-        current = first;
-    }
-
     while (!is_match_two(parser, TOK_RCURLY, TOK_EOF))
     {
         // Parse the statement and then set the current's next field and then
         // update current to be the next one.
         Statement* next = parse_statement(parser, true);
 
-        // Make sure to ignore completely empty statement like 'int;' so that
-        // we don't segfault as these are represented as NULL
-        if (next != NULL)
+        if (first == NULL)
+        {
+            first = next;
+            current = first;
+        }
+        else
         {
             statement_set_next(current, next);
             current = next;
@@ -1959,13 +1956,13 @@ static Statement* parse_switch_statement(Parser* parser)
         goto done;
     }
 
-    // Push the switch stack and parse the body of the switch statement.
     semantic_checker_push_switch_stack(&parser->sc);
-    Statement* body = parse_statement(parser, false);
-    semantic_checker_pop_switch_stack(&parser->sc);
 
+    Statement* body = parse_statement(parser, false);
     out = semantic_checker_handle_switch_statement(&parser->sc, switch_loc,
             lparen_loc, expr, rparen_loc, body);
+
+    semantic_checker_pop_switch_stack(&parser->sc);
 
 done:
     semantic_checker_pop_scope(&parser->sc);
@@ -4158,11 +4155,13 @@ static void parse_translation_unit_internal(Parser* parser)
 }
 
 bool parser_create_for_translation_unit(Parser* parser, DiagnosticManager* dm,
-        SourceManager* sm, Filepath main_file, IdentifierTable* ids, Ast* ast)
+        LangOptions* opts, SourceManager* sm, Filepath main_file,
+        IdentifierTable* ids, Ast* ast)
 {
     
     parser->dm = dm;
-    if (!preprocessor_create(&parser->pp, dm, sm, main_file, ids))
+    parser->lang = opts;
+    if (!preprocessor_create(&parser->pp, dm, opts, sm, main_file, ids))
     {
         return false;
     }

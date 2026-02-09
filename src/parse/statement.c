@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <string.h>
 
+#include "util/panic.h"
 #include "util/vec.h"
 
 #include "parse/ast_allocator.h"
@@ -113,6 +114,13 @@ ExpressionIntegerValue statement_case_get_value(const Statement* stmt)
     assert(statement_is(stmt, STATEMENT_CASE));
 
     return stmt->case_stmt.expression_value;
+}
+
+Statement* statement_case_get_body(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_CASE));
+
+    return stmt->case_stmt.statement;
 }
 
 Statement* statement_create_default(AstAllocator* allocator,
@@ -288,6 +296,34 @@ Statement* statement_create_for(AstAllocator* allocator, Location for_location,
     return stmt;
 }
 
+Statement* statement_for_get_init(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_FOR));
+
+    return stmt->for_stmt.init;
+}
+
+Expression* statement_for_get_condition(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_FOR));
+
+    return stmt->for_stmt.condition;
+}
+
+Expression* statement_for_get_inc(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_FOR));
+
+    return stmt->for_stmt.increment;
+}
+
+Statement* statement_for_get_body(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_FOR));
+
+    return stmt->for_stmt.body;
+}
+
 void statement_for_set_body(Statement* for_statement, Statement* body)
 {
     assert(for_statement->base.type == STATEMENT_FOR);
@@ -317,6 +353,34 @@ void statement_switch_set_body(Statement* switch_statement, Statement* body)
     assert(switch_statement->switch_stmt.body == NULL);
 
     switch_statement->switch_stmt.body = body;
+}
+
+Expression* statement_switch_get_condition(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_SWITCH));
+
+    return stmt->switch_stmt.expression;
+}
+
+Statement* statement_switch_get_body(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_SWITCH));
+
+    return stmt->switch_stmt.body;
+}
+
+Statement* statement_switch_get_cases(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_SWITCH));
+
+    return stmt->switch_stmt.cases;
+}
+
+Statement* statement_switch_get_default(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_SWITCH));
+
+    return stmt->switch_stmt.default_stmt;
 }
 
 Statement* statement_create_goto(AstAllocator* allocator, 

@@ -100,6 +100,12 @@ static LLVMLinkage translate_linkage_to_llvm(DeclarationLinkage linkage)
 static void llvm_codegen_external_function(CodegenContext* context,
         const Declaration* declaration)
 {
+    // Don't generate code for a function that doesn't have a definition
+    if (!declaration_function_has_definition(declaration))
+    {
+        return;
+    }
+
     // First get the llvm codegen from the context
     CodegenLLVM* llvm = context->backend_specific;
     LLVMModuleRef module = llvm->module;
@@ -121,8 +127,9 @@ static void llvm_codegen_external_function(CodegenContext* context,
     // attribute and adding it to the function.
     if (declaration_function_is_inline(declaration))
     {
-        unsigned inline_id = LLVMGetEnumAttributeKindForName("inlinehint",
-                strlen("inlinehint"));
+        const char*const inline_attr_name = "inlinehint";
+        unsigned inline_id = LLVMGetEnumAttributeKindForName(inline_attr_name,
+                strlen(inline_attr_name));
         LLVMAttributeRef attr = LLVMCreateEnumAttribute(c, inline_id, 0);
         LLVMAddAttributeAtIndex(fn, LLVMAttributeFunctionIndex, attr);
     }
@@ -134,14 +141,10 @@ static void llvm_codegen_external_function(CodegenContext* context,
 
     // Yay, now we have done all of the start stuff we can begin generating a
     // body for this function.
-    if (declaration_function_has_definition(declaration))
-    {
-        Declaration* defn = declaration_function_get_definition(declaration);
-        assert(declaration_function_has_body(defn));
-
-        Statement* body = declaration_function_get_body(defn);
-        llvm_codegen_function_body(context, body);
-    }
+    Declaration* defn = declaration_function_get_definition(declaration);
+    Statement* body = declaration_function_get_body(defn);
+    
+    llvm_codegen_function_body(context, body);
 }
 
 static void llvm_codegen_external_variable(CodegenContext* context,

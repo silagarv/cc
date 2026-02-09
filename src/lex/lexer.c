@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "driver/diagnostic.h"
+#include "driver/lang.h"
 #include "files/file_manager.h"
 #include "files/source_manager.h"
 #include "util/arena.h"
@@ -30,13 +31,14 @@
 #define NUMBER_START_SIZE (10)
 #define STRING_START_SIZE (10)
 
-void lexer_create(Lexer* lexer, DiagnosticManager* dm, Arena* literal_arena,
-        IdentifierTable* identifiers, SourceFile* source)
+void lexer_create(Lexer* lexer, DiagnosticManager* dm, LangOptions* opts,
+        Arena* literal_arena, IdentifierTable* identifiers, SourceFile* source)
 {
     const FileBuffer* fb = source_file_get_buffer(source);
     *lexer = (Lexer)
     {
         .dm = dm,
+        .lang = opts,
         .literal_arena = literal_arena,
         .identifiers = identifiers,
         .buffer_start = file_buffer_get_start(fb),
@@ -1219,7 +1221,8 @@ retry_lexing:;
 
         case ':': 
             curr = get_curr_char(lexer);
-            if (curr == ':')
+            // Only accept the '::' punctuator in c23 mode
+            if (curr == ':' && lang_opts_c23(lexer->lang))
             {
                 token->type = TOK_COLON_COLON;
 

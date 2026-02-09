@@ -5,6 +5,8 @@
 #include <stdbool.h>
 
 #include "driver/diagnostic.h"
+#include "driver/lang.h"
+
 #include "files/filepath.h"
 #include "files/location.h"
 #include "files/line_map.h"
@@ -23,6 +25,9 @@
 typedef struct Parser {
     // How we will give diagnostics.
     DiagnosticManager* dm;
+
+    // The language we are attempting to parse
+    LangOptions* lang;
 
     // The preprocessor that is used to parse this file.
     Preprocessor pp;
@@ -51,7 +56,8 @@ typedef struct Parser {
 } Parser;
 
 bool parser_create_for_translation_unit(Parser* parser, DiagnosticManager* dm,
-        SourceManager* sm, Filepath main_file, IdentifierTable* ids, Ast* ast);
+        LangOptions* opts, SourceManager* sm, Filepath main_file,
+        IdentifierTable* ids, Ast* ast);
 void parser_delete(Parser* parser);
 
 void parse_translation_unit(Parser* parser);

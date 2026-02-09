@@ -1,10 +1,12 @@
 #include "codegen_statement.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <assert.h>
 
 #include "parse/declaration.h"
 #include "parse/expression.h"
+#include "parse/expression_eval.h"
 #include "parse/statement.h"
 
 #include "codegen/codegen.h"
@@ -137,13 +139,163 @@ void llvm_codegen_switch_statement(CodegenContext* context, Statement* stmt)
 {
     assert(statement_is(stmt, STATEMENT_SWITCH));
     
+    // Get our backend specific data before doing anything...
+    CodegenLLVM* llvm = context->backend_specific;
+    LLVMContextRef c = llvm->context;
+    LLVMValueRef fn = llvm->function;
+    LLVMBuilderRef b = llvm->builder;
+    LLVMBasicBlockRef current_bb = llvm->basic_block;
+
+    // Get all of the information we need from the switch statement
+    Expression* cond = statement_switch_get_condition(stmt);
+    Statement* body = statement_switch_get_body(stmt);    
+    Statement* case_start = statement_switch_get_cases(stmt);
+    Statement* case_default = statement_switch_get_default(stmt);
+
+    // First count all of the cases in the switch since we will need that in
+    // order to build a switch with llvm
+    Statement* curr_case = case_start;
+    unsigned int num_cases = 0;
+    for (; curr_case != NULL; curr_case = statement_case_get_next(curr_case))
+    {
+        num_cases++;
+    }
+
+    // Create the jump else block / jump default and also create the block that
+    // we exit the switch to.
+    LLVMBasicBlockRef llvm_default = LLVMCreateBasicBlockInContext(c, "");
+    LLVMBasicBlockRef llvm_exit = LLVMCreateBasicBlockInContext(c, "");
+
+    // Generate code for the current expression then build the llvm siwtch
+    LLVMValueRef llvm_cond = llvm_codegen_expression(context, cond);
+
+    // Now create the switch with our parameters
+    LLVMPositionBuilderAtEnd(b, current_bb);
+    LLVMValueRef llvm_switch = LLVMBuildSwitch(b, llvm_cond, llvm_default,
+            num_cases);
+
+    // Now we have created a statement terminator we want to create add a new
+    // basic block onto the end of this switch statement. So append a new basic
+    // block, create a jump and then set the current basic block. This helps 
+    // allow dead code like
+    //
+    // switch (...) {
+    //     int a; <- this would be in the previous basic block otherwise    
+    //     case 0:
+    //         ...
+    // }
+    LLVMBasicBlockRef next_bb = LLVMAppendBasicBlockInContext(c, fn, "");
+    llvm->basic_block = next_bb;
+
+    // Now push the fact the we have a new break target onto that stack
+    llvm_codegen_push_break(context, llvm_exit, llvm_switch);
+
+    // TODO: will have to thing about how we handle things like switch cases
+    // TODO: and that kind of thing...
+    llvm_codegen_statement(context, body);
+
+    // Finally, before the finaly thing to do we should check that the current
+    // basic block terminated and act accordingly
+    if (LLVMGetBasicBlockTerminator(llvm->basic_block) == NULL)
+    {
+        LLVMPositionBuilderAtEnd(b, llvm->basic_block);
+        LLVMBuildBr(b, llvm_exit);
+    }
+        
+    llvm_codegen_pop_jumps(context);
+
+    // Finally, append the else case to the end of the basic block list and if 
+    // there was no default condition (codegen would not have happened for it)
+    // then simply create an unconditional branch to the exit block...
+    LLVMAppendExistingBasicBlock(fn, llvm_default);
+    
+    if (case_default == NULL)
+    {
+        LLVMPositionBuilderAtEnd(b, llvm_default);
+        LLVMBuildBr(b, llvm_exit);
+    }
+
+    LLVMAppendExistingBasicBlock(fn, llvm_exit);
+    llvm->basic_block = llvm_exit;
 }
 
 void llvm_codegen_for_statement(CodegenContext* context, Statement* stmt)
 {
     assert(statement_is(stmt, STATEMENT_FOR));
 
-    // TODO: later while will come first
+    // Get our backend specific data before doing anything...
+    CodegenLLVM* llvm = context->backend_specific;
+    LLVMContextRef c = llvm->context;
+    LLVMValueRef fn = llvm->function;
+    LLVMBuilderRef b = llvm->builder;
+    LLVMBasicBlockRef current_bb = llvm->basic_block;
+
+    // Get everything that we need from the statement
+    Statement* init = statement_for_get_init(stmt);
+    Expression* cond = statement_for_get_condition(stmt);
+    Expression* inc = statement_for_get_inc(stmt);
+    Statement* body = statement_for_get_body(stmt);
+
+    // First gen the init if we have it
+    if (init != NULL)
+    {
+        llvm_codegen_statement(context, init);
+    }
+
+    // Create jump back to the start of this current block and then break will 
+    // jump to the end of the loop.
+    LLVMBasicBlockRef jump_condition = LLVMAppendBasicBlockInContext(c, fn, "");
+    LLVMBasicBlockRef loop_body = LLVMAppendBasicBlockInContext(c, fn, "");
+    LLVMBasicBlockRef jump_increment = LLVMCreateBasicBlockInContext(c, "");
+    LLVMBasicBlockRef jump_break = LLVMCreateBasicBlockInContext(c, "");
+
+    // Now we want to push our jump targets since we have them
+    llvm_codegen_push_break_continue(context, jump_break, jump_increment);
+
+    // End the current block and create an unconditional branch to the 
+    // continue target.
+    LLVMPositionBuilderAtEnd(b, current_bb);
+    LLVMBuildBr(b, jump_condition);
+
+    // Since we are in the continue target the main purpose of this block is to
+    // decide do we execute the loop body or skip it. So gen the condition for
+    // this and then conditionallly branch. If we don't have a condition we want
+    // to generate an unconditional branch to the body
+    if (cond != NULL)
+    {
+        llvm->basic_block = jump_condition;
+        LLVMValueRef llvm_cond = llvm_codegen_condition(context, cond);
+        LLVMPositionBuilderAtEnd(b, jump_condition);
+        LLVMBuildCondBr(b, llvm_cond, loop_body, jump_break);
+    }
+    else
+    {
+        LLVMPositionBuilderAtEnd(b, jump_condition);
+        LLVMBuildBr(b, loop_body);
+    }
+
+    // Now we want to codegen the body and then also codegen the incrementing
+    // if it exists. After the incrementing we take an unconditional branch to
+    // the continue section.
+    llvm->basic_block = loop_body;
+    llvm_codegen_statement(context, body);
+    llvm_maybe_create_branch_to(llvm->basic_block, b, jump_increment);
+
+    LLVMAppendExistingBasicBlock(fn, jump_increment);
+    if (inc != NULL)
+    {
+        llvm->basic_block = jump_increment;
+        llvm_codegen_expression(context, inc);
+    }
+    llvm_maybe_create_branch_to(jump_increment, b, jump_condition);
+
+    // Finally we want to add our jump break right to the end after we have done
+    // codegeneration for all of our existing blocks
+    llvm->basic_block = jump_break;
+    LLVMAppendExistingBasicBlock(fn, jump_break);
+
+    // Finally, pop our jump targets since we have them
+    llvm_codegen_pop_jumps(context);
 }
 
 void llvm_codegen_while_statement(CodegenContext* context, Statement* stmt)
@@ -350,7 +502,7 @@ void llvm_codegen_return_statement(CodegenContext* context, Statement* stmt)
     // TODO: should we even bother appending a basic block after it since that
     // TODO: code would be unreachable anyways?
     Statement* next = statement_get_next(stmt);
-    if (next != NULL && !statement_is_empty(next))
+    if (next != NULL)
     {
         llvm->basic_block = LLVMAppendBasicBlockInContext(c, fn, "");
     }
@@ -430,7 +582,41 @@ void llvm_codegen_label_statement(CodegenContext* context, Statement* stmt)
 void llvm_codegen_case_statement(CodegenContext* context, Statement* stmt)
 {
     assert(statement_is(stmt, STATEMENT_CASE));
+    assert(llvm_codegen_get_switch(context) != NULL);
     
+    // Get all of the context we need in order to generate this 'return'
+    CodegenLLVM* llvm = context->backend_specific;
+    LLVMContextRef c = llvm->context;
+    LLVMBuilderRef b = llvm->builder;
+    LLVMValueRef fn = llvm->function;
+    LLVMBasicBlockRef current_bb = llvm->basic_block;
+
+    // Get the information requried from the statement
+    ExpressionIntegerValue value = statement_case_get_value(stmt);
+    int64_t int_value = expression_integer_value_get(&value);
+    Statement* body = statement_case_get_body(stmt);
+
+    // TODO: llvm int32incontext isn't the right answer... but how should we
+    // TODO: model it nicely?
+    LLVMValueRef llvm_value = LLVMConstInt(LLVMInt32TypeInContext(c), int_value,
+            false);
+
+    // Then create a new basic block for this one and build an unconditional
+    // branch to this one if the previous block did not have a terminator. e.g.
+    // in a case and the writer wanted fallthrough to the next case statement
+    LLVMBasicBlockRef new_bb = LLVMAppendBasicBlockInContext(c, fn, "");    
+    if (LLVMGetBasicBlockTerminator(current_bb) == NULL)
+    {
+        LLVMPositionBuilderAtEnd(b, current_bb);
+        LLVMBuildBr(b, new_bb);
+    }
+
+    // Then add this case to the current switch stack.
+    LLVMAddCase(llvm_codegen_get_switch(context), llvm_value, new_bb);
+
+    // Finally, codegen the statement for this switch case
+    llvm->basic_block = new_bb;
+    llvm_codegen_statement(context, body);
 }
 
 void llvm_codegen_default_statement(CodegenContext* context, Statement* stmt)
@@ -527,10 +713,18 @@ void llvm_codegen_function_body(CodegenContext* context, Statement* body)
     LLVMContextRef c = llvm->context;
     LLVMValueRef fn = llvm->function;
 
+    // TODO: should I store a block to where declarations get generated before
+    // TODO: and then just have a jump to the actual entry block. This would 
+    // TODO: make codegen a bit more clear.
+
     // Create the basic block and add it and the end of the function
     llvm->basic_block = LLVMAppendBasicBlockInContext(c, fn, "");
     llvm_codegen_compound_statement(context, body);
 
     // Finally get the last block from the function and generate an implicit 
     // return if the last block does not have a return statement
+    if (LLVMGetBasicBlockTerminator(llvm->basic_block) == NULL)
+    {
+        // TODO: add return here at the end of the function
+    }
 }

@@ -6,6 +6,7 @@
 #include "codegen/codegen_llvm/codegen_llvm.h"
 #include "driver/diagnostic.h"
 
+#include "driver/lang.h"
 #include "driver/options.h"
 #include "files/source_manager.h"
 
@@ -24,12 +25,17 @@ bool translation_unit_create(TranslationUnit* tu, Filepath main_file,
         .main_file = main_file,
         .out_file = out_file,
         .options = options,
+        .lang = lang_opts(options->standard, options->strict, options->gnu),
         .target = target,
         .dm = dm,
         .sm = source_manager(),
-        .ids = identifier_table_create(),
+        /*.ids = identifier_table_create(tu->lang),*/
         .ast = ast_create()
     };
+
+    // Must initialise id's after since we need to create our identifier table
+    // with the specific language in mind.
+    tu->ids = identifier_table_create(&tu->lang);
 
     diagnostic_manager_set_sm(tu->dm, &tu->sm);
 
@@ -50,7 +56,7 @@ bool translation_unit_parse(TranslationUnit* tu)
 {
     // Attempt to create the parser exiting early if we fail
     Parser parser;
-    if (!parser_create_for_translation_unit(&parser, tu->dm, &tu->sm,
+    if (!parser_create_for_translation_unit(&parser, tu->dm, &tu->lang, &tu->sm,
             tu->main_file, &tu->ids, &tu->ast))
     {
         return false;

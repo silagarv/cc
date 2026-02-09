@@ -1,8 +1,10 @@
 #ifndef LEXER_H
 #define LEXER_H
 
-#include "driver/diagnostic.h"
 #include "util/arena.h"
+
+#include "driver/diagnostic.h"
+#include "driver/lang.h"
 
 #include "files/location.h"
 #include "files/source_manager.h"
@@ -12,6 +14,8 @@
 
 typedef struct Lexer {
     DiagnosticManager* dm;
+
+    LangOptions* lang;
 
     Arena* literal_arena;
 
@@ -30,8 +34,8 @@ typedef struct Lexer {
 } Lexer;
 
 // Create a lexer on the stack, no heap allocations needed for it at all
-void lexer_create(Lexer* lexer, DiagnosticManager* dm, Arena* literal_arena,
-        IdentifierTable* identifiers, SourceFile* source);
+void lexer_create(Lexer* lexer, DiagnosticManager* dm, LangOptions* opts,
+        Arena* literal_arena, IdentifierTable* identifiers, SourceFile* source);
 
 // Get the next token from the lexer advancing it's position
 bool lexer_get_next(Lexer* lexer, Token* tok);

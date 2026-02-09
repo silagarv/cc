@@ -9,6 +9,8 @@
 #include "util/hash_map.h"
 #include "util/vec.h"
 
+#include "driver/lang.h"
+
 #include "lex/token.h"
 
 typedef struct Identifier Identifier;
@@ -47,7 +49,7 @@ const char* identifier_cstr(const Identifier* identifier);
 uint32_t identifier_get_hash(const void* identifier);
 
 // Create an identifier table to intern all of our identifiers
-IdentifierTable identifier_table_create(void);
+IdentifierTable identifier_table_create(LangOptions* opts);
 
 // Delete our identifier table and free all of the memory asociated with it
 void identifier_table_delete(IdentifierTable* table);

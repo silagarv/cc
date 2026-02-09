@@ -84,10 +84,27 @@ CompilerDriverAction compiler_driver_determine_action(const CompilerDriver* d)
     return DRIVER_ACTION_COMPILE;
 }
 
+static void print_option(const char* flag, const char* desc)
+{
+    fprintf(stderr, "  %-25s\t%s\n", flag, desc);
+}
+
 static int compiler_driver_do_help(CompilerDriver* driver)
 {
     // TODO: finish the help
     fprintf(stderr, "Usage: cc [options] file\n");
+    fprintf(stderr, "Options:\n");
+    print_option("--help", "Display this information.");
+    print_option("-version", "Display version information.");
+    print_option("-std=<value>", "Set the standard to compile for.");
+    print_option("-O<opt-value>", "Set the preffered optimisation level.");
+    print_option("-W<warning>", "Set the specified warning.");
+    print_option("-w", "Silence all warnings.");
+    print_option("-E", "Preprocess only; do not compile, assemble or link.");
+    print_option("-S", "Compile only; do not assemble or link");
+    print_option("-c", "Compile and assemble, but do not link");
+    print_option("-o <file>", "Place the output into file");
+    print_option("-fsyntax-only", "Only parse; do not compile or further");
     return EXIT_SUCCESS;
 }
 
@@ -124,6 +141,8 @@ static bool get_filepath(Filepath* path, const char* name, bool output,
 static int compiler_driver_process_translation_unit(CompilerDriver* driver,
         TranslationUnit* tu)
 {
+    CompilerOptions opts = driver->options;
+
     // Get the diagnostic manager from the driver so we can easily output any
     // error messages for this translation unit.
     DiagnosticManager* dm = &driver->dm;
@@ -131,22 +150,19 @@ static int compiler_driver_process_translation_unit(CompilerDriver* driver,
     // Get input, output and the language standard all sorted before we properly
     // attempt to do any parsing of the translation unit as we might still have
     // to bail out at this point
-    char* infile = driver->options.infile;
+    char* infile = opts.infile;
     Filepath input_path;
     if (!get_filepath(&input_path, infile, false, dm))
     {
         return EXIT_FAILURE;
     }
 
-    char* outfile = driver->options.outfile;
+    char* outfile = opts.outfile;
     Filepath output_path;
     if (!get_filepath(&output_path, outfile, true, dm))
     {
         return EXIT_FAILURE;
     }
-
-    LangStandard std = driver->options.standard;
-    assert(std != LANG_STANDARD_DEFAULT);
 
     // Okay now create our target (dummy for now)
     Target target = (Target) {0};

@@ -93,11 +93,15 @@ void semantic_checker_push_switch_stack(SemanticChecker* sc)
     sc->switches = new_switch;
 }
 
-void semantic_checker_pop_switch_stack(SemanticChecker* sc)
+SwitchStack* semantic_checker_pop_switch_stack(SemanticChecker* sc)
 {
     assert(sc->switches);
 
+    SwitchStack* cases = sc->switches;
+
     sc->switches = sc->switches->previous;
+
+    return cases;
 }
 
 Statement* semantic_checker_switch_stack_get_first(SemanticChecker* sc)
@@ -6570,7 +6574,6 @@ Statement* semantic_checker_handle_case_statement(SemanticChecker* sc,
 
     ExpressionIntegerValue value = {0};
     expression_fold_to_integer_constant(expression, &value);
-    // printf("%ld\n", value.value);
 
     // TODO: will need to truncate the values possible based on the type of the
     // controlling expression
@@ -6652,7 +6655,14 @@ Statement* semantic_checker_handle_switch_statement(SemanticChecker* sc,
             switch_location, lparen_location, rparen_location, expression);
     statement_switch_set_body(switch_stmt, body);
 
-    return body;
+    // Also get all of the cases from the switch stack and add them into the
+    // switch. 
+    // TODO: add abstraction to this with functions
+    SwitchStack* cases = sc->switches;
+    switch_stmt->switch_stmt.cases = cases->first_label;
+    switch_stmt->switch_stmt.default_stmt = cases->default_label;
+
+    return switch_stmt;
 }
 
 Statement* semantic_checker_handle_while_statement(SemanticChecker* sc,
@@ -6731,8 +6741,7 @@ Statement* semantic_checker_handle_for_statement(SemanticChecker* sc,
     }
     else
     {
-        // TODO: is this correct?
-        init_statement = semantic_checker_handle_error_statement(sc);
+        init_statement = NULL;
     }
 
     // Create the for statement

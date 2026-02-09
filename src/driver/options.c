@@ -1,5 +1,6 @@
 #include "options.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
@@ -243,8 +244,8 @@ static bool handle_standard(CompilerOptions* opts, DiagnosticManager* dm,
             opts->standard = standards[i].standard;
             if (standards[i].standard != LANG_STANDARD_C99)
             {
-                diagnostic_warning(dm, "only ISO C99 is supported but got "
-                        "given '%s'; ignoring argument", remaining);
+                diagnostic_warning(dm, "support of language standards other "
+                        "than C99 is not guaranteed");
             }
             return true;
         }
@@ -482,12 +483,6 @@ static bool handle_warning(CompilerOptions* opts, DiagnosticManager* dm,
 
     // Special case for -Werror since we want to be special in our handling of
     // that...
-    if (argument_is("error", argument))
-    {
-        opts->werror = true;
-        return true;        
-    }
-
     bool no = false;
     bool error = false;
 
@@ -508,9 +503,22 @@ static bool handle_warning(CompilerOptions* opts, DiagnosticManager* dm,
     // Now attempt to get the name of the warning option
     DiagnosticWarning warning = diagnostic_string_to_warning(argument);
 
+    // Special case of diagnostic error
+    if (warning == DIAG_ERROR)
+    {
+        if (error == true)
+        {
+            warning = DIAG_UNKNOWN;
+        }
+        else
+        {
+            opts->werror = !no;
+        }
+    }
+
     // For now just print a warning about not knowing about the warning option
     // if it wasn't known and do nothing about any of the other warnings
-    if (warning == DIAG_WARNING_UNKNOWN)
+    if (warning == DIAG_UNKNOWN)
     {
         diagnostic_warning(dm, "unknown warning option '-W%s%s'",
                 error ? "error=" : "", argument);

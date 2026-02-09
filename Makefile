@@ -54,7 +54,8 @@ FILES = src/files/filepath.c \
 	src/files/location_manager.c \
 	src/files/source_manager.c
 
-DRIVER = src/driver/diagnostic.c \
+DRIVER = src/driver/warning.c \
+	src/driver/diagnostic.c \
 	src/driver/lang.c \
 	src/driver/options.c \
 	src/driver/translation_unit.c \

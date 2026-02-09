@@ -64,7 +64,7 @@ Scope* semantic_checker_current_scope(SemanticChecker* sc);
 bool semantic_checker_current_scope_is(SemanticChecker* sc, ScopeFlags type);
 
 void semantic_checker_push_switch_stack(SemanticChecker* sc);
-void semantic_checker_pop_switch_stack(SemanticChecker* sc);
+SwitchStack* semantic_checker_pop_switch_stack(SemanticChecker* sc);
 
 Statement* semantic_checker_switch_stack_get_first(SemanticChecker* sc);
 Statement* semantic_checker_switch_stack_get_default(SemanticChecker* sc);

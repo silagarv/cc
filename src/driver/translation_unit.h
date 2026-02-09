@@ -25,6 +25,9 @@ typedef struct TranslationUnit {
     // The options for the compilation of this translation unit
     CompilerOptions* options;
 
+    // The language we are attempting to compile
+    LangOptions lang;
+
     // Our target information so that we can initialize and parse correctly in
     // both the frontend and back end
     Target target;

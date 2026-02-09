@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "driver/diagnostic.h"
+#include "driver/lang.h"
 #include "files/file_manager.h"
 #include "files/filepath.h"
 #include "files/source_manager.h"
@@ -101,7 +102,8 @@ static void preprocessor_add_defines(Preprocessor* pp)
 }
 
 bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
-        SourceManager* sm, Filepath main_file, IdentifierTable* ids)
+        LangOptions* opts, SourceManager* sm, Filepath main_file,
+        IdentifierTable* ids)
 {
     SourceFile* starting_file = source_manager_create_filepath(sm, main_file);
     if (starting_file == NULL)
@@ -111,6 +113,7 @@ bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
     }
 
     pp->dm = dm;
+    pp->lang = opts;    
     pp->sm = sm;
     pp->identifiers = ids;
     pp->literal_arena = arena_new(ARENA_DEFAULT_CHUNK_SIZE,
@@ -118,7 +121,7 @@ bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
     pp->pp_allocator = arena_new(ARENA_DEFAULT_CHUNK_SIZE,
             ARENA_DEFAULT_ALIGNMENT);
     pp->lexers = NULL;
-    lexer_create(&pp->lexer, dm, &pp->literal_arena, pp->identifiers,
+    lexer_create(&pp->lexer, dm, opts, &pp->literal_arena, pp->identifiers,
             starting_file);
 
     return true;
