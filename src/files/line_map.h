@@ -38,4 +38,7 @@ uint32_t line_map_resolve_column(const LineMap* map, Location loc);
 // Get the starting location of the next line in the line map
 Location line_map_get_next_line_start(const LineMap* map, Location loc);
 
+// Get the location of the start of the line for location
+Location line_map_get_line_start(const LineMap* map, Location loc);
+
 #endif /* LINE_MAP_H */

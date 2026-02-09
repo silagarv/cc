@@ -111,6 +111,8 @@ static SourceFile* source_manager_assign_file(SourceManager* sm, FileBuffer* fb,
     SourceFile* sf = source_file_create(sm->next_id, sm->next_source_location,
             include, fb);
 
+    // TODO: check overflow here...
+
     // Increment our file id's and determine the sm's new highest location
     sm->next_id++;
     sm->next_source_location += (Location) file_buffer_get_length(fb);
@@ -187,8 +189,7 @@ SourceFile* source_manager_from_location(SourceManager* sm, Location loc)
         }
     }
 
-    assert(false && "Unreachable");
-
+    panic("unreachable");
     return NULL;
 }
 

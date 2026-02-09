@@ -32,7 +32,7 @@ static void line_map_calculate(LineMap* map, FileBuffer* file)
     while (current != end)
     {
         // First get the starting location of the range
-        const Location range_start = calculate_location(base, start, current);
+        Location range_start = calculate_location(base, start, current);
 
         // Now we want to find the ending location of the line range
         while (true)
@@ -63,11 +63,25 @@ static void line_map_calculate(LineMap* map, FileBuffer* file)
         }
 
         // Get the range end
-        const Location range_end = calculate_location(base, start, current) + 1;
+        Location range_end = calculate_location(base, start, current);
+        
+        // If we are at the end of the file we need to add one so we can refer
+        // to char one past the end of the file. This is so that we can 
+        // successfully find the location range that contains it.
+        if (current == end)
+        {
+            range_end++;
+        }
 
         // Add the range to the ranges
         location_range_vector_push(&map->ranges, 
                 (LocationRange) {range_start, range_end});
+    }
+
+    // If we have an empty vector push a single entry
+    if (location_range_vector_size(&map->ranges) == 0)
+    {
+        location_range_vector_push(&map->ranges, map->range);
     }
 }
 
@@ -169,5 +183,11 @@ Location line_map_get_next_line_start(const LineMap* map, Location loc)
 
     // Get the next range and return it's start
     return map->ranges.data[range_index + 1].start;
+}
+
+Location line_map_get_line_start(const LineMap* map, Location loc)
+{
+    LocationRange* range = line_map_get_location_range(map, loc);
+    return range->start;
 }
 

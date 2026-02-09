@@ -1,12 +1,14 @@
 #include "diagnostic.h"
 
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <stddef.h>
 #include <unistd.h>
 #include <assert.h>
 
+#include "files/file_manager.h"
 #include "util/panic.h"
 
 #include "files/line_map.h"
@@ -208,6 +210,80 @@ void diagnostic_help(DiagnosticManager* dm, const char* fmt, ...)
     va_end(ap);
 }
 
+// A very basic line printer for our diagnostic. Note: this may have to be 
+// ripped out and rewritten once we have macros and a preprocessor 
+void diagnostic_print_line(DiagnosticManager* dm, SourceFile* file,
+        Location loc)
+{
+    // Now try to get the line to print
+    Location start_line = line_map_get_line_start(&file->line_map, loc);
+    assert(loc >= start_line);
+
+    Location start_loc = source_file_get_start_location(file);
+    assert(loc >= start_loc);
+    Location start_offset = start_line - start_loc;
+
+    const FileBuffer* fb = source_file_get_buffer(file);
+    const char* raw = file_buffer_get_start(fb);
+    const char* end = file_buffer_get_end(fb);
+
+    // Print the line
+    const char* line_start = raw + start_offset;
+    char buff[BUFSIZ + 1];
+    size_t buff_pos = 0;
+
+    bool printed_newline = false;
+    for (const char* current = line_start; ; current++)
+    {
+        char current_char = *current;
+        
+        // Add the char to the buffer to print
+        buff[buff_pos++] = current_char;
+
+        // If we have filled the buffer up then null terminate and dump to 
+        // stderr so that it can be printed. Also remembering to reset the 
+        // buffer
+        if (buff_pos == BUFSIZ)
+        {
+            buff[BUFSIZ] = '\0';
+            buff_pos = 0;
+            fprintf(stderr, "%s", buff);
+        }
+
+        // Otherwise if we have a line terminator null terminate the buffer and
+        // print it along with the line to stderr.
+        if (current_char == '\r' || current_char == '\n' || current == end)
+        {
+            // Note: the newline character should already be in the buffer for
+            // printing so just null terminate. If the buffer was full already
+            // it would have also been flushed too :)
+            buff[buff_pos++] = '\0';
+            buff_pos = 0;
+            fprintf(stderr, "%s", buff);
+
+            if (current_char == '\r' || current_char == '\n')
+            {
+                printed_newline = true;
+            }
+            break;
+        }
+    }
+
+    // Rare case: empty file basically or no newline at eof
+    if (!printed_newline)
+    {
+        printf("\n");
+    }
+
+    // Now print a caret afterwards so we have a better idea of where it is
+    Location empty = loc - start_line;
+    for (Location i = 0; i < empty; i++)
+    {
+        printf("%.*s", (int) empty, " ");
+    }
+    printf("^\n");
+}
+
 void diagnostic_internal_at(DiagnosticManager* dm, DiagnosticKind kind,
         Location loc, const char* fmt, va_list ap)
 {
@@ -225,17 +301,21 @@ void diagnostic_internal_at(DiagnosticManager* dm, DiagnosticKind kind,
 
     SourceFile* sf = source_manager_from_location(dm->sm, loc);
     ResolvedLocation resolved = line_map_resolve_location(&sf->line_map, loc);
+    uint32_t line = resolved.line;
+    uint32_t col = resolved.col;
 
+    // Print the initial part
     fprintf(stderr, "%s%s:%u:%u: ", dm->colours.highlight,
-            sf->file_buffer->path.path, resolved.line, resolved.col);
-    fprintf(stderr, "%s%s:%s%s ",
+            sf->file_buffer->path.path, line, col);
+    fprintf(stderr, "%s%s:%s ",
             kind_to_colour(dm, kind),
             kind_to_name(kind),
-            dm->colours.white,
             dm->colours.reset_all
         );
     vfprintf(stderr, fmt, ap);
-    fprintf(stderr, "\n");
+    fprintf(stderr, "%s\n", dm->colours.reset_all);
+
+    diagnostic_print_line(dm, sf, loc);
 }
 
 void diagnostic_error_at(DiagnosticManager* dm, Location loc,
