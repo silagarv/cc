@@ -909,6 +909,14 @@ retry_lexing:;
             {
                 consume_char(lexer);
 
+                // TODO: add mechanism to not report this multiple time, might
+                // TODO: have to wait until proper warning classes though
+                if (!lang_opts_c99(lexer->lang))
+                {
+                    diagnostic_warning_at(lexer->dm, token->loc, "// comments "
+                            "are not allowed in ISO C90");
+                }
+
                 skip_line_comment(lexer);
 
                 // Make sure to unset whitespace

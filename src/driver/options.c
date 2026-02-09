@@ -245,7 +245,7 @@ static bool handle_standard(CompilerOptions* opts, DiagnosticManager* dm,
             if (standards[i].standard != LANG_STANDARD_C99)
             {
                 diagnostic_warning(dm, "support of language standards other "
-                        "than C99 is not guaranteed");
+                        "than C99 is experimental");
             }
             return true;
         }

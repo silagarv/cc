@@ -467,6 +467,11 @@ static bool is_typename_start(Parser* parser, const Token* tok)
             return semantic_checker_identifier_is_typename(&parser->sc,
                     identifier);
         }
+
+        // Not a typename start but is a type of declaration
+        case TOK_static_assert:
+        case TOK__Static_assert:
+            return true;
     
         default:
             return false;
@@ -4045,11 +4050,29 @@ static bool should_eat_semi_after_decl(Parser* parser, Declaration* decl)
     return !declaration_function_has_body(decl);
 }
 
+static Declaration* parse_static_assert_declaration(Parser* parser)
+{
+    assert(is_match_two(parser, TOK__Static_assert, TOK__Static_assert));
+
+    Location sa_loc = consume(parser);
+    panic("static asserts not implemented");
+    return NULL;
+}
+
 static Declaration* parse_declaration(Parser* parser, DeclaratorContext context,
         Location* trailing_semi, bool eat_semi, const char* const msg_context)
 {
     // If we want to eat the semi we must be able to get it's location!
     assert(eat_semi ? trailing_semi != NULL : true);
+
+    Declaration* decl = NULL;
+
+    // Special case of static assert
+    if (is_match_two(parser, TOK__Static_assert, TOK__Static_assert))
+    {
+        decl = parse_static_assert_declaration(parser);
+        goto after_decl;
+    }
 
     // First we need to get our declaration specifiers here
     DeclarationSpecifiers specifiers = parse_declaration_specifiers(parser,
@@ -4057,7 +4080,6 @@ static Declaration* parse_declaration(Parser* parser, DeclaratorContext context,
 
     // Check for a possibly empty declaration with a token and pass it to
     // the semantic checker to deal with
-    Declaration* decl = NULL;
     if (is_match_two(parser, TOK_SEMI, TOK_EOF))
     {
         // Process the declaration specifiers and get the enclosing decl if any
@@ -4072,6 +4094,7 @@ static Declaration* parse_declaration(Parser* parser, DeclaratorContext context,
         decl = parse_init_declarator_list(parser, &specifiers, context);
     }
 
+after_decl:
     // Conditionally parse the trailing semi-colon.
     if (eat_semi && should_eat_semi_after_decl(parser, decl))
     {
