@@ -159,14 +159,13 @@ void diagnostic_internal(DiagnosticManager* dm, DiagnosticKind kind,
     {
         dm->warning_count++;
     }
-    
-    fprintf(stderr, "%scc: %s%s:%s%s ",
+
+    fprintf(stderr, "%s%scc: %s%s: %s%s", dm->colours.white,
             dm->colours.highlight,
             kind_to_colour(dm, kind),
             kind_to_name(kind),
-            dm->colours.white,
-            dm->colours.reset_all
-        );
+            dm->colours.reset_all,
+            dm->colours.white);
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
 }
@@ -305,12 +304,13 @@ void diagnostic_internal_at(DiagnosticManager* dm, DiagnosticKind kind,
     uint32_t col = resolved.col;
 
     // Print the initial part
-    fprintf(stderr, "%s%s:%u:%u: ", dm->colours.highlight,
+    fprintf(stderr, "%s%s%s:%u:%u: ", dm->colours.white, dm->colours.highlight,
             sf->file_buffer->path.path, line, col);
-    fprintf(stderr, "%s%s:%s ",
+    fprintf(stderr, "%s%s:%s%s ",
             kind_to_colour(dm, kind),
             kind_to_name(kind),
-            dm->colours.reset_all
+            dm->colours.reset_all,
+            dm->colours.white
         );
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "%s\n", dm->colours.reset_all);

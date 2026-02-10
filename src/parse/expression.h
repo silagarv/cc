@@ -89,6 +89,18 @@ typedef enum ExpressionType {
 
 typedef union Expression Expression;
 
+// Forward declare these
+typedef struct ExpressionListEntry {
+    struct ExpressionListEntry* next;
+    Expression* expression;
+} ExpressionListEntry;
+
+typedef struct ExpressionList {
+    ExpressionListEntry* first;
+    ExpressionListEntry* tail;
+    size_t num_exprs;
+} ExpressionList;
+
 typedef struct ExpressionBase {
     // The expression type
     ExpressionType kind;
@@ -161,7 +173,7 @@ typedef struct ExpressionFunctionCall {
     Location lparen_loc;
     Location rparen_loc;
     Expression* lhs;
-    Expression** arguments;
+    struct ExpressionList arguments;
     size_t num_arguments;
 } ExpressionFunctionCall;
 
@@ -268,17 +280,6 @@ union Expression {
     ExpressionError error;
 };
 
-typedef struct ExpressionListEntry {
-    struct ExpressionListEntry* next;
-    Expression* expression;
-} ExpressionListEntry;
-
-typedef struct ExpressionList {
-    ExpressionListEntry* first;
-    ExpressionListEntry* tail;
-    size_t num_exprs;
-} ExpressionList;
-
 bool expression_type_is_assignment(ExpressionType type);
 
 bool expression_is(const Expression* expr, ExpressionType type);
@@ -329,6 +330,10 @@ FloatingValue expression_float_get_value(const Expression* expression);
 Expression* expression_create_character(AstAllocator* allocator,
         Location location, CharValue value, QualifiedType expr_type);
 CharValue expression_character_get_value(const Expression* expression);
+
+Expression* expression_create_call(AstAllocator* allocator, Expression* lhs,
+        Location lparen_loc, ExpressionList parms, Location rparen_loc,
+        QualifiedType return_type);
 
 Expression* expression_create_array(AstAllocator* allocator, 
         Location lbracket_loc, Location rbracket_loc, Expression* lhs,

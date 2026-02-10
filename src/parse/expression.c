@@ -407,6 +407,22 @@ CharValue expression_character_get_value(const Expression* expression)
     return expression->character.value;
 }
 
+Expression* expression_create_call(AstAllocator* allocator, Expression* lhs,
+        Location lparen_loc, ExpressionList parms, Location rparen_loc,
+        QualifiedType return_type)
+{
+    Expression* expr = expression_create_base(allocator,
+            sizeof(ExpressionFunctionCall), EXPRESSION_FUNCTION_CALL,
+            return_type);
+    expr->call.lparen_loc = lparen_loc;
+    expr->call.rparen_loc = rparen_loc;
+    expr->call.lhs = lhs;
+    expr->call.arguments = parms;
+    expr->call.num_arguments = expression_list_num_expr(&parms);
+
+    return expr;
+}
+
 Expression* expression_create_array(AstAllocator* allocator, 
         Location lbracket_loc, Location rbracket_loc, Expression* lhs,
         Expression* member, QualifiedType expr_type, bool lhs_is_array)

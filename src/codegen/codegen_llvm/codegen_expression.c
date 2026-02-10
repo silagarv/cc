@@ -1,5 +1,6 @@
 #include "codegen_expression.h"
 
+#include <stddef.h>
 #include <stdint.h>
 #include <assert.h>
 
@@ -82,6 +83,42 @@ LLVMValueRef llvm_codegen_character_constant(CodegenContext* ctx,
     // TODO: should correctly get if the value is sign extended here!
     LLVMPositionBuilderAtEnd(b, bb);
     return LLVMConstInt(llvm_ty, n, false);    
+}
+
+LLVMValueRef llvm_codegen_string(CodegenContext* ctx, const Expression*
+        expression)
+{
+    assert(expression_is(expression, EXPRESSION_STRING_LITERAL));
+
+    // Get the codegen context information
+    CodegenLLVM* llvm = ctx->backend_specific;
+    LLVMModuleRef m = llvm->module;
+    LLVMContextRef c = llvm->context;
+    LLVMBuilderRef b = llvm->builder;
+    LLVMBasicBlockRef bb = llvm->basic_block;
+
+    // Get the string literal's type and it's corrosponding llvm type
+    QualifiedType expr_type = expression_get_qualified_type(expression);
+    LLVMTypeRef llvm_ty = llvm_get_type(ctx, &expr_type);
+    assert(qualified_type_is_array(&expr_type));
+
+    // Now we want to get the string itself as some bytes
+    const char* bytes = "some bytes";
+    size_t length = sizeof "some bytes";
+
+    // TODO: this create a nice global string for us, but is this what we need?
+    LLVMValueRef llvm_str = LLVMAddGlobal(m, llvm_ty, "");
+    LLVMSetInitializer(llvm_str, LLVMConstStringInContext(c, bytes, length,
+            true));
+    LLVMSetGlobalConstant(llvm_str, true);
+    LLVMSetLinkage(llvm_str, LLVMPrivateLinkage);
+    LLVMSetUnnamedAddress(llvm_str, LLVMGlobalUnnamedAddr);
+    LLVMSetAlignment(llvm_str, 1); // TODO: will need to properly set alignment
+
+    // LLVMBuildGlobalString(LLVMBuilderRef B, const char *Str, const char *Name)
+    // LLVMBuildGlobalStringPtr(LLVMBuilderRef B, const char *Str, const char *Name)
+
+    return llvm_str;
 }
 
 static LLVMValueRef llvm_codegen_enumeration_constant(CodegenContext* ctx,
@@ -317,7 +354,65 @@ LLVMValueRef llvm_codegen_multiplicative(CodegenContext* ctx,
 LLVMValueRef llvm_codegen_additive(CodegenContext* ctx, const Expression* e,
         ExpressionType kind)
 {
+    assert(expression_is(e, EXPRESSION_BINARY_ADD)
+            || expression_is(e, EXPRESSION_BINARY_SUBTRACT));
+                 
+    // llvm setup
+    CodegenLLVM* llvm = ctx->backend_specific;
+    LLVMContextRef c = llvm->context;
+    LLVMBuilderRef b = llvm->builder;
+    LLVMBasicBlockRef bb = llvm->basic_block;
+
+    // Build both the lhs and rhs
+    Expression* lhs = expression_binary_get_lhs(e);
+    LLVMValueRef llvm_lhs = llvm_codegen_expression(ctx, lhs);
+
+    Expression* rhs = expression_binary_get_rhs(e);
+    LLVMValueRef llvm_rhs = llvm_codegen_expression(ctx, rhs);
+    
+    LLVMPositionBuilderAtEnd(b, bb);
+    
     return NULL;
+}
+
+LLVMValueRef llvm_codegen_shift(CodegenContext* ctx, const Expression* e,
+        ExpressionType kind)
+{
+    assert(expression_is(e, EXPRESSION_BINARY_SHIFT_LEFT)
+            || expression_is(e, EXPRESSION_BINARY_SHIFT_RIGHT));
+                 
+    // llvm setup
+    CodegenLLVM* llvm = ctx->backend_specific;
+    LLVMContextRef c = llvm->context;
+    LLVMBuilderRef b = llvm->builder;
+    LLVMBasicBlockRef bb = llvm->basic_block;
+
+    // Build both the lhs and rhs
+    Expression* lhs = expression_binary_get_lhs(e);
+    LLVMValueRef llvm_lhs = llvm_codegen_expression(ctx, lhs);
+
+    Expression* rhs = expression_binary_get_rhs(e);
+    LLVMValueRef llvm_rhs = llvm_codegen_expression(ctx, rhs);
+
+    // TODO: Make sure the LHS and the RHS are the same typ
+    QualifiedType type = expression_get_qualified_type(e);
+    LLVMTypeRef llvm_type = llvm_get_type(ctx, &type);
+    // TODO: maybe need to assert that the types are the same? or do a cast if
+    // TODO: not
+
+    LLVMPositionBuilderAtEnd(b, bb);
+    switch (kind)
+    {
+        case EXPRESSION_BINARY_SHIFT_LEFT:
+            return LLVMBuildShl(b, llvm_lhs, llvm_rhs, "");
+
+        case EXPRESSION_BINARY_SHIFT_RIGHT:
+            return LLVMBuildAShr(b, llvm_lhs, llvm_rhs, "");
+
+        default:
+            panic("unreachable");
+            return NULL;
+    }
 }
 
 LLVMValueRef llvm_codegen_parentheses(CodegenContext* c, const Expression* e)
@@ -485,8 +580,9 @@ LLVMValueRef llvm_codegen_expression(CodegenContext* c, const Expression* e)
             return llvm_codegen_additive(c, e, kind);
 
             // Shifts
-            EXPRESSION_BINARY_SHIFT_LEFT,
-            EXPRESSION_BINARY_SHIFT_RIGHT;
+        case EXPRESSION_BINARY_SHIFT_LEFT:
+        case EXPRESSION_BINARY_SHIFT_RIGHT:
+            return llvm_codegen_shift(c, e, kind);
 
         // Comparisons
         case EXPRESSION_BINARY_LESS_THAN:

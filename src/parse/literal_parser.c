@@ -722,13 +722,11 @@ static ValueType determine_value_type(const char* string, size_t len)
         if ((string[1] == 'x' || string[1] == 'X') && len > 2)
         {
             base = 16;
-
             pos += 2;
         }
         else
         {
             base = 8;
-
             pos++;
         }
     }
@@ -751,12 +749,18 @@ static ValueType determine_value_type(const char* string, size_t len)
 
         if (current == 'p' || current == 'P')
         {
-            return VALUE_FLOATING_TYPE;
+            if (pos < len && (string[pos + 1] == '+' || string[pos + 1] == '-'))
+            {
+                return VALUE_FLOATING_TYPE;
+            }
         }
 
         if (current == 'e' || current == 'E')
         {
-            return VALUE_FLOATING_TYPE;
+            if (pos < len && (string[pos + 1] == '+' || string[pos + 1] == '-'))
+            {
+                return VALUE_FLOATING_TYPE;
+            }
         }
     }
 

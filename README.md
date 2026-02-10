@@ -35,6 +35,5 @@ To building, run 'make' in the cc directory and it wll output an executable name
 
 ## Later TODO
 - Fully featured command-line driver
-- Printing of source in diagnostics where relavent
 - Preprocessor support
 - Multiple target support

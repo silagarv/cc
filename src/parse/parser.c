@@ -332,6 +332,8 @@ static bool is_expression_start(Parser* parser, const Token* tok);
 static bool is_statement_start(Parser* parser, const Token* tok);
 static bool is_initializer_start(Parser* parser, const Token* tok);
 
+static void parse_attributes(Parser* parser);
+
 // Functions for parsing our constants which include integer, floating point
 // enumeration and character constants
 static Expression* parse_primary_expression(Parser* parser);
@@ -375,7 +377,8 @@ static Initializer* parse_initializer_list(Parser* parser);
 static Declarator parse_declarator(Parser* parser,
         DeclarationSpecifiers* specifiers, DeclaratorContext ctx);
 static Declaration* parse_init_declarator_list(Parser* parser,
-        DeclarationSpecifiers* specifiers, DeclaratorContext context);
+        DeclarationSpecifiers* specifiers, DeclaratorContext context,
+        Location* trailing_semi);
 
 static void parse_enumerator_list(Parser* parser, Declaration* enum_decl);
 
@@ -420,7 +423,7 @@ static void parse_struct_or_union_specifier(Parser* parser,
         DeclarationSpecifiers* specifiers);
 
 static Declaration* parse_declaration(Parser* parser, DeclaratorContext context,
-        Location* trailing_semi, bool eat_semi, const char* const msg_context);
+        Location* trailing_semi);
 static QualifiedType parse_type_name(Parser* parser, bool* okay);
 
 static bool is_typename_start(Parser* parser, const Token* tok)
@@ -570,6 +573,96 @@ static bool is_initializer_start(Parser* parser, const Token* tok)
 {
     return is_expression_start(parser, tok) || token_is_type(tok, TOK_LCURLY);
 }
+
+// // We want to parse attributes like gcc so based on the comments in the GCC
+// // C parser we parse attributes the same way.
+// // TODO: look at the GCC parser since it accepts some keywords but not others?
+// static bool parser_is_gnu_any_word(Parser* parser)
+// {
+//     switch (current_token_type(parser))
+//     {
+//         case TOK_IDENTIFIER:
+//             return true;
+
+//         default:
+//             return false;
+//     }
+// }
+
+// static void parse_gnu_attribute(Parser* parser)
+// {
+//     assert(is_match(parser, TOK___attribute__));
+
+//     Location attribute = consume(parser);
+
+//     Location lparen_loc_1;
+//     if (!try_match(parser, TOK_LPAREN, &lparen_loc_1))
+//     {
+//         diagnostic_error_at(parser->dm, lparen_loc_1,
+//                 "expected '(' after attribute");
+//         recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI | RECOVER_EAT_TOKEN);
+//         return;
+//     }
+    
+//     Location lparen_loc_2;
+//     if (!try_match(parser, TOK_LPAREN, &lparen_loc_2))
+//     {
+//         diagnostic_error_at(parser->dm, lparen_loc_2, "expected '(' after '('");
+//         recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI | RECOVER_EAT_TOKEN);
+//         return;
+//     }
+
+//     // Here we actually parse the attribute body itself
+//     while (true)
+//     {
+//         // Match any identifier like thing
+//         if (parser_is_gnu_any_word(parser))
+//         {
+//             consume(parser);
+//             Location lparen_loc_attr = LOCATION_INVALID;
+//             Location rparen_loc_attr = LOCATION_INVALID;
+//             if (is_match(parser, TOK_LPAREN))
+//             {
+//                 lparen_loc_attr = consume(parser);
+//             }
+//         }
+
+//         // Match the possible empty attribute
+//         if (is_match(parser, TOK_COMMA))
+//         {
+//             consume(parser);
+//             continue;
+//         }
+
+//         break;
+//     }
+
+//     Location rparen_loc_1;
+//     if (!try_match(parser, TOK_RPAREN, &rparen_loc_1))
+//     {
+//         diagnostic_error_at(parser->dm, rparen_loc_1, "expected ')'");
+//         recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI | RECOVER_EAT_TOKEN);
+//         return;
+//     }
+
+//     Location rparen_loc_2;
+//     if (!try_match(parser, TOK_RPAREN, &rparen_loc_2))
+//     {
+//         diagnostic_error_at(parser->dm, rparen_loc_2, "expected ')'");
+//         recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI | RECOVER_EAT_TOKEN);
+//         return;
+//     }
+// }
+
+// static void parse_gnu_attributes(Parser* parser)
+// {
+//     assert(is_match(parser, TOK___attribute__));
+
+//     while (is_match(parser, TOK___attribute__))
+//     {
+//         parse_gnu_attribute(parser);
+//     }
+// }
 
 static bool is_string_token(Parser* parser, const Token* tok)
 {
@@ -917,7 +1010,6 @@ static void parse_argument_expression_list(Parser* parser,
     do
     {
         Expression* arg = parse_assignment_expression(parser);
-        
         expression_list_push(&parser->ast->ast_allocator, list, arg);
     }
     while (try_match(parser, TOK_COMMA, NULL));
@@ -976,7 +1068,7 @@ static Expression* parse_postfix_ending(Parser* parser, Expression* start)
                 }
                 
                 expr = semantic_checker_handle_call_expression(&parser->sc,
-                        expr, lparen_loc, &list, rparen_loc);
+                        expr, lparen_loc, list, rparen_loc);
                 break;
             }
 
@@ -2097,8 +2189,7 @@ static Statement* parse_for_statement(Parser* parser)
     Expression* init_expression = NULL;
     if (is_typename_start(parser, current_token(parser)))
     {   
-        init_declaration = parse_declaration(parser, DECL_CTX_BLOCK, NULL,
-                false, NULL);
+        init_declaration = parse_declaration(parser, DECL_CTX_BLOCK, NULL);
     }
     else if (is_expression_start(parser, current_token(parser)))
     {
@@ -2227,9 +2318,7 @@ static Statement* parse_return_statement(Parser* parser)
 static Statement* parse_declaration_statement(Parser* parser)
 {
     Location semi_loc = LOCATION_INVALID;
-    Declaration* decl = parse_declaration(parser, DECL_CTX_BLOCK, &semi_loc,
-            true, "declaration");
-
+    Declaration* decl = parse_declaration(parser, DECL_CTX_BLOCK, &semi_loc);
     return semantic_checker_handle_declaration_statement(&parser->sc,
             decl, semi_loc);
 }
@@ -2854,7 +2943,8 @@ static bool maybe_parse_function(Parser* parser, Declarator* declarator,
 }
 
 static Declaration* parse_init_declarator_list(Parser* parser,
-        DeclarationSpecifiers* specifiers, DeclaratorContext context)
+        DeclarationSpecifiers* specifiers, DeclaratorContext context,
+        Location* trailing_semi)
 {
     // First parse the declarator but do not create a declaration as we need to
     // delay this to potentially prevent some helpful but maybe irrelavent
@@ -2887,6 +2977,15 @@ static Declaration* parse_init_declarator_list(Parser* parser,
         // Parse a fresh declarator and then a declaration after it.
         declarator = parse_declarator(parser, specifiers, context);
         decl = parse_declaration_after_declarator(parser, &declarator, context);
+    }
+
+    // Now finally we want to match the semi-colon at the end if we were given
+    // one to match
+    if (trailing_semi)
+    {
+        const char* message = context == DECL_CTX_FILE ? "top level declarator"
+                : "declaration";
+        *trailing_semi = parse_trailing_semi(parser, message);
     }
     
     return decl;
@@ -3025,7 +3124,7 @@ after_parms:;
     if (!try_match(parser, TOK_RPAREN, &rparen_loc))
     {
         diagnostic_error_at(parser->dm, rparen_loc, "expected ')'");
-        recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI);
+        recover(parser, TOK_RPAREN, RECOVER_EAT_TOKEN | RECOVER_STOP_AT_SEMI);
     }
 
     // Push the function type onto the end of the declarator
@@ -4050,28 +4149,28 @@ static bool should_eat_semi_after_decl(Parser* parser, Declaration* decl)
     return !declaration_function_has_body(decl);
 }
 
-static Declaration* parse_static_assert_declaration(Parser* parser)
+static Declaration* parse_static_assert_declaration(Parser* parser,
+        DeclaratorContext context, Location* trailing_semi)
 {
-    assert(is_match_two(parser, TOK__Static_assert, TOK__Static_assert));
+    assert(is_match_two(parser, TOK__Static_assert, TOK_static_assert));
 
     Location sa_loc = consume(parser);
-    panic("static asserts not implemented");
+    diagnostic_error_at(parser->dm, sa_loc, "sorry '_Static_assrt' is not "
+            "implemented");
+    // panic("staticassert's not implemented");
     return NULL;
 }
 
 static Declaration* parse_declaration(Parser* parser, DeclaratorContext context,
-        Location* trailing_semi, bool eat_semi, const char* const msg_context)
+        Location* trailing_semi)
 {
-    // If we want to eat the semi we must be able to get it's location!
-    assert(eat_semi ? trailing_semi != NULL : true);
-
     Declaration* decl = NULL;
 
-    // Special case of static assert
-    if (is_match_two(parser, TOK__Static_assert, TOK__Static_assert))
+    // Special case of static assert since they are a very special case of what
+    // we can have for a declaration;
+    if (is_match_two(parser, TOK__Static_assert, TOK_static_assert))
     {
-        decl = parse_static_assert_declaration(parser);
-        goto after_decl;
+        return parse_static_assert_declaration(parser, context, trailing_semi);
     }
 
     // First we need to get our declaration specifiers here
@@ -4080,35 +4179,28 @@ static Declaration* parse_declaration(Parser* parser, DeclaratorContext context,
 
     // Check for a possibly empty declaration with a token and pass it to
     // the semantic checker to deal with
-    if (is_match_two(parser, TOK_SEMI, TOK_EOF))
+    if (is_match(parser, TOK_SEMI))
     {
+        if (trailing_semi)
+        {
+            *trailing_semi = consume(parser);
+        }
+
         // Process the declaration specifiers and get the enclosing decl if any
         // This would mean for example we parsed a struct. We also know that if
         // we have a ';' we MUST be done with the declaration specifiers.
-        decl = semantic_checker_process_specifiers(&parser->sc, &specifiers);
+        return semantic_checker_process_specifiers(&parser->sc, &specifiers);
     }
-    else
-    {  
-        // Otherwise we are going to try to parse a declaration in some way. If
-        // we have any other token present.
-        decl = parse_init_declarator_list(parser, &specifiers, context);
-    }
-
-after_decl:
-    // Conditionally parse the trailing semi-colon.
-    if (eat_semi && should_eat_semi_after_decl(parser, decl))
-    {
-        *trailing_semi = parse_trailing_semi(parser, msg_context);
-    }
-
-    return decl;
+    
+    return parse_init_declarator_list(parser, &specifiers, context,
+            trailing_semi);
 }
 
 static void parse_declaration_or_definition(Parser* parser)
 {
     Location trailing_semi = LOCATION_INVALID;
     Declaration* declaration = parse_declaration(parser, DECL_CTX_FILE,
-            &trailing_semi, true, "top level declarator");
+            &trailing_semi);
 }
 
 // The definitions of the functions we will use for parsing. Return false if we

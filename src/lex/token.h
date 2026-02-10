@@ -69,6 +69,14 @@ typedef enum TokenType {
     TOK_HASH,
     TOK_HASH_HASH,
 
+    // Special tokens begin here
+    TOK_IDENTIFIER,
+    TOK_NUMBER,
+    TOK_CHARACTER,
+    TOK_WIDE_CHARACTER,
+    TOK_STRING,
+    TOK_WIDE_STRING,
+
     // Keyword tokens
     TOK_alignas, // C23 Keyword
     TOK_alignof, // C23 Keyword
@@ -131,14 +139,6 @@ typedef enum TokenType {
     TOK__Thread_local, // C11 Keyword
 
     TOK___func__, // __func__
-
-    // Special tokens begin here
-    TOK_IDENTIFIER,
-    TOK_NUMBER,
-    TOK_CHARACTER,
-    TOK_WIDE_CHARACTER,
-    TOK_STRING,
-    TOK_WIDE_STRING,
 
     // __attribute__ extension token for parsing and ignoring attributes
     TOK___attribute__,

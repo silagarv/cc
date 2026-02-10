@@ -1549,6 +1549,163 @@ Declaration* semantic_checker_process_knr_param_defn(SemanticChecker* sc,
     return declaration;
 }
 
+static bool semantic_checker_is_char_pp(SemanticChecker* sc,
+        const QualifiedType* type)
+{
+    // We can cheat a tiny bit here. Since the user could have put char*[] or 
+    // char**, we know that the top part should always be a pointer since the 
+    // type is coming from a function parameter and we would have removed the
+    // array part if there was one.
+    QualifiedType char_pp = qualified_type_get_canonical(type);
+    if (!qualified_type_is_pointer(&char_pp))
+    {
+        return false;
+    }
+
+    QualifiedType char_p = type_pointer_get_pointee(&char_pp);
+    char_p = qualified_type_get_canonical(&char_p);
+    if (!qualified_type_is_pointer(&char_p))
+    {
+        return false;
+    }
+
+    QualifiedType char_type = type_pointer_get_pointee(&char_p);
+    char_type = qualified_type_get_canonical(&char_type);
+    return qualified_type_is(&char_type, TYPE_CHAR);
+}
+
+static void semantic_checker_check_main_function(SemanticChecker* sc,
+        Declaration* decl)
+{
+    Location loc = declaration_get_location(decl);
+    if (declaration_function_get_linkage(decl) == DECLARATION_LINKAGE_INTERNAL)
+    {
+        diagnostic_warning_at(sc->dm, loc, "'main' should not be declared "
+                "static");
+    }
+
+    if (declaration_function_is_inline(decl))
+    {
+        diagnostic_error_at(sc->dm, loc, "'main' is not allowed to be "
+                "declared inline");
+        declaration_set_invalid(decl);
+    }
+
+    // Get the function so we can check it's arguments
+    QualifiedType type = declaration_get_type(decl);
+
+    QualifiedType return_type = type_function_get_return(&type);
+    QualifiedType real_return = qualified_type_get_canonical(&return_type);
+    if (!qualified_type_is(&real_return, TYPE_S_INT))
+    {
+        diagnostic_warning_at(sc->dm, loc, "return type of 'main' is not "
+                "'int'");
+    }
+
+    // Check if the function is variadic and warn if it is
+    if (type_function_is_variadic(&type))
+    {
+        diagnostic_warning_at(sc->dm, loc, "'main' is not allowed to be "
+                "declared variadic");
+    }
+    
+    // Now we want to check the arguments to main to ensure that they are okay.
+    // As an extension we allow for if main has void type
+    size_t parm_count = type_function_get_param_count(&type);
+    if (parm_count == 0)
+    {
+        // TODO: warn if we are in pedantic mode about main.
+        return;
+    }
+
+    // Check for the other options for main, must be 2 or 3
+    if (parm_count != 2 && parm_count != 3)
+    {
+        diagnostic_error_at(sc->dm, loc, "too many parameters (%zu) for "
+            "'main': must be 0, 2, or 3", parm_count);
+    }
+
+    // Now check the argument types. First should be 'int', second 'char**', and
+    // third 'char**'
+    TypeFunctionParameter* curr = type_function_get_params(&type);
+
+    // Check first argument
+    QualifiedType first = type_function_parameter_get_type(curr);
+    QualifiedType real_first = qualified_type_get_canonical(&first);
+    if (!qualified_type_is(&real_first, TYPE_S_INT))
+    {
+        diagnostic_error_at(sc->dm, loc, "first parameter of 'main' (argument "
+                "count) must be of type 'int'");
+    }
+
+    // Only get the next parameter if we have enough
+    if (parm_count == 1)
+    {
+        return;
+    }
+    curr = type_function_parameter_get_next(curr);
+
+    // Now check the second parameter
+    QualifiedType second = type_function_parameter_get_type(curr);
+    QualifiedType real_second = qualified_type_get_canonical(&second);
+    if (!semantic_checker_is_char_pp(sc, &real_second))
+    {
+        diagnostic_error_at(sc->dm, loc, "second parameter of 'main' (argument "
+                "array) must be of type 'char **'");
+    }
+
+    // Only get the next parameter if we have enough since most programs don't
+    // use the environment array at all.
+    if (parm_count == 2)
+    {
+        return;
+    }
+    curr = type_function_parameter_get_next(curr);
+
+    // Now check the third parameter
+    QualifiedType third = type_function_parameter_get_type(curr);
+    QualifiedType real_third = qualified_type_get_canonical(&third);
+    if (!semantic_checker_is_char_pp(sc, &real_third))
+    {
+        diagnostic_error_at(sc->dm, loc, "third parameter of 'main' "
+                "(environment) must be of type 'char **'");
+    }
+}
+
+static void semantic_checker_check_main_variable(SemanticChecker* sc,
+        Declaration* decl)
+{
+    assert(declaration_variable_get_linkage(decl) 
+            == DECLARATION_LINKAGE_EXTERNAL);
+
+    diagnostic_warning_at(sc->dm, declaration_get_location(decl), "variable "
+            "named 'main' with external linkage has undefined behaviour");
+}
+
+static void semantic_checker_check_main(SemanticChecker* sc, Declaration* decl)
+{
+    assert(declaration_is(decl, DECLARATION_FUNCTION)
+            || declaration_is(decl, DECLARATION_VARIABLE));
+
+    // TODO: if we ever have a freestanding mode make this functions a NOP
+
+    // Check the declaration if it is called main and error about some certain
+    // cases where the behavious is undefined. Or possible error about them too.
+    Identifier* main_id = identifier_table_get(sc->identifiers, "main");
+    if (declaration_get_identifier(decl) != main_id)
+    {
+        return;
+    }
+    if (declaration_is(decl, DECLARATION_FUNCTION))
+    {
+        semantic_checker_check_main_function(sc, decl);
+    }
+    else
+    {
+        semantic_checker_check_main_variable(sc, decl);
+    }
+}
+
 // Returns true if there we are errors int the function declaration and false
 // otherwise.
 static void semantic_checker_check_function_redeclaration(SemanticChecker* sc,
@@ -1734,6 +1891,9 @@ Declaration* semantic_checker_process_function_declaration(SemanticChecker* sc,
     // Now check for function redeclarations
     semantic_checker_check_function_redeclaration(sc, declaration, previous,
             is_defn);
+
+    // Check this declaration if it is called main.
+    semantic_checker_check_main(sc, declaration);
 
     // If we didn't find anything previously in any scope we should add to the
     // lexical scope. Or, if we found something but it wasn't in this scope we
@@ -2051,6 +2211,13 @@ Declaration* semantic_checker_process_variable(SemanticChecker* sc,
 
     // Now we want to check for variable redeclaration
     semantic_checker_check_variable_redeclaration(sc, new_var, previous);
+
+    // Check this declaration if it is called main but only if the linkage is
+    // external.
+    if (linkage == DECLARATION_LINKAGE_EXTERNAL)
+    {
+        semantic_checker_check_main(sc, new_var);
+    }
 
     // Below we figure out what scope(s) to add the declaration too. Considering
     // the case of the ordinairy and external's seperately
@@ -4210,7 +4377,7 @@ static bool semantic_checker_check_function_paramaters(SemanticChecker* sc,
 
 // TODO: finish handling this call expression
 Expression* semantic_checker_handle_call_expression(SemanticChecker* sc,
-        Expression* lhs, Location lparen_location, ExpressionList* expr_list,
+        Expression* lhs, Location lparen_location, ExpressionList expr_list,
         Location rparen_location)
 {
     // Do nothing if we got an error
@@ -4241,7 +4408,7 @@ Expression* semantic_checker_handle_call_expression(SemanticChecker* sc,
     // number, or arguments that we are given in the function and if they are
     // compatible with the functions declaration.
     size_t req_parms = type_function_get_param_count(&real_type);
-    size_t given_parms = expression_list_num_expr(expr_list);
+    size_t given_parms = expression_list_num_expr(&expr_list);
     bool is_variadic = type_function_is_variadic(&real_type);
     if (given_parms > req_parms && !is_variadic)
     {
@@ -4259,15 +4426,16 @@ Expression* semantic_checker_handle_call_expression(SemanticChecker* sc,
     }
 
     // Now we want to check the validity of the function parameters.
-    if (!semantic_checker_check_function_paramaters(sc, expr_list, &real_type,
+    if (!semantic_checker_check_function_paramaters(sc, &expr_list, &real_type,
             is_variadic))
     {
         return semantic_checker_handle_error_expression(sc, lparen_location);
     }
 
-    // TODO: actually build the call expression.
+    // Finally, here we should build the expression
     QualifiedType return_type = type_function_get_return(&real_type);
-    return semantic_checker_handle_error_expression(sc, lparen_location);
+    return expression_create_call(&sc->ast->ast_allocator, lhs, lparen_location,
+            expr_list, rparen_location, return_type);
 }
 
 static DeclarationListEntry* find_member(DeclarationList* decls,
