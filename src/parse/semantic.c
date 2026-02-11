@@ -1272,6 +1272,8 @@ static void semantic_checker_diagnose_inline(SemanticChecker* sc,
 Declaration* semantic_checker_process_specifiers(SemanticChecker* sc,
         DeclarationSpecifiers* specifiers)
 {
+    // TODO: this will need to have anonymous tag types eventually!
+
     // Early return if we got some kind of fatal error
     if (specifiers->type_spec_type == TYPE_SPECIFIER_ERROR)
     {

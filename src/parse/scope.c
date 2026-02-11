@@ -34,7 +34,7 @@ Scope scope_extern(AstAllocator* allocator)
         .has_ordinairy = true,
         .has_tag = false,
         .has_members = false,
-        .all_decls = declaration_list_create(allocator)
+        .all_decls = declaration_list(allocator)
     };
 
     return scope;
@@ -52,7 +52,7 @@ Scope scope_file(AstAllocator* allocator)
         .has_ordinairy = true,
         .has_tag = true,
         .has_members = false,
-        .all_decls = declaration_list_create(allocator)
+        .all_decls = declaration_list(allocator)
     };
 
     return scope;
@@ -70,7 +70,7 @@ Scope scope_block(AstAllocator* allocator)
         .has_ordinairy = true,
         .has_tag = true,
         .has_members = false,
-        .all_decls = declaration_list_create(allocator)
+        .all_decls = declaration_list(allocator)
     };
 
     return scope;
@@ -88,7 +88,7 @@ Scope scope_function_prototype(AstAllocator* allocator)
         .has_ordinairy = true,
         .has_tag = true,
         .has_members = false,
-        .all_decls = declaration_list_create(allocator)
+        .all_decls = declaration_list(allocator)
     };
 
     return scope;
@@ -106,7 +106,7 @@ Scope scope_member(AstAllocator* allocator)
         .has_ordinairy = false,
         .has_tag = false,
         .has_members = true,
-        .all_decls = declaration_list_create(allocator)
+        .all_decls = declaration_list(allocator)
     };
 
     return scope;
@@ -124,7 +124,7 @@ Scope scope_if(AstAllocator* allocator)
         .has_ordinairy = true,
         .has_tag = true,
         .has_members = false,
-        .all_decls = declaration_list_create(allocator)
+        .all_decls = declaration_list(allocator)
     };
 
     return scope;
@@ -142,7 +142,7 @@ Scope scope_for(AstAllocator* allocator)
         .has_ordinairy = true,
         .has_tag = true,
         .has_members = false,
-        .all_decls = declaration_list_create(allocator)
+        .all_decls = declaration_list(allocator)
     };
 
     return scope;
@@ -160,7 +160,7 @@ Scope scope_while(AstAllocator* allocator)
         .has_ordinairy = true,
         .has_tag = true,
         .has_members = false,
-        .all_decls = declaration_list_create(allocator)
+        .all_decls = declaration_list(allocator)
     };
 
     return scope;
@@ -178,7 +178,7 @@ Scope scope_do_while(AstAllocator* allocator)
         .has_ordinairy = true,
         .has_tag = true,
         .has_members = false,
-        .all_decls = declaration_list_create(allocator)
+        .all_decls = declaration_list(allocator)
     };
 
     return scope;
@@ -196,7 +196,7 @@ Scope scope_switch(AstAllocator* allocator)
         .has_ordinairy = true,
         .has_tag = true,
         .has_members = false,
-        .all_decls = declaration_list_create(allocator)
+        .all_decls = declaration_list(allocator)
     };
 
     return scope;

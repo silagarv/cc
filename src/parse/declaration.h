@@ -29,6 +29,9 @@ typedef struct DeclarationList {
     // The allocator for this declaration list
     AstAllocator* allocator;
 
+    // The number of entries in the declaration list
+    size_t num_entries;
+
     // The first entry in the list of declarations
     DeclarationListEntry* head;
 
@@ -326,7 +329,7 @@ typedef struct DeclarationEnum {
     // Identifier is already in the base.
     DeclarationBase base;
 
-    Declaration** entries;
+    DeclarationListEntry* entries;
     size_t num_entries;
 
     // Did we get any entries?
@@ -446,8 +449,9 @@ void declarator_add_bitfield(Declarator* declarator, Location colon_location,
         Expression* expression);
 
 // Functions for our declaration list
-DeclarationList declaration_list_create(AstAllocator* allocator);
+DeclarationList declaration_list(AstAllocator* allocator);
 void declaration_list_push(DeclarationList* list, Declaration* decl);
+size_t declaration_list_num_entries(const DeclarationList* list);
 Declaration* declaration_list_entry_get(const DeclarationListEntry* entry);
 DeclarationListEntry* declaration_list_iter(const DeclarationList* list);
 DeclarationListEntry* declaration_list_next(const DeclarationListEntry* curr);
@@ -503,7 +507,7 @@ Declaration* declaration_create_enum(AstAllocator* allocator,
         bool anonymous);
 bool declaration_enum_has_entries(const Declaration* declaration);
 void declaration_enum_set_entries(Declaration* declaration,
-        Declaration** entries, size_t num_entries);
+        DeclarationListEntry* entries, size_t num_entries);
 
 Declaration* declaration_create_enum_constant(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type,

@@ -438,11 +438,12 @@ void declarator_add_bitfield(Declarator* declarator, Location colon_location,
     declarator->bitfield_expression = expression;
 }
 
-DeclarationList declaration_list_create(AstAllocator* allocator)
+DeclarationList declaration_list(AstAllocator* allocator)
 {
     DeclarationList list = (DeclarationList)
     {
         .allocator = allocator,
+        .num_entries = 0,
         .head = NULL,
         .tail = NULL
     };
@@ -467,6 +468,13 @@ void declaration_list_push(DeclarationList* list, Declaration* decl)
         *list->tail = entry;
     }
     list->tail = &entry->next;
+
+    list->num_entries++;
+}
+
+size_t declaration_list_num_entries(const DeclarationList* list)
+{
+    return list->num_entries;
 }
 
 Declaration* declaration_list_entry_get(const DeclarationListEntry* entry)
@@ -557,6 +565,11 @@ bool declaration_is_valid(const Declaration* decl)
         return false;
     }
 
+    if (declaration_is(decl, DECLARATION_ERROR))
+    {
+        return false;
+    }
+
     return !decl->base.invalid;
 }
 
@@ -631,7 +644,7 @@ Declaration* declaration_create_variable(AstAllocator* allocator,
             identifier, type, storage, FUNCTION_SPECIFIER_NONE, false);
     decl->variable.linkage = linkage;
     decl->variable.initializer = NULL;
-    decl->variable.all_decls = declaration_list_create(allocator);
+    decl->variable.all_decls = declaration_list(allocator);
     decl->variable.definition = NULL;
     decl->variable.tentative = maybe_tentative;
     decl->variable.has_definition = false;
@@ -752,7 +765,7 @@ bool declaration_enum_has_entries(const Declaration* declaration)
 }
 
 void declaration_enum_set_entries(Declaration* declaration,
-        Declaration** entries, size_t num_entries)
+        DeclarationListEntry* entries, size_t num_entries)
 {
     assert(declaration_is(declaration, DECLARATION_ENUM));
     assert(!declaration_enum_has_entries(declaration));
@@ -839,7 +852,7 @@ Declaration* declaration_create_struct(AstAllocator* allocator,
             sizeof(DeclarationCompound), DECLARATION_STRUCT, location,
             identifier, type, STORAGE_NONE,
             FUNCTION_SPECIFIER_NONE, false);
-    decl->compound.members = declaration_list_create(allocator);
+    decl->compound.members = declaration_list(allocator);
     decl->compound.flexible_array = false;
 
     return decl;
@@ -903,7 +916,7 @@ Declaration* declaration_create_union(AstAllocator* allocator,
             sizeof(DeclarationCompound), DECLARATION_UNION, location,
             identifier, type, STORAGE_NONE,
             FUNCTION_SPECIFIER_NONE, false);
-    decl->compound.members = declaration_list_create(allocator);
+    decl->compound.members = declaration_list(allocator);
     decl->compound.flexible_array = false;
 
     return decl;
@@ -925,7 +938,7 @@ Declaration* declaration_create_function(AstAllocator* allocator,
             sizeof(DeclarationFunction), DECLARATION_FUNCTION, location,
             identifier, type, storage, function_spec, false);
     declaration->function.linkage = linkage;
-    declaration->function.all_decls = declaration_list_create(allocator);
+    declaration->function.all_decls = declaration_list(allocator);
     declaration->function.definition = NULL;
     declaration->function.function_body = NULL;
     declaration->function.paramaters = paramaters;

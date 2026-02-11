@@ -422,6 +422,8 @@ static void parse_struct_declaration_list(Parser* parser, Declaration* decl,
 static void parse_struct_or_union_specifier(Parser* parser,
         DeclarationSpecifiers* specifiers);
 
+static Declaration* parse_static_assert_declaration(Parser* parser,
+        DeclaratorContext context, Location* trailing_semi);
 static Declaration* parse_declaration(Parser* parser, DeclaratorContext context,
         Location* trailing_semi);
 static QualifiedType parse_type_name(Parser* parser, bool* okay);
@@ -744,7 +746,7 @@ static Expression* parse_character_expression(Parser* parser)
             value, success);
 }
 
-static Expression* parse_string_expression(Parser* parser)
+static Expression* parse_string_expression(Parser* parser, bool evalulated)
 {
     static const TokenType string_tokens[] = {TOK_STRING, TOK_WIDE_STRING};
     static const size_t num_string_tokens = countof(string_tokens);
@@ -980,7 +982,7 @@ static Expression* parse_primary_expression(Parser* parser)
 
         case TOK_STRING:
         case TOK_WIDE_STRING:
-            return parse_string_expression(parser);
+            return parse_string_expression(parser, true);
 
         case TOK___func__:
             return parse_builtin_identifier(parser);
@@ -1835,16 +1837,48 @@ static Statement* parse_compound_statement_internal(Parser* parser)
 {
     assert(is_match(parser, TOK_LCURLY));
 
+    // TODO: C90 compatibility, don't allow for mixing declarations and code
     Location l_curly = consume(parser);
+
+    // bool c90_mode = !lang_opts_c99(parser->lang);
+    // bool c90_decl_allowed = true;
 
     Statement* first = NULL;
     Statement* current = NULL;
     while (!is_match_two(parser, TOK_RCURLY, TOK_EOF))
     {
-        // Parse the statement and then set the current's next field and then
-        // update current to be the next one.
+        // Attempt to parse a statement
         Statement* next = parse_statement(parser, true);
 
+        // only in c90 mode do we try anything here
+        // if (c90_mode)
+        // {
+        //     bool is_decl_stmt = statement_is(next, STATEMENT_DECLARATION);
+            
+        //     if (is_decl_stmt && !c90_decl_allowed)
+        //     {
+        //         Declaration* decl = statement_declaration_get(next);
+        //         diagnostic_warning_at(parser->dm,
+        //                 declaration_get_location(decl), "mixing declarations "
+        //                 "and code is a C99 extension");
+        //     }
+
+        //     // Then if it's not a declaration statement disallow further 
+        //     // declarations.
+        //     if (!is_decl_stmt)
+        //     {
+        //         c90_decl_allowed = false;
+        //     }
+        // }
+
+        // Check if we got a statement at all, if not just don't do the next
+        // part
+        if (next == NULL)
+        {
+            continue;
+        }
+
+        // Update the current statement and the first statement.
         if (first == NULL)
         {
             first = next;
@@ -3001,7 +3035,7 @@ static void parse_identifier_list(Parser* parser, Declarator* declarator)
 
     // Create the list of parameter declarations that we will use to add our
     // 'declarations' too.
-    DeclarationList parms = declaration_list_create(&parser->ast->ast_allocator);
+    DeclarationList parms = declaration_list(&parser->ast->ast_allocator);
     size_t num_parms = 0;
 
     // See if we got an empty parameter list. This is still an old style
@@ -3073,7 +3107,7 @@ static void parse_paramater_type_list(Parser* parser, Declarator* declarator)
     Location dots = LOCATION_INVALID;
 
     // The paramater declarations themselves
-    DeclarationList parms = declaration_list_create(&parser->ast->ast_allocator);
+    DeclarationList parms = declaration_list(&parser->ast->ast_allocator);
     size_t num_parms = 0;
 
     // Skip the parameter list entirely after we have initialized everything
@@ -3399,6 +3433,12 @@ static void parse_struct_declaration(Parser* parser, Declaration* decl)
     assert(declaration_is(decl, DECLARATION_STRUCT) ||
             declaration_is(decl, DECLARATION_UNION));
 
+    if (is_match_two(parser, TOK__Static_assert, TOK_static_assert))
+    {
+        parse_static_assert_declaration(parser, DECL_CTX_STRUCT, NULL);
+        return;
+    }
+
     DeclarationSpecifiers specifiers = parse_specifier_qualifier_list(parser);
 
     // Struct declarations will always need to have a name to be useful. Unless
@@ -3451,7 +3491,7 @@ static void parse_struct_declaration_list(Parser* parser, Declaration* decl,
     Location l_curly = consume(parser);
     if (is_match(parser, TOK_RCURLY))
     {
-        diagnostic_warning_at(parser->dm, current_token_location(parser),
+        diagnostic_warning_at(parser->dm, declaration_get_location(decl),
                 "empty %s is a GNU extension", is_struct ? "struct" : "union");
     }
 
@@ -3470,7 +3510,8 @@ static void parse_struct_declaration_list(Parser* parser, Declaration* decl,
         }
 
         // Expect the start of a typename not allowing implicit int.
-        if (!is_typename_start(parser, current_token(parser)))
+        if (!is_typename_start(parser, current_token(parser))
+                && !is_match_two(parser, TOK__Static_assert, TOK_static_assert))
         {
             diagnostic_error_at(parser->dm, current_token_location(parser),
                     "type name requires a specifier or qualifier");
@@ -3502,13 +3543,13 @@ static void parse_struct_or_union_specifier(Parser* parser,
 {
     assert(is_match_two(parser, TOK_struct, TOK_union));
 
-    Declaration* declaration = NULL;
-    bool error = false;
-
     bool is_struct = is_match(parser, TOK_struct);
     DeclarationType type = is_struct ? DECLARATION_STRUCT : DECLARATION_UNION;
 
     Location tag_loc = consume(parser);
+
+    Declaration* declaration = NULL;
+    bool error = false;
 
     if (!is_match_two(parser, TOK_IDENTIFIER, TOK_LCURLY))
     {
@@ -3516,6 +3557,7 @@ static void parse_struct_or_union_specifier(Parser* parser,
         diagnostic_error_at(parser->dm, tag_loc,
                 "declaration of anonymous %s must be a definition", tag_name);
         recover(parser, TOK_SEMI, RECOVER_NONE);
+        error = true;
         goto finish;
     }
 
@@ -3537,7 +3579,7 @@ static void parse_struct_or_union_specifier(Parser* parser,
     // Whereas here we actually create a new declaration of enum foo
     // 3.   struct foo { int a; }; void func(void) { struct foo { int a; }; }
     bool is_definition = is_match(parser, TOK_LCURLY);
-    declaration = semantic_checker_handle_tag(&parser->sc, type, type,
+    declaration = semantic_checker_handle_tag(&parser->sc, type, tag_loc,
             identifier, identifier_loc, is_definition);
     assert(declaration != NULL);
 
@@ -3584,6 +3626,10 @@ static void parse_enumerator_list(Parser* parser, Declaration* enum_decl)
         return;
     }
 
+    // Create our list and get our number of entries
+    DeclarationList enumerators = declaration_list(&parser->ast->ast_allocator);
+    size_t num_entries = 0;
+
     Declaration* previous = NULL;
     while (!is_match(parser, TOK_EOF))
     {
@@ -3628,8 +3674,21 @@ static void parse_enumerator_list(Parser* parser, Declaration* enum_decl)
         Declaration* constant_decl = semantic_checker_handle_enum_constant(
                 &parser->sc, identifier_loc, identifier, equal_loc, expression,
                 previous);
-        // TODO: add to some vector somewhere...
-        previous = constant_decl;
+
+        // Add to our list, increase number of enumerators and update the 
+        // previous declaration to the new one. If any of the declarations were
+        // invalid then don't include it howver.
+        if (declaration_is_valid(constant_decl))
+        {
+            declaration_list_push(&enumerators, constant_decl);
+            num_entries++;
+            previous = constant_decl;
+        }
+        else
+        {
+            previous = NULL;
+        }
+       
 
         // Now see if we are at the end and finish the definition  
         if (!is_match_two(parser, TOK_RCURLY, TOK_COMMA))
@@ -3667,7 +3726,9 @@ static void parse_enumerator_list(Parser* parser, Declaration* enum_decl)
         }
     }
 
-    declaration_enum_set_entries(enum_decl, NULL, 0);
+    // Finally, finish our our enum with all of the entries that are in it.
+    declaration_enum_set_entries(enum_decl, declaration_list_iter(&enumerators),
+            num_entries);
 
     closing_curly = LOCATION_INVALID;
     if (!try_match(parser, TOK_RCURLY, &closing_curly))
@@ -4154,18 +4215,76 @@ static Declaration* parse_static_assert_declaration(Parser* parser,
 {
     assert(is_match_two(parser, TOK__Static_assert, TOK_static_assert));
 
+    bool is_old = is_match(parser, TOK__Static_assert);
+
     Location sa_loc = consume(parser);
-    diagnostic_error_at(parser->dm, sa_loc, "sorry '_Static_assrt' is not "
-            "implemented");
-    // panic("staticassert's not implemented");
+
+    Location lparen_loc = LOCATION_INVALID;
+    if (!try_match(parser, TOK_LPAREN, &lparen_loc))
+    {
+        diagnostic_error_at(parser->dm, lparen_loc, "expected '('");
+        recover(parser, TOK_SEMI, RECOVER_EAT_TOKEN);
+        return NULL;
+    }
+
+    // Now try to parse an expression
+    if (!is_expression_start(parser, current_token(parser)))
+    {
+        diagnostic_error_at(parser->dm, lparen_loc, "expected expression");
+        recover(parser, TOK_SEMI, RECOVER_EAT_TOKEN);
+        return NULL;
+    }
+
+    // Parse the constant expression.
+    Expression* ice = parse_constant_expression(parser);
+
+    if (!try_match(parser, TOK_COMMA, &lparen_loc))
+    {
+        diagnostic_error_at(parser->dm, lparen_loc, "expected ','");
+        recover(parser, TOK_SEMI, RECOVER_EAT_TOKEN);
+        return NULL;
+    }
+
+    // Now we want to parse the string literal message which in C should always
+    // be present.
+    if (!is_match_two(parser, TOK_STRING, TOK_WIDE_STRING))
+    {
+        diagnostic_error_at(parser->dm, current_token_location(parser),
+                "expected string literal for diagnostic message in "
+                "static_assert");
+        recover(parser, TOK_SEMI, RECOVER_EAT_TOKEN);
+        return NULL;
+    }
+    Expression* string = parse_string_expression(parser, false);
+    
+    Location rparen_loc;
+    bool should_parse_semi = true;
+    if (!try_match(parser, TOK_RPAREN, &rparen_loc))
+    {
+        diagnostic_error_at(parser->dm, rparen_loc, "expected ')'");
+        recover(parser, TOK_SEMI, RECOVER_NONE);
+        should_parse_semi = false;
+    }
+        
+    // If we had an error on the closing paren then we should not try to parse
+    // a semi. If we do we could get cascasing errors.
+    if (should_parse_semi && trailing_semi)
+    {
+        *trailing_semi = parse_trailing_semi(parser,
+                is_old ? "'_Static_assert'" : "'static_assert'");
+    }
+
+    // TODO: implement a function for the semantic checker here and create a 
+    // TODO: declaration type for a static assert. Also implement string literls
+    // TODO: completely so that we can actually be useful.
+    diagnostic_error_at(parser->dm, sa_loc, "sorry '%s' is not implemented "
+            "at this time...", is_old ? "_Static_assert" : "static_assert");
     return NULL;
 }
 
 static Declaration* parse_declaration(Parser* parser, DeclaratorContext context,
         Location* trailing_semi)
 {
-    Declaration* decl = NULL;
-
     // Special case of static assert since they are a very special case of what
     // we can have for a declaration;
     if (is_match_two(parser, TOK__Static_assert, TOK_static_assert))
@@ -4206,19 +4325,19 @@ static void parse_declaration_or_definition(Parser* parser)
 // The definitions of the functions we will use for parsing. Return false if we
 // hit the end of the file. Otherwise, return true. Even if we did not actually
 // parse a declaration.
-static bool parse_top_level(Parser* parser)
+static void parse_top_level(Parser* parser)
 {
     switch (current_token_type(parser))
     {
         case TOK_EOF:
-            return false;
+            return;
 
         case TOK_SEMI:
         {
             Location semi = eat_all(parser, TOK_SEMI);
             diagnostic_warning_at(parser->dm, semi,
                     "extra ';' outside of a function");
-            return true;
+            return;
         }
 
         case TOK_RCURLY:
@@ -4226,7 +4345,7 @@ static bool parse_top_level(Parser* parser)
             Location curly = consume(parser);
             diagnostic_error_at(parser->dm, curly,
                     "extraneous closing brace ('}')");
-            return true;
+            return;
         }
 
         // All the rest of the tokens, since we want to be able to parse any
@@ -4234,7 +4353,7 @@ static bool parse_top_level(Parser* parser)
         // errored about. 
         default:
             parse_declaration_or_definition(parser);
-            return true;
+            return;
     }
 }
 
@@ -4250,7 +4369,7 @@ static void parse_translation_unit_internal(Parser* parser)
     // Check for case of empty translation unit which is not allowed. Note, this
     // occurs when we try to parse the first top level declaration and instead
     // get an end of file token (no useful input).
-    if (!parse_top_level(parser))
+    if (is_match(parser, TOK_EOF))
     {
         diagnostic_warning_at(parser->dm, current_token_location(parser),
                 "ISO C requires a translation unit to contain at least one "
@@ -4259,9 +4378,9 @@ static void parse_translation_unit_internal(Parser* parser)
 
     // Otherwise parse the rest of the translation unit until we hit the end of
     // the file.
-    while (parse_top_level(parser))
+    while (!is_match(parser, TOK_EOF))
     {
-        ;
+        parse_top_level(parser);
     }
 
     // Finally, after EOF, we can check all of our external definitions.
