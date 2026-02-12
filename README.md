@@ -23,6 +23,7 @@ To building, run 'make' in the cc directory and it wll output an executable name
     - also include a second list in struct / union decl's for all decls inside it
     - Fix declarations groups so they also optionally include a struct / unions definition inside them if it was
     defined at that point. will have to go fix up for loop checking after this however
+    - Need to fix non-detected of [*] modifier in function definitions
 
 - Semantic
     - expressions

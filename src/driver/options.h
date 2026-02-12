@@ -20,6 +20,7 @@ typedef enum OptimisationLevel {
 typedef struct CompilerOptions {
     // The language standard that we want to use
     LangStandard standard;
+    bool trigraphs;
     bool strict;
     bool gnu;
 

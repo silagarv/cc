@@ -276,6 +276,7 @@ Statement* statement_case_get_body(const Statement* stmt);
 
 Statement* statement_create_default(AstAllocator* allocator,
         Location default_location, Location colon_location, Statement* body);
+Statement* statement_default_get_body(const Statement* stmt);
 
 Statement* statement_create_compound(AstAllocator* allocator,
         Location opening_curly, Location closing_curly, Statement* first);

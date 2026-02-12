@@ -878,11 +878,15 @@ static QualifiedType process_array_type(SemanticChecker* sc, Declarator* d,
         *invalid = true;
     }
 
-    // First check for star modifier.
+    // First check for star modifier validity. Note that at this point the
+    // is_vla variables value is ONLY based on if we're [*] or not. So if we are
+    // then we should also set this variable.
     if (is_star && ctx != DECL_CTX_PARAM)
     {
         diagnostic_error_at(sc->dm, array->lbracket,
                 "star modifier used outside of function prototype");
+        is_star = false;
+        is_vla = false; // Also set this false since we haven't touched it yet
         *invalid = true;
     }
 

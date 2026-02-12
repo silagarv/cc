@@ -60,7 +60,7 @@ bool lang_opts_gnu(const LangOptions* opts)
     return opts->gnu;
 }
 
-LangOptions lang_opts(LangStandard std, bool strict, bool gnu)
+LangOptions lang_opts(LangStandard std, bool trigraphs, bool strict, bool gnu)
 {
-    return (LangOptions) { std, strict, gnu };
+    return (LangOptions) { std, trigraphs, strict, gnu };
 }

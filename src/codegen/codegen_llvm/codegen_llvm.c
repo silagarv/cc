@@ -196,7 +196,7 @@ void llvm_codegen_push_break_continue(CodegenContext* context,
 }
 
 void llvm_codegen_push_break(CodegenContext* context, LLVMBasicBlockRef bb,
-        LLVMValueRef switch_val)
+        LLVMValueRef switch_val, LLVMBasicBlockRef switch_default)
 {
     // Get the previous continue which could be nothing, noting that this could
     // happen for example pushing a switch not in a loop
@@ -210,6 +210,7 @@ void llvm_codegen_push_break(CodegenContext* context, LLVMBasicBlockRef bb,
     new_target->continue_target = prev_cont;
     new_target->break_target = bb;
     new_target->current_switch = switch_val;
+    new_target->switch_default = switch_default;
 
     llvm->jump_target = new_target;
 }
@@ -249,5 +250,26 @@ LLVMValueRef llvm_codegen_get_switch(const CodegenContext* context)
     }
 
     // TODO: panic here? (since this should be an error maybe?)
-    return NULL;    
+    return NULL;
+}
+
+LLVMBasicBlockRef llvm_codegen_get_default(const CodegenContext* context)
+{
+    CodegenLLVM* llvm = context->backend_specific;
+
+    LLVMValueRef switch_val = NULL;
+    JumpTarget* current = llvm->jump_target;
+    while (current != NULL)
+    {
+        // We use this instead of checking for default since it could be null
+        if (current->current_switch != NULL)
+        {
+            return current->switch_default;
+        }
+
+        current = current->previous;
+    }
+
+    // TODO: panic here? (since this should be an error maybe?)
+    return NULL;
 }

@@ -227,9 +227,8 @@ QualifiedType type_create_array(AstAllocator* allocator,
     // Get the size of the array if the length if known
     size_t size = length * element_type.type->type_base.type_size;
 
-    // Array of unknown length are incomplete types. But we should note that
-    // arrays that are vla are considered complete types
-    bool is_complete = (expression != NULL);
+    // Array of unknown length are considered complete types for simplicity.
+    bool is_complete = (expression != NULL) || is_star || is_vla;
 
     // Need to determine the size and align or the array.
     QualifiedType real_elem_type = qualified_type_get_canonical(&element_type);

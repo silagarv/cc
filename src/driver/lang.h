@@ -16,6 +16,7 @@ typedef enum LangStandard {
 // Structure to hold all of our possible language options.
 typedef struct LangOptions {
     LangStandard standard; // The lang standard we are wanting to support
+    bool trigraphs; // Do we accept trigraphs?
     bool strict; // Are we trying to be as strict as possible
     bool gnu; // Are we allowing gnu extensions (without warning)
 } LangOptions;
@@ -32,6 +33,6 @@ bool lang_opts_c23(const LangOptions* opts);
 bool lang_opts_strict(const LangOptions* opts);
 bool lang_opts_gnu(const LangOptions* opts);
 
-LangOptions lang_opts(LangStandard std, bool strict, bool gnu);
+LangOptions lang_opts(LangStandard std, bool trigraphs, bool strict, bool gnu);
 
 #endif /* LANG_H */

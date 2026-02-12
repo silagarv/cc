@@ -137,6 +137,13 @@ Statement* statement_create_default(AstAllocator* allocator,
     return stmt;
 }
 
+Statement* statement_default_get_body(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_DEFAULT));
+
+    return stmt->default_stmt.statement;
+}
+
 // TODO: figure out how to create an array of statements or at least do some
 // linked list style thing for them...
 Statement* statement_create_compound(AstAllocator* allocator,

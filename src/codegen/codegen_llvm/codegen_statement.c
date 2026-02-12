@@ -16,6 +16,7 @@
 
 #include <llvm-c/Core.h>
 #include <llvm-c/Types.h>
+#include <string.h>
 
 void llvm_maybe_create_branch_to(LLVMBasicBlockRef src, LLVMBuilderRef builder,
         LLVMBasicBlockRef dest)
@@ -163,15 +164,28 @@ void llvm_codegen_switch_statement(CodegenContext* context, Statement* stmt)
 
     // Create the jump else block / jump default and also create the block that
     // we exit the switch to.
-    LLVMBasicBlockRef llvm_default = LLVMCreateBasicBlockInContext(c, "");
+    LLVMBasicBlockRef llvm_default = NULL;
+    if (case_default != NULL)
+    {
+        llvm_default = LLVMCreateBasicBlockInContext(c, "");
+    }
     LLVMBasicBlockRef llvm_exit = LLVMCreateBasicBlockInContext(c, "");
 
     // Generate code for the current expression then build the llvm siwtch
     LLVMValueRef llvm_cond = llvm_codegen_expression(context, cond);
 
+    // Determine what block we should jump to in the event that we don't match
+    // any of the cases. If we have a defualt then we will jump to that,
+    // otherwise we should just to after the swtich.
+    LLVMBasicBlockRef llvm_else = llvm_exit;
+    if (case_default != NULL)
+    {
+        llvm_else = llvm_default;
+    }
+
     // Now create the switch with our parameters
     LLVMPositionBuilderAtEnd(b, current_bb);
-    LLVMValueRef llvm_switch = LLVMBuildSwitch(b, llvm_cond, llvm_default,
+    LLVMValueRef llvm_switch = LLVMBuildSwitch(b, llvm_cond, llvm_else,
             num_cases);
 
     // Now we have created a statement terminator we want to create add a new
@@ -188,10 +202,9 @@ void llvm_codegen_switch_statement(CodegenContext* context, Statement* stmt)
     llvm->basic_block = next_bb;
 
     // Now push the fact the we have a new break target onto that stack
-    llvm_codegen_push_break(context, llvm_exit, llvm_switch);
+    llvm_codegen_push_break(context, llvm_exit, llvm_switch, llvm_default);
 
-    // TODO: will have to thing about how we handle things like switch cases
-    // TODO: and that kind of thing...
+    // Codegen the switch body.
     llvm_codegen_statement(context, body);
 
     // Finally, before the finaly thing to do we should check that the current
@@ -203,17 +216,6 @@ void llvm_codegen_switch_statement(CodegenContext* context, Statement* stmt)
     }
         
     llvm_codegen_pop_jumps(context);
-
-    // Finally, append the else case to the end of the basic block list and if 
-    // there was no default condition (codegen would not have happened for it)
-    // then simply create an unconditional branch to the exit block...
-    LLVMAppendExistingBasicBlock(fn, llvm_default);
-    
-    if (case_default == NULL)
-    {
-        LLVMPositionBuilderAtEnd(b, llvm_default);
-        LLVMBuildBr(b, llvm_exit);
-    }
 
     LLVMAppendExistingBasicBlock(fn, llvm_exit);
     llvm->basic_block = llvm_exit;
@@ -630,7 +632,34 @@ void llvm_codegen_case_statement(CodegenContext* context, Statement* stmt)
 void llvm_codegen_default_statement(CodegenContext* context, Statement* stmt)
 {
     assert(statement_is(stmt, STATEMENT_DEFAULT));
+    assert(llvm_codegen_get_switch(context) != NULL);
+    assert(llvm_codegen_get_default(context) != NULL);
     
+    // Get all of the context we need in order to generate this 'return'
+    CodegenLLVM* llvm = context->backend_specific;
+    LLVMContextRef c = llvm->context;
+    LLVMBuilderRef b = llvm->builder;
+    LLVMValueRef fn = llvm->function;
+    LLVMBasicBlockRef current_bb = llvm->basic_block;
+    LLVMBasicBlockRef current_default = llvm_codegen_get_default(context);
+
+    // Now get things we will need from the statement
+    Statement* body = statement_default_get_body(stmt);
+
+    // Terminate the current block if need with a jump to this default one
+    if (LLVMGetBasicBlockTerminator(current_bb) == NULL)
+    {
+        LLVMPositionBuilderAtEnd(b, current_bb);
+        LLVMBuildBr(b, current_default);
+    }
+
+    // Now we can apped our default block in a sensible position since we didn't
+    // want to append it before to hopefully generate more human readable LLVMIR
+    LLVMAppendExistingBasicBlock(fn, current_default);
+    
+    // Now we can set the current basic block and generate the statment
+    llvm->basic_block = current_default;
+    llvm_codegen_statement(context, body);
 }
 
 void llvm_codegen_statement(CodegenContext* context, Statement* stmt)
@@ -719,20 +748,42 @@ void llvm_codegen_function_body(CodegenContext* context, Statement* body)
     // block to add all of our generated code to
     CodegenLLVM* llvm = context->backend_specific;
     LLVMContextRef c = llvm->context;
+    LLVMBuilderRef b = llvm->builder;
     LLVMValueRef fn = llvm->function;
-
-    // TODO: should I store a block to where declarations get generated before
-    // TODO: and then just have a jump to the actual entry block. This would 
-    // TODO: make codegen a bit more clear.
+    LLVMTypeRef fn_ty = llvm->function_type;
 
     // Create the basic block and add it and the end of the function
     llvm->basic_block = LLVMAppendBasicBlockInContext(c, fn, "");
+    
+    // As the first instruction of the first basic block, generate an alloca for
+    // a return value if the last block does not have a terminator
+    LLVMTypeRef fn_return_type = LLVMGetReturnType(fn_ty);
+    bool void_return = LLVMGetTypeKind(fn_return_type) == LLVMVoidTypeKind;
+
+    LLVMValueRef maybe_return = NULL;
+    if (!void_return)
+    {   
+        LLVMPositionBuilderAtEnd(b, llvm->basic_block);
+        maybe_return = LLVMBuildAlloca(b, fn_return_type, "");
+    }
+
+    // Then generate the function body
     llvm_codegen_compound_statement(context, body);
 
     // Finally get the last block from the function and generate an implicit 
     // return if the last block does not have a return statement
     if (LLVMGetBasicBlockTerminator(llvm->basic_block) == NULL)
     {
-        // TODO: add return here at the end of the function
+        LLVMPositionBuilderAtEnd(b, llvm->basic_block);
+        if (void_return)
+        {
+            LLVMBuildRetVoid(b);
+        }
+        else
+        {
+            // Build the return by loading the value from the alloca.
+            LLVMBuildRet(b, LLVMBuildLoad2(b, fn_return_type, maybe_return,
+                    ""));
+        }
     }
 }

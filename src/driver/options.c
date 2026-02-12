@@ -527,6 +527,23 @@ static bool handle_warning(CompilerOptions* opts, DiagnosticManager* dm,
     return true;
 }
 
+static bool handle_trigraphs(CompilerOptions* opts, DiagnosticManager* dm,
+        CommandLineState* state, char* argument)
+{
+    if (!argument_is("-trigraphs", argument))
+    {
+        return false;
+    }
+
+    // eat the argument since we don't need it anymore
+    state_eat_argument(state);
+
+    // Set the trigraphs flag to true
+    opts->trigraphs = true;
+
+    return true;
+}
+
 static bool handle_unknown(CompilerOptions* opts, DiagnosticManager* dm,
         CommandLineState* state, char* argument)
 {
@@ -600,6 +617,10 @@ static void parse_compiler_option(CompilerOptions* opts, DiagnosticManager* dm,
         return;
     }
     else if (handle_warning(opts, dm, state, current_arg))
+    {
+        return;
+    }
+    else if (handle_trigraphs(opts, dm, state, current_arg))
     {
         return;
     }

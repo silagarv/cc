@@ -127,7 +127,7 @@ static void llvm_codegen_external_function(CodegenContext* context,
     // attribute and adding it to the function.
     if (declaration_function_is_inline(declaration))
     {
-        const char*const inline_attr_name = "inlinehint";
+        const char* const inline_attr_name = "inlinehint";
         unsigned inline_id = LLVMGetEnumAttributeKindForName(inline_attr_name,
                 strlen(inline_attr_name));
         LLVMAttributeRef attr = LLVMCreateEnumAttribute(c, inline_id, 0);
@@ -137,6 +137,7 @@ static void llvm_codegen_external_function(CodegenContext* context,
     // TODO: at this point should we add the funciton to our list of decls???
     
     // Now we have created the function type set the be specific context
+    llvm->function_type = fn_ty;
     llvm->function = fn;
 
     // Yay, now we have done all of the start stuff we can begin generating a

@@ -3173,7 +3173,9 @@ static void parse_paramater_type_list(Parser* parser, Declarator* declarator)
             break;
         }
 
-        if (!is_typename_start(parser, current_token(parser)))
+        // Also allow for implicit int here.
+        if (!is_typename_start(parser, current_token(parser))
+                && !is_match_two(parser, TOK_STAR, TOK_IDENTIFIER))
         {
             diagnostic_error_at(parser->dm, current_token_location(parser),
                     "expected parameter declarator");
@@ -3214,10 +3216,13 @@ static void parse_function_declarator(Parser* parser, Declarator* declarator)
     semantic_checker_push_scope(&parser->sc, &function_proto);
 
     // Note: we check for elipsis to help improve a possible bad parse's error
-    // mesasage so that we parse it correctly as a function declarator.
+    // mesasage so that we parse it correctly as a function declarator. Also,
+    // we check for a star to allow for implicit int e.g. void func(*a); But 
+    // this should be the only specia case
     if (is_typename_start(parser, next_token(parser))
             || is_next_match(parser, TOK_ELIPSIS)
-            || lang_opts_c23(parser->lang))
+            || lang_opts_c23(parser->lang)
+            || is_next_match(parser, TOK_STAR))
     {
         parse_paramater_type_list(parser, declarator);
     }
@@ -3484,9 +3489,11 @@ static void parse_struct_declaration(Parser* parser, Declaration* decl)
     // so this is a little far off for use.
     if (is_match(parser, TOK_SEMI))
     {
-        Location loc = consume(parser);
-        diagnostic_warning_at(parser->dm, loc,
+        // if (!lang_opts_c11(parser->lang))
+        // {
+        diagnostic_warning_at(parser->dm, consume(parser),
                 "declaration does not declare anything");
+        // }
         return;
     }
 
