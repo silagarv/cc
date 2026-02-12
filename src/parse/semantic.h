@@ -275,7 +275,7 @@ Statement* semantic_checker_handle_do_while_statement(SemanticChecker* sc,
         Location rparen_location, Location semi_location);
 Statement* semantic_checker_handle_for_statement(SemanticChecker* sc,
         Location for_location, Location lparen_location,
-        Declaration* init_declaration, Expression* init_expression,
+        DeclarationGroup init_declaration, Expression* init_expression,
         Expression* condition, Expression* increment, Location rparen_location,
         Statement* body);
 Statement* semantic_checker_handle_goto_statement(SemanticChecker* sc,
@@ -294,7 +294,7 @@ Statement* semantic_checker_handle_label_statement(SemanticChecker* sc,
         Location identifier_location, Location colon_location,
         Declaration* label_declaration, Statement* statement);
 Statement* semantic_checker_handle_declaration_statement(SemanticChecker* sc,
-        Declaration* declaration, Location semi_location);
+        DeclarationGroup decls, Location semi_location);
 Statement* semantic_checker_handle_expression_statement(SemanticChecker* sc,
         Expression* expression, Location semi_location);
 Statement* semantic_checker_handle_error_statement(SemanticChecker* sc);

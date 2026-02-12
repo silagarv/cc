@@ -15,6 +15,8 @@
 #include "files/location.h"
 #include "files/source_manager.h"
 
+#define MINIMUM_LINNUM_LENGTH (4)
+
 typedef enum DiagnosticKind {
     DIAGNOSTIC_FATAL,
     DIAGNOSTIC_ERROR,
@@ -209,10 +211,24 @@ void diagnostic_help(DiagnosticManager* dm, const char* fmt, ...)
     va_end(ap);
 }
 
+// Get the number length that we should print for. It gets a minimum of
+// MINIMUM_LINNUM_LENGTH, and the length (in digits) of the number
+static int get_number_length(uint32_t number)
+{
+    // We know an upper limit on how many digits we can have since we can have
+    // up to 4,000,000,000+ as our largest line number. So, we make an 
+    // adequetely sized buffer that we can print into.
+    char number_tmp[10];
+    int len = snprintf(number_tmp, sizeof(number_tmp) / sizeof(number_tmp[0]),
+            "%u", number);
+    assert(len > 0);
+    return len < MINIMUM_LINNUM_LENGTH ? MINIMUM_LINNUM_LENGTH : len;
+}
+
 // A very basic line printer for our diagnostic. Note: this may have to be 
 // ripped out and rewritten once we have macros and a preprocessor 
-void diagnostic_print_line(DiagnosticManager* dm, SourceFile* file,
-        Location loc)
+void diagnostic_print_snippet(DiagnosticManager* dm, DiagnosticKind kind,
+        SourceFile* file, Location loc, uint32_t line)
 {
     // Now try to get the line to print
     Location start_line = line_map_get_line_start(&file->line_map, loc);
@@ -222,9 +238,14 @@ void diagnostic_print_line(DiagnosticManager* dm, SourceFile* file,
     assert(loc >= start_loc);
     Location start_offset = start_line - start_loc;
 
+    // Get the file information
     const FileBuffer* fb = source_file_get_buffer(file);
     const char* raw = file_buffer_get_start(fb);
     const char* end = file_buffer_get_end(fb);
+
+    // Print the part at the start which gives the line number we are on
+    int line_number_len = get_number_length(line);
+    fprintf(stderr, " %*u | ", line_number_len, line);
 
     // Print the line
     const char* line_start = raw + start_offset;
@@ -271,16 +292,18 @@ void diagnostic_print_line(DiagnosticManager* dm, SourceFile* file,
     // Rare case: empty file basically or no newline at eof
     if (!printed_newline)
     {
-        printf("\n");
+        fprintf(stderr, "\n");
     }
+
+    // Now we want to print the second part of the linnum thing. So we print
+    // 2 + line_number_len spaces and then our '|'
+    fprintf(stderr, " %*s | ", line_number_len, "");
 
     // Now print a caret afterwards so we have a better idea of where it is
     Location empty = loc - start_line;
-    for (Location i = 0; i < empty; i++)
-    {
-        printf("%.*s", (int) empty, " ");
-    }
-    printf("^\n");
+    fprintf(stderr, "%*s", (int) empty, "");
+    fprintf(stderr, "%s%s^\n%s", dm->colours.highlight, dm->colours.help,
+            dm->colours.reset_all);
 }
 
 void diagnostic_internal_at(DiagnosticManager* dm, DiagnosticKind kind,
@@ -315,7 +338,7 @@ void diagnostic_internal_at(DiagnosticManager* dm, DiagnosticKind kind,
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "%s\n", dm->colours.reset_all);
 
-    diagnostic_print_line(dm, sf, loc);
+    diagnostic_print_snippet(dm, kind, sf, loc, line);
 }
 
 void diagnostic_error_at(DiagnosticManager* dm, Location loc,

@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <string.h>
 
+#include "parse/declaration.h"
 #include "util/panic.h"
 #include "util/vec.h"
 
@@ -453,22 +454,40 @@ Statement* statement_create_empty(AstAllocator* allocator,
 }
 
 Statement* statement_create_declaration(AstAllocator* allocator,
-        Location semi_location, Declaration* declaration)
+        Location semi_location, DeclarationGroup declaration)
 {
+    assert(!decl_group_is_empty(&declaration));
+
     Statement* stmt = statement_create_base(allocator, 
             sizeof(StatementDeclaration), STATEMENT_DECLARATION);
 
     stmt->declaration_stmt.semi_location = semi_location;
-    stmt->declaration_stmt.declaration = declaration;
-
+    stmt->declaration_stmt.decls = declaration;
+    
     return stmt;
 }
 
-Declaration* statement_declaration_get(const Statement* stmt)
+bool statement_declaration_is_single(const Statement* stmt)
 {
     assert(statement_is(stmt, STATEMENT_DECLARATION));
 
-    return stmt->declaration_stmt.declaration;
+    return decl_group_is_single(&stmt->declaration_stmt.decls);
+}
+
+Declaration* statement_declaration_get_signle(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_DECLARATION));
+    assert(statement_declaration_is_single(stmt));
+
+    return decl_group_get_single(&stmt->declaration_stmt.decls);
+}
+
+DeclarationListEntry* statement_declaration_get_multiple(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_DECLARATION));
+    assert(!statement_declaration_is_single(stmt));
+
+    return decl_group_get_multiple(&stmt->declaration_stmt.decls);
 }
 
 bool statement_is(const Statement* stmt, StatementType type)

@@ -859,7 +859,7 @@ static QualifiedType process_array_type(SemanticChecker* sc, Declarator* d,
     size_t length = 0;
     bool is_static = array->is_static;
     bool is_star = array->is_star;
-    bool is_vla = array->is_star;
+    bool is_vla = array->is_star; // Start as this and calculate as needed
 
      // Now that we are allowed to have static at all
     if (is_static && is_star)
@@ -909,7 +909,7 @@ static QualifiedType process_array_type(SemanticChecker* sc, Declarator* d,
     }
 
     // Finally, we need to check if the array's element type is a complete type
-    if (!qualified_type_is_complete(&current))
+    if (!*invalid && !qualified_type_is_complete(&current))
     {
         diagnostic_error_at(sc->dm, array->lbracket,
                 "array has incomplete element type");
@@ -994,7 +994,24 @@ static QualifiedType process_array_type(SemanticChecker* sc, Declarator* d,
             length = (size_t) int_value;
         }
 
-        is_vla = !is_ice;
+        // If we were a vla before stay a vla, otherwise, if we wern't then go
+        // based off of if were an integer constant expression
+        is_vla = is_vla || !is_ice;
+
+        // Finally check for vla declarations at file scope but only if the type
+        // is still valid.
+        if (!*invalid && is_vla && ctx == DECL_CTX_FILE)
+        {
+            diagnostic_error_at(sc->dm, declarator_get_location(d), "variable "
+                    "length array declaration not allowed at file scope");
+            *invalid = true;
+        }
+    }
+
+    // As a last thing we need to do some checks to determine if we are a VLA
+    if (qualified_type_is_array(&real_type) && type_array_is_vla(&real_type))
+    {
+        is_vla = true;
     }
 
     // Finally create and return the new type
@@ -1052,15 +1069,13 @@ QualifiedType check_parameter_type(SemanticChecker* sc, Declaration* parameter,
             QualifiedType new_type = semantic_checker_get_int_type(sc);
             declaration_set_type(parameter, new_type);
             declaration_set_invalid(parameter);
-
             return new_type;
         }
-        else if (type_qualifier_has_any(real_type.qualifiers))
+        else if (type_qualifier_has_any(qualified_type_get_quals(&real_type))
+                || declaration_get_storage_class(parameter) == STORAGE_REGISTER)
         {
             diagnostic_error_at(sc->dm, loc,
                     "'void' as parameter must not have type qualifiers");
-
-            // Get the void type with no parameters instead
             return semantic_checker_get_void_type(sc);
         }
     }
@@ -1075,7 +1090,6 @@ QualifiedType check_parameter_type(SemanticChecker* sc, Declaration* parameter,
         QualifiedType new_type = semantic_checker_get_int_type(sc);
         declaration_set_type(parameter, new_type);
         declaration_set_invalid(parameter);
-
         return new_type;
     }
 
@@ -1181,9 +1195,7 @@ static QualifiedType process_function_type(SemanticChecker* sc, Declarator* d,
     // Do a finaly check where we set the number of parameters to 0 if there is
     // one parameter, and we arent variadic, and the parameter has type void
     if (num_paramaters == 1 && !function->is_variadic)
-    {
-        assert(params);
-        
+    {        
         QualifiedType type = type_function_parameter_get_type(params);
         QualifiedType real_type = qualified_type_get_canonical(&type);
         if (qualified_type_is(&real_type, TYPE_VOID))
@@ -2122,7 +2134,7 @@ Declaration* semantic_checker_process_variable(SemanticChecker* sc,
         Declarator* declarator, QualifiedType type)
 {
     // True if the declaration should be set to invalid
-    bool invalid = false;
+    bool invalid = declarator_is_invalid(declarator);
 
     // Get our identifier and it's location
     Identifier* identifier = declarator_get_identifier(declarator);
@@ -2729,9 +2741,21 @@ void semantic_checker_declaration_finish(SemanticChecker* sc,
     {
         if (!qualified_type_is_complete(&type))
         {
-            diagnostic_error_at(sc->dm, declaration_get_location(declaration),
-                    "variable '%s' has incomplete type",
-                    identifier_cstr(declaration_get_identifier(declaration)));
+
+            if (qualified_type_is_array(&type))
+            {
+                diagnostic_error_at(sc->dm,
+                        declaration_get_location(declaration), "definition of "
+                        "variable with array type needs an explicit size or an "
+                        "initializer");
+            }
+            else
+            {
+                diagnostic_error_at(sc->dm,
+                        declaration_get_location(declaration), "variable '%s' "
+                        "has incomplete type", identifier_cstr(
+                        declaration_get_identifier(declaration)));
+            }
             declaration_set_invalid(declaration);
         }
     }
@@ -3199,12 +3223,8 @@ Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
                     identifier, identifier_location);
         }
     }
-    else
-    {
-        panic("unreachable");
-    }
+    
     assert(declaration != NULL);
-
     return declaration;
 }
 
@@ -6659,6 +6679,16 @@ bool semantic_checker_declaration_check_initializer(SemanticChecker* sc,
         constant = true;
     }
 
+    // If we have a variably modified type like a vla then an initializer is
+    // not allowed at all.
+    if (qualified_type_is_array(&true_type) && type_array_is_vla(&true_type))
+    {
+        diagnostic_error_at(sc->dm, declaration_get_location(declaration),
+                "variable-sized object may not be initialized");
+        declaration_set_invalid(declaration);
+        return false;
+    }
+
     // Need to check that true_type, is either an object or array of incomplete
     // type. So that we know if initialization is even allowed or not...
     return semantic_checker_check_initializer(sc, init, type, constant);
@@ -6880,9 +6910,34 @@ Statement* semantic_checker_handle_do_while_statement(SemanticChecker* sc,
     return do_while;
 }
 
+static void semantic_checker_check_for_loop_decl(SemanticChecker* sc,
+        Declaration* init_declaration)
+{
+    // Make sure we have a variable declaration here
+    Location location = declaration_get_location(init_declaration);
+    if (!declaration_is(init_declaration, DECLARATION_VARIABLE))
+    {
+        diagnostic_error_at(sc->dm, location, "non-variable declaration in "
+                "'for' loop");
+        declaration_set_invalid(init_declaration);
+    }
+    else if (declaration_is_valid(init_declaration))
+    {
+        // Make sure that the storage class is okay
+        StorageSpecifier storage = declaration_get_storage_class(
+                init_declaration);
+        if (storage == STORAGE_EXTERN || storage == STORAGE_STATIC)
+        {
+            diagnostic_error_at(sc->dm, location,
+                    "declaration of non-local variable in 'for' loop");
+            declaration_set_invalid(init_declaration);
+        }
+    }
+}
+
 Statement* semantic_checker_handle_for_statement(SemanticChecker* sc,
         Location for_location, Location lparen_location,
-        Declaration* init_declaration, Expression* init_expression,
+        DeclarationGroup init_declaration, Expression* init_expression,
         Expression* condition, Expression* increment, Location rparen_location,
         Statement* body)
 {
@@ -6894,39 +6949,31 @@ Statement* semantic_checker_handle_for_statement(SemanticChecker* sc,
 
     // Otherwise we will need to gather our initialisation statment.
     Statement* init_statement;
-    if (init_declaration != NULL)
+    if (!decl_group_is_empty(&init_declaration))
     {
-        assert(init_expression == NULL);
-
-        // Create out init statement regardless of what happens
-        init_statement = semantic_checker_handle_declaration_statement(sc,
-                init_declaration, LOCATION_INVALID);
-        
-        // Make sure we have a variable declaration here
-        Identifier* identifier = declaration_get_identifier(init_declaration);
-        Location location = declaration_get_location(init_declaration);
-        if (!declaration_is(init_declaration, DECLARATION_VARIABLE))
+        if (decl_group_is_single(&init_declaration))
         {
-            diagnostic_error_at(sc->dm, location,
-                    "non-variable declaration in 'for' loop");
-            declaration_set_invalid(init_declaration);
+            Declaration* single_decl = decl_group_get_single(&init_declaration);
+            semantic_checker_check_for_loop_decl(sc, single_decl);
         }
-        else if (declaration_is_valid(init_declaration))
+        else
         {
-            // Make sure that the storage class is okay
-            StorageSpecifier storage = declaration_get_storage_class(
-                    init_declaration);
-            if (storage == STORAGE_EXTERN || storage == STORAGE_STATIC)
+            DeclarationListEntry* decls =   
+                    decl_group_get_multiple(&init_declaration);
+            while (decls != NULL)
             {
-                diagnostic_error_at(sc->dm, location,
-                        "declaration of non-local variable in 'for' loop");
-                declaration_set_invalid(init_declaration);
+                Declaration* single_decl = declaration_list_entry_get(decls);
+                semantic_checker_check_for_loop_decl(sc, single_decl);
+                decls = declaration_list_next(decls);
             }
         }
+
+        // Finally, remember to create our init statement.
+        init_statement = semantic_checker_handle_declaration_statement(sc,
+                init_declaration, LOCATION_INVALID);
     }
     else if (init_expression != NULL)
     {
-        assert(init_declaration == NULL);
         init_statement = semantic_checker_handle_expression_statement(sc,
                 init_expression, LOCATION_INVALID);
     }
@@ -7084,19 +7131,16 @@ Statement* semantic_checker_handle_label_statement(SemanticChecker* sc,
 }
 
 Statement* semantic_checker_handle_declaration_statement(SemanticChecker* sc,
-        Declaration* declaration, Location semi_location)
+        DeclarationGroup decls, Location semi_location)
 {
-    // Handle a posisble empty declaration.
-    if (declaration == NULL)
+    // Handle a posisble empty declaration and just don't give anything useful
+    if (decl_group_is_empty(&decls))
     {
-        // TODO: instead of forwarding the NULL, should I make a statement of
-        // TODO: empty declaration type? Would this be useful at all?
         return NULL;
     }
 
-    // Note: the declaration should have been checked already so this is simple!
     return statement_create_declaration(&sc->ast->ast_allocator, semi_location,
-            declaration);
+            decls);
 }
 
 Statement* semantic_checker_handle_expression_statement(SemanticChecker* sc,

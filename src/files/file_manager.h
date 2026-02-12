@@ -14,6 +14,7 @@
 // and the anonomous represents any buffer used for anything else as given below
 typedef enum FileBufferType {
     FILE_BUFFER_FILE,
+    FILE_BUFFER_STDIN,
     FILE_BUFFER_BUILTIN,
     FILE_BUFFER_COMMAND_LINE,
     FILE_BUFFER_ANONOMOUS

@@ -227,8 +227,9 @@ QualifiedType type_create_array(AstAllocator* allocator,
     // Get the size of the array if the length if known
     size_t size = length * element_type.type->type_base.type_size;
 
-    // Array of unknown length are incomplete types
-    bool is_complete = (expression != NULL) && !is_vla && !is_star;
+    // Array of unknown length are incomplete types. But we should note that
+    // arrays that are vla are considered complete types
+    bool is_complete = (expression != NULL);
 
     // Need to determine the size and align or the array.
     QualifiedType real_elem_type = qualified_type_get_canonical(&element_type);
@@ -273,6 +274,13 @@ bool type_array_is_complete(const QualifiedType* type)
     assert(qualified_type_is(type, TYPE_ARRAY));
 
     return type->type->type_base.is_complete;
+}
+
+bool type_array_is_vla(const QualifiedType* type)
+{
+    assert(qualified_type_is(type, TYPE_ARRAY));
+
+    return type->type->type_array.is_vla;
 }
 
 TypeFunctionParameter* type_create_function_parameter(AstAllocator* allocator,

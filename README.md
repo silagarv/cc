@@ -21,7 +21,8 @@ To building, run 'make' in the cc directory and it wll output an executable name
 ## Current TODO
 - Declaration parsing
     - also include a second list in struct / union decl's for all decls inside it
-    - properly create a declaration group as part of our declarations so that we are able to emit the creation of those instead of just returning the last declaration.
+    - Fix declarations groups so they also optionally include a struct / unions definition inside them if it was
+    defined at that point. will have to go fix up for loop checking after this however
 
 - Semantic
     - expressions

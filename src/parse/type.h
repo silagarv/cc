@@ -276,6 +276,7 @@ QualifiedType type_array_get_element_type(const QualifiedType* type);
 size_t type_array_get_length(const QualifiedType* type);
 union Expression* type_array_get_expression(const QualifiedType* type);
 bool type_array_is_complete(const QualifiedType* type);
+bool type_array_is_vla(const QualifiedType* type);
 
 TypeFunctionParameter* type_create_function_parameter(AstAllocator* allocator,
         QualifiedType type);

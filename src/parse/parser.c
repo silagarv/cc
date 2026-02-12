@@ -376,7 +376,7 @@ static Initializer* parse_initializer_list(Parser* parser);
 
 static Declarator parse_declarator(Parser* parser,
         DeclarationSpecifiers* specifiers, DeclaratorContext ctx);
-static Declaration* parse_init_declarator_list(Parser* parser,
+static DeclarationGroup parse_init_declarator_list(Parser* parser,
         DeclarationSpecifiers* specifiers, DeclaratorContext context,
         Location* trailing_semi);
 
@@ -424,8 +424,8 @@ static void parse_struct_or_union_specifier(Parser* parser,
 
 static Declaration* parse_static_assert_declaration(Parser* parser,
         DeclaratorContext context, Location* trailing_semi);
-static Declaration* parse_declaration(Parser* parser, DeclaratorContext context,
-        Location* trailing_semi);
+static DeclarationGroup parse_declaration(Parser* parser,
+        DeclaratorContext context, Location* trailing_semi);
 static QualifiedType parse_type_name(Parser* parser, bool* okay);
 
 static bool is_typename_start(Parser* parser, const Token* tok)
@@ -449,14 +449,20 @@ static bool is_typename_start(Parser* parser, const Token* tok)
         case TOK_struct:
         case TOK_union:
         case TOK_enum:
+        case TOK_bool:
+        case TOK__Decimal128:
+        case TOK__Decimal32:
+        case TOK__Decimal64:
 
         // Type qualifiers
         case TOK_const:
         case TOK_volatile:
         case TOK_restrict:
+        case TOK__Atomic:
 
         // Function specifiers
         case TOK_inline:
+        case TOK__Noreturn:
 
         // Storage classes
         case TOK_typedef:
@@ -464,6 +470,17 @@ static bool is_typename_start(Parser* parser, const Token* tok)
         case TOK_static:
         case TOK_register:
         case TOK_auto:
+        case TOK__Thread_local: // TODO: check storage spec
+        case TOK_thread_local: // TODO: check storage spec
+        case TOK_constexpr:
+
+        // Alignment speicfiers
+        case TOK__Alignas:
+        case TOK_alignas:
+
+        // Typeof something
+        case TOK_typeof:
+        case TOK_typeof_unqual:
             return true;
 
         case TOK_IDENTIFIER:
@@ -503,6 +520,13 @@ static bool is_expression_token(TokenType type)
         case TOK_TILDE:
         case TOK_sizeof:
         case TOK_IDENTIFIER:
+
+        case TOK__Alignof:
+        case TOK_alignof:
+        case TOK_false:
+        case TOK_true:
+        case TOK_nullptr:
+        case TOK__Generic:
 
         // Builtin identifiers
         case TOK___func__:
@@ -552,6 +576,8 @@ static bool is_statement_start(Parser* parser, const Token* tok)
         case TOK_return:
         case TOK_SEMI:
         case TOK_IDENTIFIER:
+
+        case TOK_asm: // For inline assembly statements
             return true;
 
         default:
@@ -2219,7 +2245,7 @@ static Statement* parse_for_statement(Parser* parser)
 
     Statement* init = NULL;
 
-    Declaration* init_declaration = NULL;
+    DeclarationGroup init_declaration = decl_group_from_empty();
     Expression* init_expression = NULL;
     if (is_typename_start(parser, current_token(parser)))
     {   
@@ -2351,10 +2377,10 @@ static Statement* parse_return_statement(Parser* parser)
 
 static Statement* parse_declaration_statement(Parser* parser)
 {
-    Location semi_loc = LOCATION_INVALID;
-    Declaration* decl = parse_declaration(parser, DECL_CTX_BLOCK, &semi_loc);
+    Location semi = LOCATION_INVALID;
+    DeclarationGroup decls = parse_declaration(parser, DECL_CTX_BLOCK, &semi);
     return semantic_checker_handle_declaration_statement(&parser->sc,
-            decl, semi_loc);
+            decls, semi);
 }
 
 static Statement* parse_empty_statement(Parser* parser)
@@ -2976,7 +3002,7 @@ static bool maybe_parse_function(Parser* parser, Declarator* declarator,
     return false;
 }
 
-static Declaration* parse_init_declarator_list(Parser* parser,
+static DeclarationGroup parse_init_declarator_list(Parser* parser,
         DeclarationSpecifiers* specifiers, DeclaratorContext context,
         Location* trailing_semi)
 {
@@ -2995,14 +3021,22 @@ static Declaration* parse_init_declarator_list(Parser* parser,
     Declaration* decl = NULL;
     if (maybe_parse_function(parser, &declarator, context, &decl))
     {
-        return decl;
+        return decl_group_from_single(decl);
     }
+
+    // Here since we know we don't have a function decl create a DeclList that
+    // we can then use for a decl group
+    DeclarationList list = declaration_list(&parser->ast->ast_allocator);
 
     // Here we know that we shouldn't create a function definition and so we
     // can finally process the declarator and potentially try to parse an
     // initializer after the definition.
     decl = parse_declaration_after_declarator(parser, &declarator,
             context);
+    if (decl != NULL)
+    {
+        declaration_list_push(&list, decl);
+    }
 
     // Otherwise keep trying to parse declarations with an initializer until
     // we appear to be at the end of all of our declarations.
@@ -3011,6 +3045,10 @@ static Declaration* parse_init_declarator_list(Parser* parser,
         // Parse a fresh declarator and then a declaration after it.
         declarator = parse_declarator(parser, specifiers, context);
         decl = parse_declaration_after_declarator(parser, &declarator, context);
+        if (decl != NULL)
+        {
+            declaration_list_push(&list, decl);
+        }
     }
 
     // Now finally we want to match the semi-colon at the end if we were given
@@ -3022,7 +3060,7 @@ static Declaration* parse_init_declarator_list(Parser* parser,
         *trailing_semi = parse_trailing_semi(parser, message);
     }
     
-    return decl;
+    return decl_group_from_multiple(&list);
 }
 
 static void parse_identifier_list(Parser* parser, Declarator* declarator)
@@ -3110,15 +3148,16 @@ static void parse_paramater_type_list(Parser* parser, Declarator* declarator)
     DeclarationList parms = declaration_list(&parser->ast->ast_allocator);
     size_t num_parms = 0;
 
-    // Skip the parameter list entirely after we have initialized everything
-    if (is_match(parser, TOK_RPAREN))
-    {
-        goto after_parms;
-    }
-
     // Parse the parameter list
     do
     {
+        // If we are on the first parameter and we get nothing (in C23) then
+        // we want to skip all of this.
+        if (num_parms == 0 && is_match(parser, TOK_RPAREN))
+        {
+            break;
+        }
+
         // First check if we have elipsis
         if (is_match(parser, TOK_ELIPSIS))
         {
@@ -3150,8 +3189,6 @@ static void parse_paramater_type_list(Parser* parser, Declarator* declarator)
         num_parms++;
     }
     while (try_match(parser, TOK_COMMA, NULL));
-
-after_parms:;
 
     // Match the end of the parameter list
     Location rparen_loc;
@@ -3549,16 +3586,18 @@ static void parse_struct_or_union_specifier(Parser* parser,
     Location tag_loc = consume(parser);
 
     Declaration* declaration = NULL;
-    bool error = false;
 
     if (!is_match_two(parser, TOK_IDENTIFIER, TOK_LCURLY))
     {
         const char* const tag_name = is_struct ? "struct" : "union";
-        diagnostic_error_at(parser->dm, tag_loc,
-                "declaration of anonymous %s must be a definition", tag_name);
+        diagnostic_error_at(parser->dm, tag_loc, "declaration of anonymous %s "
+                "must be a definition", tag_kind_to_name(type));
         recover(parser, TOK_SEMI, RECOVER_NONE);
-        error = true;
-        goto finish;
+
+        // Add the error type and exit as there is nothing else to parse.
+        declaration_specifiers_add_type(parser, specifiers,
+                TYPE_SPECIFIER_ERROR, NULL, tag_loc);
+        return;
     }
 
     Identifier* identifier = NULL;
@@ -3591,20 +3630,9 @@ static void parse_struct_or_union_specifier(Parser* parser,
 
     // Finally, we will need to add the struct / union specifiers and 
     // declaration to the declspec.
-finish:;
-    TypeSpecifierType type_spec;
-    if (error)
-    {
-        type_spec = TYPE_SPECIFIER_ERROR;
-    }
-    else if (is_struct)
-    {
-        type_spec = TYPE_SPECIFIER_STRUCT;
-    }
-    else
-    {
-        type_spec = TYPE_SPECIFIER_UNION;
-    }
+    TypeSpecifierType type_spec = is_struct
+            ? TYPE_SPECIFIER_STRUCT
+            : TYPE_SPECIFIER_UNION;
     declaration_specifiers_add_type(parser, specifiers, type_spec,
             declaration, tag_loc);
 }
@@ -4282,14 +4310,16 @@ static Declaration* parse_static_assert_declaration(Parser* parser,
     return NULL;
 }
 
-static Declaration* parse_declaration(Parser* parser, DeclaratorContext context,
-        Location* trailing_semi)
+static DeclarationGroup parse_declaration(Parser* parser,
+        DeclaratorContext context, Location* trailing_semi)
 {
     // Special case of static assert since they are a very special case of what
     // we can have for a declaration;
     if (is_match_two(parser, TOK__Static_assert, TOK_static_assert))
     {
-        return parse_static_assert_declaration(parser, context, trailing_semi);
+        Declaration* decl = parse_static_assert_declaration(parser, context,
+                trailing_semi);
+        return decl_group_from_single(decl);
     }
 
     // First we need to get our declaration specifiers here
@@ -4308,7 +4338,9 @@ static Declaration* parse_declaration(Parser* parser, DeclaratorContext context,
         // Process the declaration specifiers and get the enclosing decl if any
         // This would mean for example we parsed a struct. We also know that if
         // we have a ';' we MUST be done with the declaration specifiers.
-        return semantic_checker_process_specifiers(&parser->sc, &specifiers);
+        Declaration* decl_opt = semantic_checker_process_specifiers(&parser->sc,
+                &specifiers);
+        return decl_group_from_single(decl_opt);
     }
     
     return parse_init_declarator_list(parser, &specifiers, context,
@@ -4317,9 +4349,11 @@ static Declaration* parse_declaration(Parser* parser, DeclaratorContext context,
 
 static void parse_declaration_or_definition(Parser* parser)
 {
+    // We can ignore the return value of parse declaration here since all top
+    // levels, are added auto-matically to the translation unit at the end. We
+    // still need the trailing semi however, as we need to parse it if needed.
     Location trailing_semi = LOCATION_INVALID;
-    Declaration* declaration = parse_declaration(parser, DECL_CTX_FILE,
-            &trailing_semi);
+    parse_declaration(parser, DECL_CTX_FILE, &trailing_semi);
 }
 
 // The definitions of the functions we will use for parsing. Return false if we
@@ -4334,16 +4368,14 @@ static void parse_top_level(Parser* parser)
 
         case TOK_SEMI:
         {
-            Location semi = eat_all(parser, TOK_SEMI);
-            diagnostic_warning_at(parser->dm, semi,
+            diagnostic_warning_at(parser->dm, consume(parser),
                     "extra ';' outside of a function");
             return;
         }
 
         case TOK_RCURLY:
         {
-            Location curly = consume(parser);
-            diagnostic_error_at(parser->dm, curly,
+            diagnostic_error_at(parser->dm, consume(parser),
                     "extraneous closing brace ('}')");
             return;
         }

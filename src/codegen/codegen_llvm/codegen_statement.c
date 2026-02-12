@@ -512,15 +512,23 @@ void llvm_codegen_decl_statement(CodegenContext* context, Statement* stmt)
 {
     assert(statement_is(stmt, STATEMENT_DECLARATION));
 
-    Declaration* declaration = statement_declaration_get(stmt);
-    assert(declaration != NULL);
-
-    // Generate our declaration statement...
-    // TODO: we should ideally place this declaration statement at the start
-    // TODO: block of the function so that jumps cannot skip this and cause
-    // TODO: undefined behaviour
-    LLVMValueRef value = llvm_codegen_declaration(context, declaration);
-    (void) value;
+    if (statement_declaration_is_single(stmt))
+    {
+        Declaration* declaration = statement_declaration_get_signle(stmt);
+        assert(declaration != NULL);
+        llvm_codegen_declaration(context, declaration);
+    }
+    else
+    {
+        DeclarationListEntry* list = statement_declaration_get_multiple(stmt);
+        while (list != NULL)
+        {
+            Declaration* declaration = declaration_list_entry_get(list);
+            assert(declaration != NULL);
+            llvm_codegen_declaration(context, declaration);
+            list = declaration_list_next(list);
+        }
+    }
 }
 
 void llvm_codegen_label_statement(CodegenContext* context, Statement* stmt)

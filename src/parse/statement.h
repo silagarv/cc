@@ -9,6 +9,7 @@
 #include "parse/ast_allocator.h"
 #include "parse/expression.h"
 #include "parse/declaration.h"
+#include <stddef.h>
 
 enum StatementType {
     STATEMENT_ERROR = -1,
@@ -199,10 +200,12 @@ struct StatementEmpty {
     Location semi_location;
 };
 
+
+
 struct StatementDeclaration {
     StatementBase base;
     Location semi_location;
-    Declaration* declaration;
+    DeclarationGroup decls;
 };
 
 union Statement {
@@ -343,8 +346,10 @@ Statement* statement_create_empty(AstAllocator* allocator,
         Location semi_location);
 
 Statement* statement_create_declaration(AstAllocator* allocator,
-        Location semi_location, Declaration* declaration);
-Declaration* statement_declaration_get(const Statement* stmt);
+        Location semi_location, DeclarationGroup declaration);
+bool statement_declaration_is_single(const Statement* stmt);
+Declaration* statement_declaration_get_signle(const Statement* stmt);
+DeclarationListEntry* statement_declaration_get_multiple(const Statement* stmt);
 
 bool statement_is(const Statement* stmt, StatementType type);
 

@@ -384,6 +384,17 @@ union Declaration {
     DeclarationLabel label;
 };
 
+// A structure to hold 0 or more declarations. If num_decls is 0 then d should
+// not be accessed, if == 1, then single should be accessed, otherwise multiple
+// should be accessed.
+typedef struct DeclarationGroup {
+    size_t num_decls;
+    union {
+        Declaration* single;
+        DeclarationListEntry* multiple;
+    } d;
+} DeclarationGroup;
+
 vector_of_decl(Declaration*, Declaration, declaration);
 
 DeclarationSpecifiers declaration_specifiers_create(Location location);
@@ -561,7 +572,13 @@ DeclarationList declaration_function_get_paramaters(const Declaration* func);
 Declaration* declaration_create_label(AstAllocator* allocator, 
         Identifier* identifier, Location location, bool implicit);
 
-// Functions for creating and managing a declaration list
-
+// Functions for creating and managing a declaration group
+DeclarationGroup decl_group_from_empty(void);
+DeclarationGroup decl_group_from_single(Declaration* decl);
+DeclarationGroup decl_group_from_multiple(const DeclarationList* decls);
+bool decl_group_is_empty(const DeclarationGroup* group);
+bool decl_group_is_single(const DeclarationGroup* group);
+Declaration* decl_group_get_single(const DeclarationGroup* group);
+DeclarationListEntry* decl_group_get_multiple(const DeclarationGroup* group);
 
 #endif /* DECLARATION_H */

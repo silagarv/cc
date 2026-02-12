@@ -51,8 +51,6 @@ typedef struct Parser {
     // The semantic checker taking care of all of our declarations and needed
     // things for that.
     SemanticChecker sc;
-
-    // TODO: track brackets???
 } Parser;
 
 bool parser_create_for_translation_unit(Parser* parser, DiagnosticManager* dm,

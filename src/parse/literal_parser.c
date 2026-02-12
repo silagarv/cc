@@ -749,18 +749,39 @@ static ValueType determine_value_type(const char* string, size_t len)
 
         if (current == 'p' || current == 'P')
         {
-            if (pos < len && (string[pos + 1] == '+' || string[pos + 1] == '-'))
-            {
-                return VALUE_FLOATING_TYPE;
-            }
+            // if (pos < len)
+            // {
+            //     if ((string[pos + 1] == '+' || string[pos + 1] == '-'))
+            //     {
+            //         return VALUE_FLOATING_TYPE;
+            //     }
+
+            //     // Isn't this for hex floats so we need to do something
+            //     if (is_decimal(string[pos + 1]))
+            //     {
+            //         return VALUE_FLOATING_TYPE;
+            //     }
+            // }
+
+            return VALUE_FLOATING_TYPE;
         }
 
         if (current == 'e' || current == 'E')
         {
-            if (pos < len && (string[pos + 1] == '+' || string[pos + 1] == '-'))
-            {
-                return VALUE_FLOATING_TYPE;
-            }
+            // if (pos < len)
+            // {
+            //     if (string[pos + 1] == '+' || string[pos + 1] == '-')
+            //     {
+            //         return VALUE_FLOATING_TYPE;
+            //     }
+
+            //     if (is_decimal(string[pos + 1]))
+            //     {
+            //         return VALUE_FLOATING_TYPE;
+            //     }
+            // }
+
+            return VALUE_FLOATING_TYPE;
         }
     }
 

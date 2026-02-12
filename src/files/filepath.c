@@ -3,14 +3,23 @@
 #include <stddef.h>
 #include <string.h>
 
-#include <linux/limits.h>
+bool filepath_is(const Filepath* path, const char* is)
+{
+    size_t len = strlen(is);
+    if (path->len != len)
+    {
+        return false;
+    }
+
+    return !strncmp(path->path, is, len);
+}
 
 Filepath filepath_from_cstring(const char* path)
 {
     const size_t len = strlen(path);
 
     Filepath fp;
-    memcpy(fp.path, path, len);
+    memcpy(fp.path, path, len + 1);
     fp.len = len;
 
     return fp;

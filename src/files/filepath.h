@@ -13,6 +13,8 @@ typedef struct Filepath {
 #define FILEPATH_STATIC_INIT(array) \
         ((Filepath) {.path = array, .len = sizeof(array) - 1})
 
+bool filepath_is(const Filepath* path, const char* is);
+
 Filepath filepath_from_cstring(const char* path);
 
 const char* filepath_get_cstr(const Filepath* path);

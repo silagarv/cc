@@ -13,6 +13,55 @@
 #include "util/buffer.h"
 #include "util/hash.h"
 
+#define STDIN_READ_SIZE (1024)
+
+static FileBuffer* file_buffer_read_stdin(void)
+{
+    char* buffer = xmalloc(sizeof(char) * STDIN_READ_SIZE);
+    size_t buffer_size = STDIN_READ_SIZE;
+    size_t length = 0;
+    while (true)
+    {
+        size_t read = fread(buffer + length, sizeof(char), buffer_size - length,
+                stdin);
+        length += read;
+
+        if (length < buffer_size)
+        {
+            break;
+        }
+
+        assert(length == buffer_size);
+
+        buffer_size *= 2;
+        buffer = xrealloc(buffer, buffer_size);
+    }
+
+    // Unlikely but if we have finished reading from stdin and then we want to
+    // null terminate but the buffer is full we need to resize it.
+    // TODO: actually this might never be possible?
+    if (length == buffer_size)
+    {
+        buffer_size *= 2;
+        buffer = xrealloc(buffer, buffer_size);
+    }
+
+    // All filebuffers must be null terminated
+    buffer[length] = '\0';
+
+    Filepath path = filepath_from_cstring("<stdin>");
+    FileBuffer* file_buffer = xmalloc(sizeof(FileBuffer));
+    *file_buffer = (FileBuffer)
+    {
+        .path = path,
+        .buffer_start = buffer,
+        .buffer_end = buffer + length,
+        .type = FILE_BUFFER_STDIN
+    };
+
+    return file_buffer;
+}
+
 static void read_file_contents(FILE* fp, char** buffer, size_t* length)
 {
     fseek(fp, 0, SEEK_END);
@@ -30,7 +79,17 @@ static void read_file_contents(FILE* fp, char** buffer, size_t* length)
 // be the canonical path to the file itself
 FileBuffer* file_buffer_try_get(Filepath path)
 {
+    // Special case of the path being '-'. In that case we want to create the 
+    // file from stdin. This is unlikely though but the check is quick enough
+    // that this is not really a large concern for us.
+    if (filepath_is(&path, "-"))
+    {
+        return file_buffer_read_stdin();
+    }
+        
     FILE* fp = fopen(path.path, "rb");
+
+    // Check if we got a file or not
     if (!fp)
     {
         return NULL;

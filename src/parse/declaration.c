@@ -1029,3 +1029,61 @@ Declaration* declaration_create_label(AstAllocator* allocator,
     return decl;
 }
 
+DeclarationGroup decl_group_from_empty(void)
+{
+    return (DeclarationGroup) { .num_decls = 0 };
+}
+
+DeclarationGroup decl_group_from_single(Declaration* decl)
+{
+    if (decl == NULL)
+    {
+        return decl_group_from_empty();
+    }
+
+    return (DeclarationGroup) { .num_decls = 1, .d.single = decl };
+}
+
+DeclarationGroup decl_group_from_multiple(const DeclarationList* decls)
+{
+    size_t count = declaration_list_num_entries(decls);
+    
+    if (count == 0)
+    {
+        return decl_group_from_empty();
+    }
+
+    DeclarationListEntry* entry = declaration_list_iter(decls);
+    if (count == 1)
+    {
+        Declaration* decl = declaration_list_entry_get(entry);
+        return decl_group_from_single(decl);
+    }
+
+    return (DeclarationGroup) { .num_decls = count, .d.multiple = entry };
+}
+
+bool decl_group_is_empty(const DeclarationGroup* group)
+{
+    return group->num_decls == 0;
+}
+
+bool decl_group_is_single(const DeclarationGroup* group)
+{
+    return group->num_decls == 1;
+}
+
+Declaration* decl_group_get_single(const DeclarationGroup* group)
+{
+    assert(decl_group_is_single(group));
+
+    return group->d.single;
+}
+
+DeclarationListEntry* decl_group_get_multiple(const DeclarationGroup* group)
+{
+    assert(!decl_group_is_empty(group) && !decl_group_is_single(group));
+
+    return group->d.multiple;
+}
+
