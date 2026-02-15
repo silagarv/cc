@@ -25,6 +25,19 @@ typedef enum DiagnosticKind {
     DIAGNOSTIC_HELP,
 } DiagnosticKind;
 
+struct DiagnosticColours {
+    char* fatal;
+    char* error;
+    char* warning;
+    char* note;
+    char* help;
+    char* white;
+    char* highlight;
+    char* reset_highlight;
+    char* reset_all;
+    char* caret;
+};
+
 static const DiagnosticColours colour_off = 
 {
     .fatal = "",
@@ -35,7 +48,8 @@ static const DiagnosticColours colour_off =
     .white = "",
     .highlight = "",
     .reset_highlight = "",
-    .reset_all = ""
+    .reset_all = "",
+    .caret = ""
 };
 
 static const DiagnosticColours colour_on = 
@@ -43,19 +57,21 @@ static const DiagnosticColours colour_on =
     .fatal = "\033[91m",
     .error = "\033[91m",
     .warning = "\033[93m",
-    .note = "\033[90m",
+    .note = "\033[94m",
     .help = "\033[92m",
     .white = "\033[97m",
     .highlight = "\033[1m",
     .reset_highlight = "\033[22m",
-    .reset_all = "\033[0m"
+    .reset_all = "\033[0m",
+    .caret = "\033[92m"
 };
 
 DiagnosticManager diagnostic_manager_init(SourceManager* sm)
 {
     DiagnosticManager dm;
     dm.sm = sm;
-    dm.colours = isatty(STDERR_FILENO) ? colour_on : colour_off;
+    dm.colours = (DiagnosticColours*) (isatty(STDERR_FILENO) ? &colour_on 
+            : &colour_off); // Cast away since we never change the values
 
     dm.warning_count = 0;
     dm.error_count = 0;
@@ -138,11 +154,11 @@ static const char* kind_to_colour(DiagnosticManager* dm, DiagnosticKind kind)
 {
     switch (kind)
     {
-        case DIAGNOSTIC_FATAL: return dm->colours.fatal;
-        case DIAGNOSTIC_ERROR: return dm->colours.error;
-        case DIAGNOSTIC_WARNING: return dm->colours.warning;
-        case DIAGNOSTIC_NOTE: return dm->colours.note;
-        case DIAGNOSTIC_HELP: return dm->colours.help;
+        case DIAGNOSTIC_FATAL: return dm->colours->fatal;
+        case DIAGNOSTIC_ERROR: return dm->colours->error;
+        case DIAGNOSTIC_WARNING: return dm->colours->warning;
+        case DIAGNOSTIC_NOTE: return dm->colours->note;
+        case DIAGNOSTIC_HELP: return dm->colours->help;
 
         default:
             panic("invalid diagnostic kind");
@@ -162,14 +178,22 @@ void diagnostic_internal(DiagnosticManager* dm, DiagnosticKind kind,
         dm->warning_count++;
     }
 
-    fprintf(stderr, "%s%scc: %s%s: %s%s", dm->colours.white,
-            dm->colours.highlight,
+    fprintf(stderr, "%s%scc: %s%s: %s%s", dm->colours->white,
+            dm->colours->highlight,
             kind_to_colour(dm, kind),
             kind_to_name(kind),
-            dm->colours.reset_all,
-            dm->colours.white);
+            dm->colours->reset_all,
+            dm->colours->white);
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
+}
+
+void diagnostic_fatal_error(DiagnosticManager* dm, const char* fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    diagnostic_internal(dm, DIAGNOSTIC_FATAL, fmt, ap);
+    va_end(ap);
 }
 
 void diagnostic_error(DiagnosticManager* dm, const char* fmt, ...)
@@ -302,8 +326,8 @@ void diagnostic_print_snippet(DiagnosticManager* dm, DiagnosticKind kind,
     // Now print a caret afterwards so we have a better idea of where it is
     Location empty = loc - start_line;
     fprintf(stderr, "%*s", (int) empty, "");
-    fprintf(stderr, "%s%s^\n%s", dm->colours.highlight, dm->colours.help,
-            dm->colours.reset_all);
+    fprintf(stderr, "%s%s^\n%s", dm->colours->highlight, dm->colours->caret,
+            dm->colours->reset_all);
 }
 
 void diagnostic_internal_at(DiagnosticManager* dm, DiagnosticKind kind,
@@ -327,18 +351,27 @@ void diagnostic_internal_at(DiagnosticManager* dm, DiagnosticKind kind,
     uint32_t col = resolved.col;
 
     // Print the initial part
-    fprintf(stderr, "%s%s%s:%u:%u: ", dm->colours.white, dm->colours.highlight,
-            sf->file_buffer->path.path, line, col);
+    fprintf(stderr, "%s%s%s:%u:%u: ", dm->colours->white,
+            dm->colours->highlight, sf->file_buffer->path.path, line, col);
     fprintf(stderr, "%s%s:%s%s ",
             kind_to_colour(dm, kind),
             kind_to_name(kind),
-            dm->colours.reset_all,
-            dm->colours.white
+            dm->colours->reset_all,
+            dm->colours->white
         );
     vfprintf(stderr, fmt, ap);
-    fprintf(stderr, "%s\n", dm->colours.reset_all);
+    fprintf(stderr, "%s\n", dm->colours->reset_all);
 
     diagnostic_print_snippet(dm, kind, sf, loc, line);
+}
+
+void diagnostic_fatal_error_at(DiagnosticManager* dm, Location loc,
+        const char* fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    diagnostic_internal_at(dm, DIAGNOSTIC_FATAL, loc, fmt, ap);
+    va_end(ap);
 }
 
 void diagnostic_error_at(DiagnosticManager* dm, Location loc,

@@ -9,13 +9,61 @@
 
 #include "files/filepath.h"
 #include "util/hash_map.h"
+#include "util/vec.h"
 #include "util/xmalloc.h"
 #include "util/buffer.h"
 #include "util/hash.h"
 
 #define STDIN_READ_SIZE (1024)
 
-static FileBuffer* file_buffer_read_stdin(void)
+vector_of_impl(FileBuffer*, FileBuffer, file_buffer)
+
+static void read_file_contents(FILE* fp, char** buffer, size_t* length)
+{
+    fseek(fp, 0, SEEK_END);
+    size_t file_length = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    *buffer = xmalloc(sizeof(char) * (file_length + 1));
+    *length = fread(*buffer, sizeof(char), file_length, fp);
+    (*buffer)[*length] = '\0';
+
+    assert(file_length == *length);
+}
+
+// Create a file buffer from a given path (or at least attempt to). Path should
+// be the canonical path to the file itself
+FileBuffer* file_buffer_try_get(Filepath path)
+{        
+    FILE* fp = fopen(path.path, "rb");
+
+    // Check if we got a file or not
+    if (!fp)
+    {
+        return NULL;
+    }
+
+    // Get our buffer and it's length
+    char* buffer = NULL;
+    size_t length = 0;
+
+    read_file_contents(fp, &buffer, &length);
+
+    fclose(fp);
+
+    FileBuffer* file_buffer = xmalloc(sizeof(FileBuffer));
+    *file_buffer = (FileBuffer)
+    {
+        .path = path,
+        .buffer_start = buffer,
+        .buffer_end = buffer + length,
+        .type = FILE_BUFFER_FILE
+    };
+
+    return file_buffer;
+}
+
+FileBuffer* file_buffer_from_stdin(void)
 {
     char* buffer = xmalloc(sizeof(char) * STDIN_READ_SIZE);
     size_t buffer_size = STDIN_READ_SIZE;
@@ -62,61 +110,9 @@ static FileBuffer* file_buffer_read_stdin(void)
     return file_buffer;
 }
 
-static void read_file_contents(FILE* fp, char** buffer, size_t* length)
-{
-    fseek(fp, 0, SEEK_END);
-    size_t file_length = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-
-    *buffer = xmalloc(sizeof(char) * (file_length + 1));
-    *length = fread(*buffer, sizeof(char), file_length, fp);
-    (*buffer)[*length] = '\0';
-
-    assert(file_length == *length);
-}
-
-// Create a file buffer from a given path (or at least attempt to). Path should
-// be the canonical path to the file itself
-FileBuffer* file_buffer_try_get(Filepath path)
-{
-    // Special case of the path being '-'. In that case we want to create the 
-    // file from stdin. This is unlikely though but the check is quick enough
-    // that this is not really a large concern for us.
-    if (filepath_is(&path, "-"))
-    {
-        return file_buffer_read_stdin();
-    }
-        
-    FILE* fp = fopen(path.path, "rb");
-
-    // Check if we got a file or not
-    if (!fp)
-    {
-        return NULL;
-    }
-
-    // Get our buffer and it's length
-    char* buffer = NULL;
-    size_t length = 0;
-
-    read_file_contents(fp, &buffer, &length);
-
-    fclose(fp);
-
-    FileBuffer* file_buffer = xmalloc(sizeof(FileBuffer));
-    *file_buffer = (FileBuffer)
-    {
-        .path = path,
-        .buffer_start = buffer,
-        .buffer_end = buffer + length,
-        .type = FILE_BUFFER_FILE
-    };
-
-    return file_buffer;
-}
-
 // Create a file buffer from a buffer with a given name
-FileBuffer* file_buffer_from_buffer(Filepath name, Buffer buffer, FileBufferType type)
+FileBuffer* file_buffer_from_buffer(Filepath name, Buffer buffer,
+        FileBufferType type)
 {
     assert(type != FILE_BUFFER_FILE);
 
@@ -204,8 +200,7 @@ FileManager file_manager_create(void)
     FileManager fm = (FileManager)
     {
         .files = hash_map_create(fp_hash, fp_key_cmp, fp_free),
-        .ananomous_files = hash_map_create(fp_hash, fp_key_cmp, fp_free),
-        .ananomous_buffer_count = 0,
+        .ananomous_files = file_buffer_vector_create(16),
         .builtin = NULL,
         .command_line = NULL
     };
@@ -217,7 +212,7 @@ FileManager file_manager_create(void)
 void file_manager_free(FileManager* fm)
 {
     hash_map_delete(&fm->files);
-    hash_map_delete(&fm->ananomous_files);
+    file_buffer_vector_free(&fm->ananomous_files, file_buffer_free);
     
     if (fm->builtin)
     {
@@ -250,63 +245,63 @@ FileBuffer* file_manager_try_get(FileManager* fm, Filepath path)
     // into the hashmap if it was a real file
     fb = file_buffer_try_get(path);
     
-    // Failed to get the file, handle elsewhere (also might be fine if we don't
-    // get the file on this call, e.g. looking for an include)
-    if (!fb) {
+    // Attempt see if we are asking for the file from stdin. If so attempt to
+    // read and return it but only if we didn't get the file yet.
+    if (!fb && filepath_is(&path, "-")) {
+        fb = file_buffer_from_stdin();
+    }
+
+    // Failed to get the file based on the path of the file and the file wasn't
+    // attempting to be read from stdin either. So just return NULL and indicate
+    // that we couldn't find the file.
+    if (!fb)
+    {
         return NULL;
     }
 
     // insert the file into the map
-    FileBuffer* inserted = hash_map_insert(&fm->files, &fb->path, fb);
-
-    assert(inserted == fb);
+    assert(!hash_map_contains(&fm->files, &fb->path));
+    hash_map_insert(&fm->files, &fb->path, fb);
 
     return fb;
 }
 
-// Create a filebuffer from the given buffer and of the given type of type. It
-// should be noted that this function will ensure duplicate builtin and 
-// command-line buffers cannot be created. Also note that type cannot be file.
-FileBuffer* file_manager_buffer_from(FileManager* fm, Buffer buffer, FileBufferType type)
+FileBuffer* file_manager_add_anonymous(FileManager* fm, Buffer buffer)
 {
-    assert(type != FILE_BUFFER_FILE);
+    Filepath name = filepath_from_cstring("<anonymous>");
+    
+    // Create the new filebuffer and push it to our vector of anonymous buffers
+    FileBuffer* new_buff = file_buffer_from_buffer(name, buffer,
+            FILE_BUFFER_ANONOMOUS);
+    file_buffer_vector_push(&fm->ananomous_files, new_buff);
 
-    Filepath name;
-    if (type == FILE_BUFFER_BUILTIN)
-    {
-        assert(fm->builtin == NULL);
-        name = FILEPATH_STATIC_INIT("<builtin>");
-    }
-    else if (type == FILE_BUFFER_COMMAND_LINE)
-    {
-        assert(fm->command_line == NULL);
-        name = FILEPATH_STATIC_INIT("<command-line>");
-    }
-    else
-    {
-        assert(fm->ananomous_buffer_count != UINT_MAX);
-        // Note that this can never overflow since unsigned int's dont have a
-        // large string size range. So we will not check for that
-        name.len = sprintf(name.path, "<anonomous-buffer-%u>", fm->ananomous_buffer_count);
-        fm->ananomous_buffer_count++;
-    }
+    return new_buff;
+}
 
-    FileBuffer* fb = file_buffer_from_buffer(name, buffer, type);
+FileBuffer* file_manager_add_builtin(FileManager* fm, Buffer buffer)
+{
+    assert(fm->builtin == NULL);
 
-    // Now insert the filebuffer in the structure
-    if (type == FILE_BUFFER_BUILTIN)
-    {
-        fm->builtin = fb;
-    }
-    else if (type == FILE_BUFFER_COMMAND_LINE)
-    {
-        fm->command_line = fb;
-    }
-    else
-    {
-        FileBuffer* inserted = hash_map_insert(&fm->ananomous_files, &fb->path, fb);
-        assert(inserted == fb);
-    }
+    Filepath name = filepath_from_cstring("<command-line>");
+    
+    // Create the new filebuffer and add it as our builtin buffer
+    FileBuffer* new_buff = file_buffer_from_buffer(name, buffer,
+            FILE_BUFFER_BUILTIN);
+    fm->builtin = new_buff;
 
-    return fb;
+    return new_buff;
+}
+
+FileBuffer* file_manager_add_command_line(FileManager* fm, Buffer buffer)
+{
+    assert(fm->command_line == NULL);
+
+    Filepath name = filepath_from_cstring("<command-line>");
+    
+    // Create the new filebuffer and add it as our command line buffer
+    FileBuffer* new_buff = file_buffer_from_buffer(name, buffer,
+            FILE_BUFFER_COMMAND_LINE);
+    fm->command_line = new_buff;
+
+    return new_buff;
 }

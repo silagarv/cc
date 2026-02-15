@@ -1,6 +1,7 @@
 #ifndef DECLARATION_H
 #define DECLARATION_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 #include <util/vec.h>
@@ -176,7 +177,8 @@ typedef enum DeclarationType {
     DECLARATION_UNION, /* of a union */
     DECLARATION_ENUM_CONSTANT, /* constants within an enum */
     DECLARATION_ENUM, /* an enum */
-    DECLARATION_LABEL /* A label within the source e.g. `foo:` */
+    DECLARATION_LABEL, /* A label within the source e.g. `foo:` */
+    DECLARATION_STATIC_ASSERT /* A static assert */
 } DeclarationType;
 
 // A structure to hold all of the basics needed in a declaration. This helps us
@@ -307,6 +309,9 @@ typedef struct DeclarationCompound {
     // The members of the structure.
     DeclarationList members;
 
+    // Are we an anonymous compound declaration
+    bool anonymous;
+
     // Do we have a flexible array member
     bool flexible_array;
 } DeclarationCompound;
@@ -338,6 +343,21 @@ typedef struct DeclarationEnum {
     // Was this an anonymous enum
     bool anonymous;
 } DeclarationEnum;
+
+typedef struct DeclarationStaticAssert {
+    // base is only here so we can have defined behaviour.
+    DeclarationBase base;
+
+    Location static_assert_loc;
+    Location lparen_loc;
+    Location rparen_loc;
+
+    Expression* ice;
+    Expression* string;
+
+    bool c23;
+    bool assert_failed;
+} DeclarationStaticAssert;
 
 typedef struct DeclarationLabel {
     // The base declaration of this object
@@ -382,6 +402,9 @@ union Declaration {
     // label and could be implicitly constructed. However, this will be checked
     // for at some stage.
     DeclarationLabel label;
+
+    // A static assert declaration
+    DeclarationStaticAssert sa;
 };
 
 // A structure to hold 0 or more declarations. If num_decls is 0 then d should
@@ -399,8 +422,9 @@ vector_of_decl(Declaration*, Declaration, declaration);
 
 DeclarationSpecifiers declaration_specifiers_create(Location location);
 bool declaration_specifiers_has_declaration(const DeclarationSpecifiers* d);
-Declaration* declaration_specifiers_get_declaration(
-        const DeclarationSpecifiers* decl_spec);
+bool declaration_specifiers_has_tag_declaration(const DeclarationSpecifiers* d);
+TypeSpecifierType declaration_specifiers_type(DeclarationSpecifiers* d);
+Declaration* declaration_specifiers_get_declaration(DeclarationSpecifiers* d);
 bool declaration_specifiers_allow_typename(const DeclarationSpecifiers* d);
 
 StorageSpecifier declaration_specifiers_storage(DeclarationSpecifiers* d);
@@ -519,6 +543,7 @@ Declaration* declaration_create_enum(AstAllocator* allocator,
 bool declaration_enum_has_entries(const Declaration* declaration);
 void declaration_enum_set_entries(Declaration* declaration,
         DeclarationListEntry* entries, size_t num_entries);
+bool declaration_enum_is_anonymous(const Declaration* decalration);
 
 Declaration* declaration_create_enum_constant(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type,
@@ -534,7 +559,8 @@ uint64_t  declaration_field_get_bitfield(const Declaration* decl);
 bool declaration_field_is_fexible_array(const Declaration* decl);
 
 Declaration* declaration_create_struct(AstAllocator* allocator,
-        Location location, Identifier* identifier, QualifiedType type);
+        Location location, Identifier* identifier, QualifiedType type,
+        bool anonymous);
 void declaration_struct_add_member(Declaration* declaration,
         Declaration* member);
 DeclarationList declaration_struct_get_members(const Declaration* declaration);
@@ -542,9 +568,11 @@ bool declaration_struct_is_complete(const Declaration* declaration);
 void declaration_struct_set_complete(Declaration* declaration);
 void declaration_struct_set_flexible_array(Declaration* decalration);
 bool declaration_struct_get_flexible_array(Declaration* decalration);
+bool declaration_struct_is_anonymous(const Declaration* decalration);
 
 Declaration* declaration_create_union(AstAllocator* allocator,
-        Location location, Identifier* identifier, QualifiedType type);
+        Location location, Identifier* identifier, QualifiedType type,
+        bool anonymous);
 void declaration_union_add_member(Declaration* declaration,
         Declaration* members);
 bool declaration_union_is_complete(const Declaration* declaration);
@@ -566,6 +594,10 @@ Declaration* declaration_function_get_definition(const Declaration* decl);
 bool declaration_function_has_definition(const Declaration* declaration);
 bool declaration_function_is_knr(const Declaration* declaration);
 DeclarationList declaration_function_get_paramaters(const Declaration* func);
+
+Declaration* declaration_create_static_assert(AstAllocator* allocator,
+        Location static_assert_loc, Location lparen_loc, Expression* ice,
+        Expression* string, Location rparen_loc, bool c23, bool assert_failed);
 
 // Create a declaration of label identifier at the given location, and indicate
 // if this label was implictly constructed.

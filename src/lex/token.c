@@ -129,6 +129,11 @@ bool token_is_string(const Token* token)
     return (token->type == TOK_STRING || token->type == TOK_WIDE_STRING);
 }
 
+void token_set_type(Token* token, TokenType type)
+{
+    token->type = type;
+}
+
 TokenData token_create_literal_node(String string)
 {
     LiteralNode* node = xmalloc(sizeof(LiteralNode));

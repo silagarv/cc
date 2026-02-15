@@ -7,6 +7,7 @@
 #include "util/hash_map.h"
 
 #include "files/filepath.h"
+#include "util/vec.h"
 
 // The type of file buffer we are. File's represent normal files on disk,
 // builtin represents the builtin buffer for definitions given before any file
@@ -29,6 +30,8 @@ typedef struct FileBuffer {
     FileBufferType type; // the type of filebuffer we are
 } FileBuffer;
 
+vector_of_decl(FileBuffer*, FileBuffer, file_buffer);
+
 // A file manager structure used to store all of our filebuffers, retrieve them,
 // get canonicalise the paths and help us to find new files.
 typedef struct FileManager {
@@ -43,13 +46,7 @@ typedef struct FileManager {
     // count of the ananomous file. This should be used for compiler generated
     // buffers for example _Pragma buffers or stringification of possibly token
     // concatenation
-    HashMap ananomous_files;
-
-    // The count of "builtin buffers that we have inserted into the filemap".
-    // each ananomous buffer gets a unique name, note that this however does
-    // not include the <builtin> buffer which gets it's own special buffer as
-    // well as <command-line>
-    unsigned int ananomous_buffer_count;
+    FileBufferVector ananomous_files;
 
     // The "<builtin>" buffer used for builtin in macros and other defines, kept
     // hidden from the user.
@@ -68,6 +65,10 @@ typedef struct FileManager {
 // required.If the file is unable to be opened or read then a NULL pointer is 
 // returned indicating it failed.
 FileBuffer* file_buffer_try_get(Filepath path);
+
+// Attempt to get a filebuffer by reading from standard input until all the 
+// input from it is read. If this fails, then NULL is returned
+FileBuffer* file_buffer_from_stdin(void);
 
 // Create a file buffer from a buffer with a given name. Should only be used to
 // create compiler generated buffers.
@@ -104,10 +105,10 @@ void file_manager_free(FileManager* fm);
 // to track accurate names.
 FileBuffer* file_manager_try_get(FileManager* fm, Filepath path);
 
-// Create a filebuffer from the given buffer and of the given type of type. It
-// should be noted that this function will ensure duplicate builtin and 
-// command-line buffers cannot be created. Also note that type cannot be file.
-FileBuffer* file_manager_buffer_from(FileManager* fm, Buffer buffer,
-        FileBufferType type);
+// Functions to add new 'files' to the file manager in order to have them be of
+// use to us for lexing and that kind of thing.
+FileBuffer* file_manager_add_anonymous(FileManager* fm, Buffer buffer);
+FileBuffer* file_manager_add_builtin(FileManager* fm, Buffer buffer);
+FileBuffer* file_manager_add_command_line(FileManager* fm, Buffer buffer);
 
 #endif /* FILE_BUFFER_H */

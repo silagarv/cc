@@ -116,24 +116,14 @@ static CompilerOptions compiler_options_create(void)
 static void compiler_options_finish(CompilerOptions* opts,
         DiagnosticManager* dm, CommandLineState* state)
 {
-    // Make sure we have an input file if we aren't going to do any of the other
-    // options like version or help through!
-    if (opts->infile == NULL)
-    {
-        if (!(opts->help || opts->version))
-        {
-            diagnostic_error(dm, "no input files");
-            state->options_okay = false;
-        }
-    }
-
-    // Set the default language if required
+    // Set the default language if it was not done already
     if (opts->standard == LANG_STANDARD_DEFAULT)
     {
         opts->standard = LANG_STANDARD_C99;
     }
 
-    // Check the optimisation level and give a sensible default level
+    // Check the optimisation level and give a sensible default level if the 
+    // user did not specify any level.
     if (opts->opt_level == OPT_LEVEL_UNSPECIFIED)
     {
         opts->opt_level = OPT_LEVEL_0;
@@ -504,11 +494,11 @@ static bool handle_warning(CompilerOptions* opts, DiagnosticManager* dm,
     DiagnosticWarning warning = diagnostic_string_to_warning(argument);
 
     // Special case of diagnostic error
-    if (warning == DIAG_ERROR)
+    if (warning == Werror)
     {
         if (error == true)
         {
-            warning = DIAG_UNKNOWN;
+            warning = Wunknown;
         }
         else
         {
@@ -518,7 +508,7 @@ static bool handle_warning(CompilerOptions* opts, DiagnosticManager* dm,
 
     // For now just print a warning about not knowing about the warning option
     // if it wasn't known and do nothing about any of the other warnings
-    if (warning == DIAG_UNKNOWN)
+    if (warning == Wunknown)
     {
         diagnostic_warning(dm, "unknown warning option '-W%s%s'",
                 error ? "error=" : "", argument);

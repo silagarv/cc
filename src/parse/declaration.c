@@ -88,10 +88,24 @@ bool declaration_specifiers_has_declaration(const DeclarationSpecifiers* d)
     return d->declaration != NULL;
 }
 
-Declaration* declaration_specifiers_get_declaration(
-        const DeclarationSpecifiers* decl_spec)
+bool declaration_specifiers_has_tag_declaration(const DeclarationSpecifiers* d)
 {
-    return decl_spec->declaration;
+    if (d->declaration == NULL)
+    {
+        return false;
+    }
+
+    return declaration_is_tag(d->declaration);
+}
+
+TypeSpecifierType declaration_specifiers_type(DeclarationSpecifiers* d)
+{
+    return d->type_spec_type;
+}
+
+Declaration* declaration_specifiers_get_declaration(DeclarationSpecifiers* d)
+{
+    return d->declaration;
 }
 
 bool declaration_specifiers_allow_typename(const DeclarationSpecifiers* d)
@@ -779,6 +793,13 @@ void declaration_enum_set_entries(Declaration* declaration,
     type_enum_set_complete(&declaration->enumeration.base.qualified_type);
 }
 
+bool declaration_enum_is_anonymous(const Declaration* decalration)
+{
+    assert(declaration_is(decalration, DECLARATION_ENUM));
+
+    return decalration->enumeration.anonymous;
+}
+
 Declaration* declaration_create_enum_constant(AstAllocator* allocator,
         Location location, Identifier* identifier, QualifiedType type,
         Location equals, Expression* expression, int value)
@@ -846,7 +867,8 @@ bool declaration_field_is_fexible_array(const Declaration* decl)
 }
 
 Declaration* declaration_create_struct(AstAllocator* allocator,
-        Location location, Identifier* identifier, QualifiedType type)
+        Location location, Identifier* identifier, QualifiedType type,
+        bool anonymous)
 {
     Declaration* decl = declaration_create_base(allocator,
             sizeof(DeclarationCompound), DECLARATION_STRUCT, location,
@@ -854,6 +876,7 @@ Declaration* declaration_create_struct(AstAllocator* allocator,
             FUNCTION_SPECIFIER_NONE, false);
     decl->compound.members = declaration_list(allocator);
     decl->compound.flexible_array = false;
+    decl->compound.anonymous = anonymous;
 
     return decl;
 }
@@ -909,8 +932,14 @@ bool declaration_struct_get_flexible_array(Declaration* decalration)
     return decalration->compound.flexible_array;
 }
 
+bool declaration_struct_is_anonymous(const Declaration* decalration)
+{
+    return decalration->compound.anonymous;
+}
+
 Declaration* declaration_create_union(AstAllocator* allocator,
-        Location location, Identifier* identifier, QualifiedType type)
+        Location location, Identifier* identifier, QualifiedType type,
+        bool anonymous)
 {
     Declaration* decl = declaration_create_base(allocator,
             sizeof(DeclarationCompound), DECLARATION_UNION, location,
@@ -918,6 +947,7 @@ Declaration* declaration_create_union(AstAllocator* allocator,
             FUNCTION_SPECIFIER_NONE, false);
     decl->compound.members = declaration_list(allocator);
     decl->compound.flexible_array = false;
+    decl->compound.anonymous = anonymous;
 
     return decl;
 }
@@ -1025,6 +1055,25 @@ Declaration* declaration_create_label(AstAllocator* allocator,
             (QualifiedType) {0}, STORAGE_NONE,
             FUNCTION_SPECIFIER_NONE, implicit);
     decl->label.used = implicit; // if implicit then used...
+
+    return decl;
+}
+
+Declaration* declaration_create_static_assert(AstAllocator* allocator,
+        Location static_assert_loc, Location lparen_loc, Expression* ice,
+        Expression* string, Location rparen_loc, bool c23, bool assert_failed)
+{
+    Declaration* decl = declaration_create_base(allocator,
+            sizeof(DeclarationStaticAssert), DECLARATION_STATIC_ASSERT,
+            static_assert_loc, NULL, (QualifiedType) {0}, STORAGE_NONE,
+            FUNCTION_SPECIFIER_NONE, false);
+    decl->sa.static_assert_loc = static_assert_loc;
+    decl->sa.lparen_loc = lparen_loc;
+    decl->sa.rparen_loc = rparen_loc;
+    decl->sa.ice = ice;
+    decl->sa.string =string;
+    decl->sa.c23 = c23;
+    decl->sa.assert_failed = assert_failed;
 
     return decl;
 }

@@ -3,19 +3,21 @@
 
 // An enum containing all of the diagnostics that we have.
 typedef enum DiagnosticWarning {
-    DIAG_NONE = -1, // Represents and generic warning: -1 so it won't
+    Wnone = -1, // Represents and generic warning: -1 so it won't
                             // be counted by the 'count'
     
     // Our specific warning options start here
-    DIAG_OTHER, // legit any unknown warning!
-    DIAG_COUNT, // To represent the cound of all warnings
+    WARNING_START,
+    Wother = WARNING_START, // legit any unknown warning!
+    WARNING_COUNT, // To represent the cound of all warnings
     // End of specific warning options
 
-    DIAG_ERROR, // pseudo warning that treats warnings as errors
-    DIAG_ALL, // A pseudo warning which actually cosntrols a bunch
-    DIAG_EXTRA, // All of the -Wextra options
-    DIAG_PEDANTIC, // For our pedantic options
-    DIAG_UNKNOWN, // An unknown warning option
+    Werror, // pseudo warning that treats warnings as errors
+    Wall, // A pseudo warning which actually cosntrols a bunch
+    Wextra, // All of the -Wextra options
+    Wpedantic, // For our pedantic options
+    Wfatal_errors, // A switch to set fatal errors to be true
+    Wunknown, // An unknown warning option
 } DiagnosticWarning;
 
 // An enum to keep track of the diagnostic state. Must be a bitfield since we

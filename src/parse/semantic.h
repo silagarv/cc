@@ -33,6 +33,9 @@ typedef struct SemanticChecker {
     // anonymous types if needed
     IdentifierTable* identifiers;
 
+    // Some identifiers that we want to use so that we can do quick comparisons
+    Identifier* ident_main;
+
     // The ast so that we can get the builtin types and all of the current types
     Ast* ast;
 
@@ -110,6 +113,9 @@ Declaration* semantic_checker_process_struct_declarator(SemanticChecker* sc,
         Declaration* struct_decl, Declarator* declarator);
 Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
         Declarator* declarator);
+Declaration* semantic_checker_process_static_assert(SemanticChecker* sc,
+        Location sa_loc, Location lparen_loc, Expression* ice,
+        Expression* string, Location rparen_loc, bool old_token, bool c23);
 
 // Semantic checker functions for tags and enum constants. Note I eventually 
 // want to remove all of these functions here and have them happen internally.

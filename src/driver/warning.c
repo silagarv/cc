@@ -13,18 +13,18 @@ typedef struct DiagnosticOption {
 } DiagnosticOption;
 
 // Make this constant since this should never need to change
-static const DiagnosticOption warnings[DIAG_COUNT] =
+static const DiagnosticOption warnings[WARNING_COUNT] =
 {
-    [DIAG_OTHER] = (DiagnosticOption)
+    [Wother] = (DiagnosticOption)
         {
-            .type = DIAG_OTHER,
+            .type = Wother,
             .state = DIAG_STATE_ON, 
             .name = "other",
         },
 };
 
 // Also keep a count of the warnings
-static const size_t warnings_count = DIAG_COUNT;
+static const size_t warnings_count = WARNING_COUNT;
 
 static bool string_is(const char* str1, const char* str2)
 {
@@ -36,22 +36,27 @@ DiagnosticWarning diagnostic_string_to_warning(const char* string)
     // Check for any possible grouped warnings
     if (string_is(string, "") || string_is(string, "all"))
     {
-        return DIAG_ALL;
+        return Wall;
     }
 
     if (string_is(string, "extra"))
     {
-        return DIAG_EXTRA;
+        return Wextra;
     }
 
     if (string_is(string, "pedantic"))
     {
-        return DIAG_PEDANTIC;
+        return Wpedantic;
     }
     
     if (string_is(string, "error"))
     {
-        return DIAG_ERROR;
+        return Werror;
+    }
+
+    if (string_is(string, "fatal-errors"))
+    {
+        return Wfatal_errors;
     }
 
     // Finally as a last resort go through all of the warnings that we could 
@@ -64,12 +69,17 @@ DiagnosticWarning diagnostic_string_to_warning(const char* string)
         }
     }
 
-    return DIAG_UNKNOWN;
+    return Wunknown;
 }
 
 const char* diagnostic_warning_to_string(DiagnosticWarning warning)
 {
-    assert(warning >= DIAG_OTHER && warning < DIAG_COUNT);
-    
-    return warnings[warning].name;
+    // If it's between the range of the warnings that all have different option
+    // names than return that name otherwise just return NULL.
+    if (warning >= Wother && warning < WARNING_COUNT)
+    {
+        return warnings[warning].name;
+    }
+
+    return NULL;
 }

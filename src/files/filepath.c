@@ -1,6 +1,7 @@
 #include "filepath.h"
 
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 
 bool filepath_is(const Filepath* path, const char* is)
@@ -48,3 +49,8 @@ bool filepath_is_directory(const Filepath* path)
     return false;
 }
 
+bool filepath_get_real(const Filepath* input, Filepath* output)
+{
+    char* path = realpath(input->path, output->path);
+    return path != NULL;
+}

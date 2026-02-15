@@ -29,11 +29,11 @@ typedef struct Preprocessor {
     // e.g. printing diagnostics during parsing for instance. 
     SourceManager* sm;
 
-    // The table we are storing all of our identifiers in.
-    IdentifierTable* identifiers;
-
     // The header finder used to search for headers within the source
     HeaderFinder hf;
+
+    // The table we are storing all of our identifiers in.
+    IdentifierTable* identifiers;
 
     // The arena that holds all of the data for our literal nodes. This includes
     // strings, characters, and numbers etc...

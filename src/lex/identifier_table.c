@@ -4,12 +4,13 @@
 #include <string.h>
 #include <assert.h>
 
-#include "driver/lang.h"
 #include "util/xmalloc.h"
 #include "util/str.h"
 #include "util/hash.h"
 #include "util/hash_map.h"
 #include "util/vec.h"
+
+#include "driver/lang.h"
 
 #include "lex/char_help.h"
 #include "lex/token.h"
@@ -393,10 +394,25 @@ IdentifierTable identifier_table_create(LangOptions* opts)
             TOK_PP_undef);
     identifier_table_insert_keyword(&table, "include", TOK_IDENTIFIER,
             TOK_PP_include);
+    if (lang_opts_c23(opts))
+    {
+        identifier_table_insert_keyword(&table, "embed", TOK_IDENTIFIER,
+                TOK_PP_embed);
+    }
     identifier_table_insert_keyword(&table, "ifdef", TOK_IDENTIFIER,
             TOK_PP_ifdef);
     identifier_table_insert_keyword(&table, "ifndef", TOK_IDENTIFIER,
             TOK_PP_ifndef);
+    if (lang_opts_c23(opts))
+    {
+        identifier_table_insert_keyword(&table, "elifdef", TOK_IDENTIFIER,
+                TOK_PP_elifdef);
+    }
+    if (lang_opts_c23(opts))
+    {
+        identifier_table_insert_keyword(&table, "elifndef", TOK_IDENTIFIER,
+                TOK_PP_elifndef);
+    }
     identifier_table_insert_keyword(&table, "elif", TOK_IDENTIFIER,
             TOK_PP_elif);
     identifier_table_insert_keyword(&table, "endif", TOK_IDENTIFIER,
@@ -405,10 +421,30 @@ IdentifierTable identifier_table_create(LangOptions* opts)
             TOK_PP_line);
     identifier_table_insert_keyword(&table, "error", TOK_IDENTIFIER,
             TOK_PP_error);
+    if (lang_opts_c23(opts))
+    {
+        identifier_table_insert_keyword(&table, "warning", TOK_IDENTIFIER,
+                TOK_PP_warning);
+    }
     identifier_table_insert_keyword(&table, "pragma", TOK_IDENTIFIER,
             TOK_PP_pragma);
     identifier_table_insert_keyword(&table, "defined", TOK_IDENTIFIER,
             TOK_PP_defined);
+    if (lang_opts_c23(opts))
+    {
+        identifier_table_insert_keyword(&table, "__has_include", TOK_IDENTIFIER,
+                TOK_PP___has_include);
+    }
+    if (lang_opts_c23(opts))
+    {
+        identifier_table_insert_keyword(&table, "__has_embed", TOK_IDENTIFIER,
+                TOK_PP___has_embed);
+    }
+    if (lang_opts_c23(opts))
+    {
+        identifier_table_insert_keyword(&table, "__has_c_attribute",
+                TOK_IDENTIFIER, TOK_PP___has_c_attribute);
+    }
 
     return table;
 }

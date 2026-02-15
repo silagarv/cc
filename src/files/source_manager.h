@@ -143,7 +143,8 @@ void source_manager_delete(SourceManager* sm);
 SourceFile* source_manager_create_filepath(SourceManager* sm, Filepath path);
 SourceFile* source_manager_create_builtin_buffer(SourceManager* sm, Buffer buffer);
 SourceFile* source_manager_create_command_line_buffer(SourceManager* sm, Buffer buffer);
-SourceFile* source_manager_create_anonomous_buffer(SourceManager* sm, Buffer buffer);
+SourceFile* source_manager_create_anonomous_buffer(SourceManager* sm,
+        Buffer buffer, Location include);
 
 // Look up a source file from a given id
 SourceFile* source_manager_from_id(SourceManager* sm, SourceFileId id);

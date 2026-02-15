@@ -9,9 +9,9 @@
 #include <stddef.h>
 #include <string.h>
 
-#include "driver/lang.h"
 #include "util/panic.h"
 
+#include "driver/lang.h"
 #include "driver/diagnostic.h"
 
 #include "files/location.h"
@@ -100,6 +100,11 @@ static Location current_token_end_location(Parser* parser)
     return parser->token.end;
 }
 
+static Location previous_token_end_location(Parser* parser)
+{
+    return parser->prev_token.end;
+}
+
 static Location consume(Parser* parser)
 {
     // This method helps us to automatically track the braces and brackets!
@@ -147,8 +152,13 @@ static Location consume(Parser* parser)
             break;
     }
 
+    // Set the previous token to be the current token we want to refer to
+    parser->prev_token = parser->token;
+
+    // Get the location of the current token that we have so we can return that
     Location location = current_token_location(parser);
 
+    // Advance the token to the next one
     preprocessor_advance_token(&parser->pp, &parser->token);
 
     return location;
@@ -205,6 +215,9 @@ static void recover_many(Parser* parser, TokenType* types, size_t num_types,
         RecoverFlags flags)
 {
     bool has_skipped = false;
+    size_t paren_count = 0;
+    size_t bracket_count = 0;
+    size_t curly_count = 0;
     while (true)
     {
         // Check if we got to a token we wanted to stop at        
@@ -229,18 +242,21 @@ static void recover_many(Parser* parser, TokenType* types, size_t num_types,
             // For each of our paren thesis types make sure we try to balance
             // then as best as possible
             case TOK_LPAREN:
+                paren_count++;
                 consume(parser);
                 recover_many(parser, (TokenType[1]) {TOK_RPAREN}, 1,
                         RECOVER_EAT_TOKEN);
                 break;
 
             case TOK_LBRACKET:
+                bracket_count++;
                 consume(parser);
                 recover_many(parser, (TokenType[1]) {TOK_RBRACKET}, 1, 
                         RECOVER_EAT_TOKEN);
                 break;
 
             case TOK_LCURLY:
+                curly_count++;
                 consume(parser);
                 recover_many(parser, (TokenType[1]) {TOK_RCURLY}, 1, 
                         RECOVER_EAT_TOKEN);
@@ -251,9 +267,13 @@ static void recover_many(Parser* parser, TokenType* types, size_t num_types,
                 // If we have parens and this is not the problem token. We can
                 // assume we are done since the parse seems to want to finish
                 // handling some other production.
-                if (parser->paren_count && has_skipped)
+                if (paren_count)
                 {
-                    return;
+                    paren_count--;
+                    if (has_skipped)
+                    {
+                        return;
+                    }
                 }
                 consume(parser);
                 break;
@@ -262,9 +282,13 @@ static void recover_many(Parser* parser, TokenType* types, size_t num_types,
                 // If we have parens and this is not the problem token. We can
                 // assume we are done since the parse seems to want to finish
                 // handling some other production.
-                if (parser->bracket_count && has_skipped)
+                if (bracket_count)
                 {
-                    return;
+                    bracket_count--;
+                    if (has_skipped)
+                    {
+                        return;
+                    }
                 }
                 consume(parser);
                 break;
@@ -273,9 +297,13 @@ static void recover_many(Parser* parser, TokenType* types, size_t num_types,
                 // If we have parens and this is not the problem token. We can
                 // assume we are done since the parse seems to want to finish
                 // handling some other production.
-                if (parser->brace_count && has_skipped)
+                if (curly_count)
                 {
-                    return;
+                    curly_count--;
+                    if (has_skipped)
+                    {
+                        return;
+                    }
                 }
                 consume(parser);
                 break;
@@ -1950,7 +1978,7 @@ static Location parse_trailing_semi(Parser* parser, const char* context)
 {
     if (!is_match(parser, TOK_SEMI))
     {
-        diagnostic_error_at(parser->dm, current_token_location(parser),
+        diagnostic_error_at(parser->dm, previous_token_end_location(parser) + 1,
                 "expected ';' after %s", context);
 
         // Only attempt some recovery if we arent at the end of a compound stmt.
@@ -3028,6 +3056,16 @@ static DeclarationGroup parse_init_declarator_list(Parser* parser,
     // we can then use for a decl group
     DeclarationList list = declaration_list(&parser->ast->ast_allocator);
 
+    // If the declarations specifiers had a declaration, then we should add that
+    // onto the declaration list.
+    // TODO: need to see what happens if the tag is not a definition at that
+    // TODO: point in time and is an already defined tag etc...
+    // if (declaration_specifiers_has_tag_declaration(specifiers))
+    // {
+    //     Declaration* d = declaration_specifiers_get_declaration(specifiers);
+    //     declaration_list_push(&list, d);
+    // }
+
     // Here we know that we shouldn't create a function definition and so we
     // can finally process the declarator and potentially try to parse an
     // initializer after the definition.
@@ -3519,7 +3557,8 @@ static void parse_struct_declaration(Parser* parser, Declaration* decl)
     if (is_match(parser, TOK_RCURLY))
     {
         diagnostic_warning_at(parser->dm, current_token_location(parser),
-                "expected ';' after struct declarator");
+                "expected ';' after %s declarator",
+                declaration_is(decl, DECLARATION_STRUCT) ? "struct" : "union");
     }
     else
     {
@@ -4250,11 +4289,16 @@ static Declaration* parse_static_assert_declaration(Parser* parser,
 {
     assert(is_match_two(parser, TOK__Static_assert, TOK_static_assert));
 
-    bool is_old = is_match(parser, TOK__Static_assert);
+    bool old_token = is_match(parser, TOK__Static_assert);
 
     Location sa_loc = consume(parser);
 
     Location lparen_loc = LOCATION_INVALID;
+    Expression* ice = NULL;
+    Expression* string = NULL;
+    Location rparen_loc = LOCATION_INVALID;
+    bool c23_sa = false;
+
     if (!try_match(parser, TOK_LPAREN, &lparen_loc))
     {
         diagnostic_error_at(parser->dm, lparen_loc, "expected '('");
@@ -4271,9 +4315,24 @@ static Declaration* parse_static_assert_declaration(Parser* parser,
     }
 
     // Parse the constant expression.
-    Expression* ice = parse_constant_expression(parser);
+    ice = parse_constant_expression(parser);
 
-    if (!try_match(parser, TOK_COMMA, &lparen_loc))
+    // If we're in c23 mode then we are allowed to have a static assert with
+    // no string message. Also allow this is C11 mode as an extension. For both
+    // note that there was no string message given.
+    if ((lang_opts_c23(parser->lang) && !is_match(parser, TOK_COMMA))
+            || is_match(parser, TOK_RPAREN))
+    {
+        if (!lang_opts_c23(parser->lang))
+        {
+            diagnostic_warning_at(parser->dm, current_token_location(parser),
+                    "'_Static_assert' with no message is a C23 extension");
+        }
+
+        c23_sa = true;
+        goto post_string;
+    }
+    else if (!try_match(parser, TOK_COMMA, &lparen_loc))
     {
         diagnostic_error_at(parser->dm, lparen_loc, "expected ','");
         recover(parser, TOK_SEMI, RECOVER_EAT_TOKEN);
@@ -4290,9 +4349,9 @@ static Declaration* parse_static_assert_declaration(Parser* parser,
         recover(parser, TOK_SEMI, RECOVER_EAT_TOKEN);
         return NULL;
     }
-    Expression* string = parse_string_expression(parser, false);
+    string = parse_string_expression(parser, false);
     
-    Location rparen_loc;
+post_string:;
     bool should_parse_semi = true;
     if (!try_match(parser, TOK_RPAREN, &rparen_loc))
     {
@@ -4306,15 +4365,12 @@ static Declaration* parse_static_assert_declaration(Parser* parser,
     if (should_parse_semi && trailing_semi)
     {
         *trailing_semi = parse_trailing_semi(parser,
-                is_old ? "'_Static_assert'" : "'static_assert'");
+                old_token ? "'_Static_assert'" : "'static_assert'");
     }
 
-    // TODO: implement a function for the semantic checker here and create a 
-    // TODO: declaration type for a static assert. Also implement string literls
-    // TODO: completely so that we can actually be useful.
-    diagnostic_error_at(parser->dm, sa_loc, "sorry '%s' is not implemented "
-            "at this time...", is_old ? "_Static_assert" : "static_assert");
-    return NULL;
+    // Attempt to create our static assert declaration
+    return semantic_checker_process_static_assert(&parser->sc, sa_loc,
+            lparen_loc, ice, string, rparen_loc, old_token, c23_sa);
 }
 
 static DeclarationGroup parse_declaration(Parser* parser,

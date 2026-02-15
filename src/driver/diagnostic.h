@@ -10,21 +10,10 @@
 #include "files/location.h"
 #include "files/source_manager.h"
 
-// Structure to store the diagnostic colours that we will use.
-typedef struct DiagnosticColours {
-    char* fatal;
-    char* error;
-    char* warning;
-    char* note;
-    char* help;
-    char* white;
-    char* highlight;
-    char* reset_highlight;
-    char* reset_all;
-} DiagnosticColours;
+typedef struct DiagnosticColours DiagnosticColours;
 
 typedef struct DiagnosticManager {
-    DiagnosticColours colours;
+    DiagnosticColours* colours;
     SourceManager* sm;
 
     size_t warning_count;
@@ -33,7 +22,7 @@ typedef struct DiagnosticManager {
     bool werror;
     bool disable_warnings;
 
-    DiagnosticState options[DIAG_COUNT];
+    DiagnosticState options[WARNING_COUNT];
 } DiagnosticManager;
 
 DiagnosticManager diagnostic_manager_init(SourceManager* sm);
@@ -49,11 +38,14 @@ size_t diagnostic_manager_get_error_count(const DiagnosticManager* dm);
 
 void diagnostic_emit_count(DiagnosticManager* dm);
 
+void diagnostic_fatal_error(DiagnosticManager* dm, const char* fmt, ...);
 void diagnostic_error(DiagnosticManager* dm, const char* fmt, ...);
 void diagnostic_warning(DiagnosticManager* dm, const char* fmt, ...);
 void diagnostic_note(DiagnosticManager* dm, const char* fmt, ...);
 void diagnostic_help(DiagnosticManager* dm, const char* fmt, ...);
 
+void diagnostic_fatal_error_at(DiagnosticManager* dm, Location loc,
+        const char* fmt, ...);
 void diagnostic_error_at(DiagnosticManager* dm, Location loc,
         const char* fmt, ...);
 void diagnostic_warning_at(DiagnosticManager* dm, Location loc,

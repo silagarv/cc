@@ -223,6 +223,8 @@ bool token_is_identifier(const Token* token);
 bool token_is_literal(const Token* token);
 bool token_is_string(const Token* token);
 
+void token_set_type(Token* token, TokenType type);
+
 TokenData token_create_identifier_node(String string);
 TokenData token_create_literal_node(String string);
 

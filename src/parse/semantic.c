@@ -34,6 +34,7 @@ SemanticChecker sematic_checker_create(DiagnosticManager* dm, LangOptions* opts,
         .dm = dm,
         .lang = opts,
         .identifiers = identifiers,
+        .ident_main = identifier_table_get(identifiers, "main"),
         .ast = ast,
         .scope = NULL,
         .function = NULL,
@@ -1301,15 +1302,26 @@ Declaration* semantic_checker_process_specifiers(SemanticChecker* sc,
 
     // Get the declaration from the specifiers if needed
     Declaration* to_return = NULL;
-    switch (specifiers->type_spec_type)
+    TypeSpecifierType tst = declaration_specifiers_type(specifiers);
+    switch (tst)
     {
+        // If we have a tag type get it from the declaration specifiers so that
+        // we we can check if it was anonymous or not. If it is then we are here
+        // since we have no declarator, so we can warn about this being useless.
+        // Enums are exempt here since they should always add some things into
+        // the scope that they are in.
         case TYPE_SPECIFIER_ENUM:
         case TYPE_SPECIFIER_STRUCT:
         case TYPE_SPECIFIER_UNION:
-            to_return = specifiers->declaration;
+            to_return = declaration_specifiers_get_declaration(specifiers);
+            if (tst != TYPE_SPECIFIER_ENUM
+                    && declaration_struct_is_anonymous(to_return))
+            {
+                diagnostic_warning_at(sc->dm, location,
+                        "declaration does not declare anything");
+            }
             break;
 
-        // At default warn if the declaration will be useless
         default:
             break;
     }
@@ -1317,15 +1329,14 @@ Declaration* semantic_checker_process_specifiers(SemanticChecker* sc,
     TypeQualifiers quals = specifiers->qualifiers;
     if (type_qualifier_is_restrict(quals))
     {
-        diagnostic_error_at(sc->dm, location,
-                "restrict requires a pointer");
+        diagnostic_error_at(sc->dm, location, "restrict requires a pointer");
     }
 
     // Diagnose the use of the inline keyword
     semantic_checker_diagnose_inline(sc, specifiers);
 
     // Now give some nice warnings about the storage if needed
-    StorageSpecifier storage = specifiers->storage_spec;
+    StorageSpecifier storage = declaration_specifiers_storage(specifiers);
     switch (storage)
     {
         case STORAGE_NONE:
@@ -1709,11 +1720,12 @@ static void semantic_checker_check_main(SemanticChecker* sc, Declaration* decl)
 
     // Check the declaration if it is called main and error about some certain
     // cases where the behavious is undefined. Or possible error about them too.
-    Identifier* main_id = identifier_table_get(sc->identifiers, "main");
-    if (declaration_get_identifier(decl) != main_id)
+    if (declaration_get_identifier(decl) != sc->ident_main)
     {
         return;
     }
+
+    // Otherwise we want to check these specific cases.
     if (declaration_is(decl, DECLARATION_FUNCTION))
     {
         semantic_checker_check_main_function(sc, decl);
@@ -2335,6 +2347,58 @@ Declaration* semantic_checker_process_declarator(SemanticChecker* sc,
                 type);
     }
     return semantic_checker_process_variable(sc, declarator, type);
+}
+
+Declaration* semantic_checker_process_static_assert(SemanticChecker* sc,
+        Location sa_loc, Location lparen_loc, Expression* ice,
+        Expression* string, Location rparen_loc, bool old_token, bool c23)
+{
+    // Ignore the static assert if either of our expressions are invalid.
+    if (expression_is_invalid(ice))
+    {
+        return NULL;
+    }
+    else if (string && expression_is_invalid(string))
+    {
+        return NULL;
+    }
+
+    bool assert_failed = false;
+
+    ExpressionIntegerValue value = {0};
+    if (!expression_is_integer_constant(ice))
+    {
+        assert_failed = true;
+        diagnostic_error_at(sc->dm, expression_get_location(ice), "static "
+                "assertion expression is not an integral constant expression");
+    }
+    else if (expression_fold_to_integer_constant(ice, &value))
+    {
+    }
+    else // Could not fold to an integer constant somehow...
+    {
+        panic("unreachable");
+    }
+
+    // Now actually see how the static assertion went
+    if (!assert_failed && expression_integer_value_get(&value) == 0)
+    {
+        assert_failed = true;
+        if (c23 /*|| expression_string_get_length(string)*/)
+        {
+            diagnostic_error_at(sc->dm, expression_get_location(ice), "static "
+                    "assertion failed");
+        }
+        else
+        {
+            diagnostic_error_at(sc->dm, expression_get_location(ice), "static "
+                    "assertion failed: %s", "");
+        }
+    }
+
+    // Finally, create and return the static assert declaration.
+    return declaration_create_static_assert(&sc->ast->ast_allocator, sa_loc,
+            lparen_loc, ice, string, rparen_loc, c23, assert_failed);
 }
 
 static bool semantic_checker_check_bitfield(SemanticChecker* sc,
@@ -3082,7 +3146,7 @@ static Declaration* semantic_checker_create_struct(SemanticChecker* sc,
         type_create_struct(&sc->ast->ast_allocator)
     };
     Declaration* decl = declaration_create_struct(&sc->ast->ast_allocator,
-            enum_location, name, type);
+            enum_location, name, type, anonymous);
     type_struct_set_declaration(type.type, decl);
 
     if (!anonymous)
@@ -3102,7 +3166,7 @@ static Declaration* semantic_checker_create_union(SemanticChecker* sc,
         type_create_union(&sc->ast->ast_allocator)
     };
     Declaration* decl = declaration_create_union(&sc->ast->ast_allocator,
-            enum_location, name, type);
+            enum_location, name, type, anonymous);
     type_union_set_declaration(type.type, decl);
 
     if (!anonymous)
@@ -6962,6 +7026,8 @@ Statement* semantic_checker_handle_for_statement(SemanticChecker* sc,
         }
         else
         {
+            // TODO: need to have a way to skip this if we get a struct defn
+            // TODO: in here so that we do not error about it
             DeclarationListEntry* decls =   
                     decl_group_get_multiple(&init_declaration);
             while (decls != NULL)

@@ -180,6 +180,14 @@ static int compiler_driver_process_translation_unit(CompilerDriver* driver,
 
 static int compiler_driver_do_compile(CompilerDriver* driver)
 {
+    // First check that we actually have any input file. If we do not have any
+    // files then we cannot proceed at all so simply abort compilation.
+    if (driver->options.infile == NULL)
+    {
+        diagnostic_fatal_error(&driver->dm, "no input files");
+        return EXIT_FAILURE;
+    }
+
     // First try to parse the translation unit.
     TranslationUnit tu = {0};
     return compiler_driver_process_translation_unit(driver, &tu);

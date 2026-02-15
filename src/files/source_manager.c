@@ -138,28 +138,25 @@ SourceFile* source_manager_create_filepath(SourceManager* sm, Filepath path)
     return source_manager_assign_file(sm, fb, 0);
 }
 
-SourceFile* source_manager_create_builtin_buffer(SourceManager* sm, Buffer buffer)
+SourceFile* source_manager_create_builtin_buffer(SourceManager* sm,
+        Buffer buffer)
 {
-    FileBuffer* fb = file_manager_buffer_from(&sm->fm, buffer, 
-            FILE_BUFFER_BUILTIN);
-
+    FileBuffer* fb = file_manager_add_builtin(&sm->fm, buffer);
     return source_manager_assign_file(sm, fb, 0);
 }
 
-SourceFile* source_manager_create_command_line_buffer(SourceManager* sm, Buffer buffer)
+SourceFile* source_manager_create_command_line_buffer(SourceManager* sm,
+        Buffer buffer)
 {
-    FileBuffer* fb = file_manager_buffer_from(&sm->fm, buffer, 
-            FILE_BUFFER_COMMAND_LINE);
-
+    FileBuffer* fb = file_manager_add_command_line(&sm->fm, buffer);
     return source_manager_assign_file(sm, fb, 0);
 }
 
-SourceFile* source_manager_create_anonomous_buffer(SourceManager* sm, Buffer buffer)
+SourceFile* source_manager_create_anonomous_buffer(SourceManager* sm,
+        Buffer buffer, Location include)
 {
-    FileBuffer* fb = file_manager_buffer_from(&sm->fm, buffer, 
-            FILE_BUFFER_ANONOMOUS);
-
-    return source_manager_assign_file(sm, fb, 0);
+    FileBuffer* fb = file_manager_add_anonymous(&sm->fm, buffer);
+    return source_manager_assign_file(sm, fb, include);
 }
 
 SourceFile* source_manager_from_id(SourceManager* sm, SourceFileId id)
@@ -182,7 +179,8 @@ SourceFile* source_manager_from_location(SourceManager* sm, Location loc)
     // TODO: convert to a binary search from O(n) search
     for (size_t i = 0; i < source_file_vector_size(&sm->sources); i++) 
     {
-        LocationRange range = source_file_vector_get(&sm->sources, i)->line_map.range;
+        SourceFile* file = source_file_vector_get(&sm->sources, i);
+        LocationRange range = file->line_map.range;
         if (location_range_contains(&range, loc))
         {
             return source_file_vector_get(&sm->sources, i);

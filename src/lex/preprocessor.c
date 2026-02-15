@@ -20,19 +20,22 @@
 #include "lex/token.h"
 
 struct LexerStack {
-    // The current lexer storing information
+    LexerStack* prev;
     Lexer lexer;
-
-    // The entry below this one.
-    LexerStack* below;
 };
 
 static bool lexer_stack_has_below(const LexerStack* lexers)
 {
     assert(lexers != NULL);
-
-    return lexers->below != NULL;
+    return lexers->prev != NULL;
 }
+
+// static void lexer_stack_push(LexerStack* lexers, Lexer lexer)
+// {
+
+// }
+
+// static void lexer_stack_pop(LexerStack* lexers);
 
 
 

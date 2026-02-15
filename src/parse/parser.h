@@ -34,6 +34,7 @@ typedef struct Parser {
 
     // Will need to add context to it as well for parsing loops conditionals
     // and other things
+    Token prev_token;
     Token token;
     Token peek_token;
 
