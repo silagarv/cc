@@ -23,6 +23,7 @@ typedef struct Arena {
 } Arena;
 
 Arena arena_new(size_t chunk_size, size_t alignment);
+Arena arena_new_default(void);
 void arena_delete(Arena* arena);
 
 void arena_reset(Arena* arena);

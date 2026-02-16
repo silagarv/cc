@@ -72,8 +72,7 @@ Location expression_get_location(const Expression* expr)
             return expr->character.location;
 
         case EXPRESSION_STRING_LITERAL:
-            panic("need to handle string literals properly");
-            return (Location) 1;
+            return expr->string.start_location;
 
         case EXPRESSION_ARRAY_ACCESS:
             return expr->array.lbracket_loc;
@@ -405,6 +404,25 @@ CharValue expression_character_get_value(const Expression* expression)
     assert(expression_is(expression, EXPRESSION_CHARACTER_CONSTANT));
 
     return expression->character.value;
+}
+
+Expression* expression_create_string(AstAllocator* allocator, Location location,
+        StringLiteral value, QualifiedType expr_type)
+{
+    Expression* expr = expression_create_base(allocator,
+            sizeof(ExpressionStringLiteral), EXPRESSION_STRING_LITERAL,
+            expr_type);
+    expr->string.start_location = location;
+    expr->string.value = value;
+
+    return expr;
+}
+
+StringLiteral expression_string_get_value(const Expression* expr)
+{
+    assert(expression_is(expr, EXPRESSION_STRING_LITERAL));
+
+    return expr->string.value;
 }
 
 Expression* expression_create_call(AstAllocator* allocator, Expression* lhs,

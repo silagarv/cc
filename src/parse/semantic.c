@@ -261,6 +261,12 @@ static QualifiedType semantic_checker_get_long_double_type(SemanticChecker* sc)
     return (QualifiedType) {QUALIFIER_NONE, long_double};
 }
 
+static QualifiedType semantic_checker_get_char_type(SemanticChecker* sc)
+{
+    Type* char_type = sc->ast->base_types.type_char;
+    return (QualifiedType) {QUALIFIER_NONE, char_type};
+}
+
 static QualifiedType semantic_checker_get_int_type(SemanticChecker* sc)
 {
     Type* int_type = sc->ast->base_types.type_signed_int;
@@ -2391,8 +2397,9 @@ Declaration* semantic_checker_process_static_assert(SemanticChecker* sc,
         }
         else
         {
+            StringLiteral literal = expression_string_get_value(string);
             diagnostic_error_at(sc->dm, expression_get_location(ice), "static "
-                    "assertion failed: %s", "");
+                    "assertion failed: %s", string_literal_buffer(&literal));
         }
     }
 
@@ -4338,7 +4345,33 @@ Expression* semantic_checker_handle_char_expression(SemanticChecker* sc,
             value, qual_type);
 }
 
-// TODO: string literals
+Expression* semantic_checker_handle_string_expression(SemanticChecker* sc,
+        Location start_location, StringLiteral value, bool success)
+{
+    if (!success)
+    {
+        return semantic_checker_handle_error_expression(sc, start_location);
+    }
+
+    QualifiedType unit_type;
+    size_t char_size = string_literal_char_size(&value);
+    assert(char_size == 1 || char_size == 4);
+    if (char_size == 1)
+    {
+        unit_type = semantic_checker_get_char_type(sc);
+    }
+    else
+    {
+
+        unit_type = semantic_checker_get_int_type(sc);
+    }
+
+    QualifiedType expr_type = type_create_array(&sc->ast->ast_allocator,
+            unit_type, NULL, string_literal_length(&value), false, false,
+            false);
+    return expression_create_string(&sc->ast->ast_allocator, start_location,
+            value, expr_type);
+}
 
 Expression* semantic_checker_handle_array_expression(SemanticChecker* sc,
         Expression* lhs, Location lbracket_loc, Expression* member,
@@ -6294,6 +6327,9 @@ Expression* semantic_checker_handle_assignment_expression(SemanticChecker* sc,
 
     assert(kind == VALUE_KIND_MODIFIABLE_LVALUE);
 
+    // Finally, before we try to do assignment decay the rhs as needed
+    rhs = semantic_checker_func_array_lvalue_convert(sc, rhs);
+
     // Okay we now know the left hand side is an lvalue and that it is also a
     // modifiable lvalue as well. This means that we can start to see what type
     // of assignment we have.
@@ -6355,7 +6391,8 @@ Expression* semantic_checker_expression_finalize(SemanticChecker* sc,
     // automatically convert to lvalues since we would need to undo this in
     // certain cases. So do this as the last thing we do. Otherwise it should
     // already be done in all scenarious.
-    if (expression_is(expression, EXPRESSION_REFERENCE))
+    if (expression_is(expression, EXPRESSION_REFERENCE)
+            || expression_is(expression, EXPRESSION_STRING_LITERAL))
     {
         return semantic_checker_func_array_lvalue_convert(sc, expression);
     }

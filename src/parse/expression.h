@@ -155,6 +155,7 @@ typedef struct ExpressionCharacter {
 
 typedef struct ExpressionStringLiteral {
     ExpressionBase base;
+    Location start_location;
     StringLiteral value;
 } ExpressionStringLiteral;
 
@@ -330,6 +331,10 @@ FloatingValue expression_float_get_value(const Expression* expression);
 Expression* expression_create_character(AstAllocator* allocator,
         Location location, CharValue value, QualifiedType expr_type);
 CharValue expression_character_get_value(const Expression* expression);
+
+Expression* expression_create_string(AstAllocator* allocator, Location location,
+        StringLiteral value, QualifiedType expr_type);
+StringLiteral expression_string_get_value(const Expression* expr);
 
 Expression* expression_create_call(AstAllocator* allocator, Expression* lhs,
         Location lparen_loc, ExpressionList parms, Location rparen_loc,

@@ -190,6 +190,11 @@ TypeBuiltins type_builtins_initialise(AstAllocator* allocator)
     return builtins;
 }
 
+QualifiedType qualified_type_from(Type* type)
+{
+    return (QualifiedType) { QUALIFIER_NONE, type };
+}
+
 static Type* type_create_base(AstAllocator* allocator, size_t alloc_size,
         TypeKind kind, size_t size, size_t align, bool complete)
 {
@@ -1111,7 +1116,7 @@ void type_print(const QualifiedType* t1)
             type_print(&t1->type->type_pointer.underlying_type);
             break;
 
-        case TYPE_ARRAY:
+        case TYPE_ARRAY:;
             printf("array of ");
             type_print(&t1->type->type_array.element_type);
             break;

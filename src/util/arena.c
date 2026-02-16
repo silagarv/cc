@@ -66,6 +66,11 @@ Arena arena_new(size_t chunk_size, size_t alignment)
     return arena;
 }
 
+Arena arena_new_default(void)
+{
+    return arena_new(ARENA_DEFAULT_CHUNK_SIZE, ARENA_DEFAULT_ALIGNMENT);
+}
+
 void arena_delete(Arena* arena)
 {
     ArenaChunk* current = arena->first;

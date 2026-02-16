@@ -178,6 +178,8 @@ Expression* semantic_checker_handle_number_expression(SemanticChecker* sc,
         Location number_location, LiteralValue value, bool success);
 Expression* semantic_checker_handle_char_expression(SemanticChecker* sc,
         Location char_location, CharValue value, bool success);
+Expression* semantic_checker_handle_string_expression(SemanticChecker* sc,
+        Location start_location, StringLiteral value, bool success);
 
 Expression* semantic_checker_handle_array_expression(SemanticChecker* sc,
         Expression* lhs, Location lbracket_loc, Expression* member,

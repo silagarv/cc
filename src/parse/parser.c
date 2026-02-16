@@ -800,55 +800,46 @@ static Expression* parse_character_expression(Parser* parser)
             value, success);
 }
 
-static Expression* parse_string_expression(Parser* parser, bool evalulated)
+static bool is_string_like_token(Parser* parser)
 {
-    static const TokenType string_tokens[] = {TOK_STRING, TOK_WIDE_STRING};
-    static const size_t num_string_tokens = countof(string_tokens);
+    switch (current_token_type(parser))
+    {
+        case TOK_STRING:
+        case TOK_WIDE_STRING:
+            return true;
 
-    assert(is_match_two(parser, TOK_STRING, TOK_WIDE_STRING));
+        default:
+            return false;
+    }
+}
+
+static Expression* parse_string_expression(Parser* parser, bool unevalulated)
+{
+    assert(is_string_like_token(parser));
 
     Location start_location = current_token_location(parser);
 
-    TokenVector toks = token_vector_create(1);
-    LocationVector locs = location_vector_create(1);
-
     // Track if the token is wide to make conversion easier
-    bool wide = false;
+    TokenList strings = token_list(arena_new_default());
     do
     {
-        if (is_match(parser, TOK_WIDE_STRING))
-        {
-            wide = true;
-        }
-
-        Token string_token = *current_token(parser);
-        Location token_loc = consume(parser);
-
-        token_vector_push(&toks, string_token);
-        location_vector_push(&locs, token_loc);
+        Token string = *current_token(parser);
+        token_list_push(&strings, string);
+        consume(parser);
     }
-    while (has_match(parser, string_tokens, num_string_tokens));
+    while (is_string_like_token(parser));
 
     // Attempt the conversion using the information we have here
     StringLiteral string;
     bool conversion = parse_string_literal(&parser->ast->ast_allocator,
-            &string, parser->dm, toks, locs, wide);
+            &string, parser->dm, parser->lang, &strings, unevalulated);
 
-    // Make sure to free our vectors after we are done with them.
-    token_vector_free(&toks, NULL);
-    location_vector_free(&locs, NULL);
+    // Make sure to free our token list since we are done with it
+    token_list_free(&strings);
 
-    if (!conversion)
-    {
-        diagnostic_error(parser->dm, "string conversion failed");
-    }
-    else
-    {
-        // ...
-    }
-
-    return semantic_checker_handle_error_expression(&parser->sc,
-            start_location);
+    // Finally, create our string expression.
+    return semantic_checker_handle_string_expression(&parser->sc,
+            start_location, string, conversion);
 }
 
 static Expression* parse_builtin_identifier(Parser* parser)
@@ -1036,7 +1027,7 @@ static Expression* parse_primary_expression(Parser* parser)
 
         case TOK_STRING:
         case TOK_WIDE_STRING:
-            return parse_string_expression(parser, true);
+            return parse_string_expression(parser, false);
 
         case TOK___func__:
             return parse_builtin_identifier(parser);
@@ -2271,12 +2262,17 @@ static Statement* parse_for_statement(Parser* parser)
     assert(is_match(parser, TOK_LPAREN));
     Location lparen_loc = consume(parser);
 
-    Statement* init = NULL;
-
     DeclarationGroup init_declaration = decl_group_from_empty();
     Expression* init_expression = NULL;
     if (is_typename_start(parser, current_token(parser)))
-    {   
+    {
+        // Warn if we're not in C99 mode about this extension.
+        if (!lang_opts_c99(parser->lang))
+        {
+            diagnostic_warning_at(parser->dm, current_token_location(parser),
+                    "variable declarations in for loop is a C99-specific "
+                    "feature");
+        }
         init_declaration = parse_declaration(parser, DECL_CTX_BLOCK, NULL);
     }
     else if (is_expression_start(parser, current_token(parser)))
@@ -2289,7 +2285,6 @@ static Statement* parse_for_statement(Parser* parser)
         diagnostic_error_at(parser->dm, current_token_location(parser), 
                 "expected expression");
         recover(parser, TOK_SEMI, RECOVER_NONE);
-        init = semantic_checker_handle_error_statement(&parser->sc);
     }
 
     if (!try_match(parser, TOK_SEMI, NULL))
@@ -3515,8 +3510,9 @@ static void parse_struct_declaration(Parser* parser, Declaration* decl)
 
     if (is_match_two(parser, TOK__Static_assert, TOK_static_assert))
     {
+        // Location semi = LOCATION_INVALID;
         parse_static_assert_declaration(parser, DECL_CTX_STRUCT, NULL);
-        return;
+        goto parse_semi;
     }
 
     DeclarationSpecifiers specifiers = parse_specifier_qualifier_list(parser);
@@ -3527,11 +3523,13 @@ static void parse_struct_declaration(Parser* parser, Declaration* decl)
     // so this is a little far off for use.
     if (is_match(parser, TOK_SEMI))
     {
-        // if (!lang_opts_c11(parser->lang))
-        // {
-        diagnostic_warning_at(parser->dm, consume(parser),
-                "declaration does not declare anything");
-        // }
+        // TODO: handle C11's anonymous struct / union member injection...
+        Location semi = consume(parser);
+        if (!lang_opts_c11(parser->lang))
+        {
+            diagnostic_warning_at(parser->dm, semi,
+                    "declaration does not declare anything");
+        }
         return;
     }
 
@@ -3553,6 +3551,7 @@ static void parse_struct_declaration(Parser* parser, Declaration* decl)
     // Finally parse the trailing semi-colon at the end of the list. Only 
     // issuing a warning about the GNU extension of allowing no semi at the
     // end of a structure.
+parse_semi:;
     Location semi = LOCATION_INVALID;
     if (is_match(parser, TOK_RCURLY))
     {
@@ -3593,8 +3592,7 @@ static void parse_struct_declaration_list(Parser* parser, Declaration* decl,
         }
 
         // Expect the start of a typename not allowing implicit int.
-        if (!is_typename_start(parser, current_token(parser))
-                && !is_match_two(parser, TOK__Static_assert, TOK_static_assert))
+        if (!is_typename_start(parser, current_token(parser)))
         {
             diagnostic_error_at(parser->dm, current_token_location(parser),
                     "type name requires a specifier or qualifier");
@@ -4320,38 +4318,35 @@ static Declaration* parse_static_assert_declaration(Parser* parser,
     // If we're in c23 mode then we are allowed to have a static assert with
     // no string message. Also allow this is C11 mode as an extension. For both
     // note that there was no string message given.
-    if ((lang_opts_c23(parser->lang) && !is_match(parser, TOK_COMMA))
-            || is_match(parser, TOK_RPAREN))
+    if (is_match(parser, TOK_RPAREN))
     {
         if (!lang_opts_c23(parser->lang))
         {
             diagnostic_warning_at(parser->dm, current_token_location(parser),
                     "'_Static_assert' with no message is a C23 extension");
         }
-
         c23_sa = true;
-        goto post_string;
     }
-    else if (!try_match(parser, TOK_COMMA, &lparen_loc))
+    else
     {
-        diagnostic_error_at(parser->dm, lparen_loc, "expected ','");
-        recover(parser, TOK_SEMI, RECOVER_EAT_TOKEN);
-        return NULL;
+        if (!try_match(parser, TOK_COMMA, &lparen_loc))
+        {
+            diagnostic_error_at(parser->dm, lparen_loc, "expected ','");
+            recover(parser, TOK_SEMI, RECOVER_EAT_TOKEN);
+            return NULL;
+        }
+
+        if (!is_string_like_token(parser))
+        {
+            diagnostic_error_at(parser->dm, current_token_location(parser),
+                    "expected string literal for diagnostic message in "
+                    "static_assert");
+            recover(parser, TOK_SEMI, RECOVER_EAT_TOKEN);
+            return NULL;    
+        }
+        string = parse_string_expression(parser, true);
     }
 
-    // Now we want to parse the string literal message which in C should always
-    // be present.
-    if (!is_match_two(parser, TOK_STRING, TOK_WIDE_STRING))
-    {
-        diagnostic_error_at(parser->dm, current_token_location(parser),
-                "expected string literal for diagnostic message in "
-                "static_assert");
-        recover(parser, TOK_SEMI, RECOVER_EAT_TOKEN);
-        return NULL;
-    }
-    string = parse_string_expression(parser, false);
-    
-post_string:;
     bool should_parse_semi = true;
     if (!try_match(parser, TOK_RPAREN, &rparen_loc))
     {

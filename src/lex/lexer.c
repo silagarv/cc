@@ -1318,6 +1318,10 @@ retry_lexing:;
 
             Buffer unknown = buffer_from_format("%c", curr);
             token->data = lexer_create_literal_node(lexer, &unknown);
+
+            // Finally, since we got an unknown token produce a warning about it
+            // diagnostic_warning_at(lexer->dm, token->loc, "unknown token '%c' "
+            //         "encountered", curr);
             break;
     }
 

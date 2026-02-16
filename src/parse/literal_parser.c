@@ -10,6 +10,8 @@
 #include <float.h>
 #include <assert.h>
 
+#include "driver/lang.h"
+#include "lex/unicode.h"
 #include "parse/ast_allocator.h"
 #include "util/buffer.h"
 #include "util/panic.h"
@@ -22,11 +24,46 @@
 #include "lex/char_help.h"
 #include "lex/token.h"
 
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+
+typedef enum CharType {
+    CHAR_TYPE_CHAR,
+    CHAR_TYPE_WIDE
+} CharType;
+
 typedef enum EscapeSequenceResult {
     ESCAPE_SEQUENCE_RESULT_OK,
     ESCAPE_SEQUENCE_RESULT_ERROR,
     ESCAPE_SEQUENCE_RESULT_FATAL
 } EscapeSequenceResult;
+
+CharType get_char_type(const Token* token)
+{
+    switch (token_get_type(token))
+    {
+        case TOK_STRING:
+        case TOK_CHARACTER:
+            return CHAR_TYPE_CHAR;
+
+        case TOK_WIDE_STRING:
+        case TOK_WIDE_CHARACTER:
+            return CHAR_TYPE_WIDE;
+
+        default:
+            panic("bad token type");
+            return CHAR_TYPE_CHAR; // Dummy return.
+    }
+}
+
+size_t get_char_type_size(CharType type)
+{
+    switch (type)
+    {
+        case CHAR_TYPE_CHAR: return 1;
+        case CHAR_TYPE_WIDE: return 4;
+        default: panic("bad CharType"); return 0;
+    }
+}
 
 uint64_t integer_value_get_value(const IntegerValue* val)
 {
@@ -47,6 +84,22 @@ ValueType literal_value_get_type(const LiteralValue* value)
 {
     return value->type;
 }
+
+char* string_literal_buffer(const StringLiteral* string)
+{
+    return string->string;
+}
+
+size_t string_literal_length(const StringLiteral* string)
+{
+    return string->length;
+}
+
+size_t string_literal_char_size(const StringLiteral* string)
+{
+    return string->char_size;
+}
+
 
 static int parse_integer_prefix(const char* string, size_t len, size_t* pos)
 {
@@ -815,6 +868,191 @@ bool parse_preprocessing_number(LiteralValue* value, DiagnosticManager* dm,
     }
 }
 
+static utf32 decode_escape_sequence_new(DiagnosticManager* dm, Location loc,
+        LangOptions* lang, char** current_ptr, char* end_ptr,
+        size_t element_size, bool unevaluated, EscapeSequenceResult* okay)
+{
+    assert(element_size == 1 || element_size == 4);
+    assert(*(*current_ptr - 1) == '\\');
+    assert(*current_ptr != end_ptr);
+
+    const uint64_t max_esacpe = element_size == 1 ? UINT8_MAX : UINT32_MAX;
+
+    // Get the beginning of the escape sequene.
+    char* const escape_begin = *current_ptr;
+
+    // Get the next char and advance our ptr
+    char current = *escape_begin;
+    (*current_ptr)++;
+
+    utf32 result;
+    switch (current)
+    {
+        // TODO: add \e and \E escapes to this...
+
+        // All of our simple escapes.
+        case '\'': result = '\''; break;
+        case '"':  result = '\"'; break;
+        case '?':  result = '\?'; break;
+        case '\\': result = '\\'; break;
+        case 'a':  result = '\a'; break;
+        case 'b':  result = '\b'; break;
+        case 'f':  result = '\f'; break;
+        case 'n':  result = '\n'; break;
+        case 'r':  result = '\r'; break;
+        case 't':  result = '\t'; break;
+        case 'v':  result = '\v'; break;
+
+        // Hexadecimal escapes
+        case 'x':
+        {
+            // If we didn't get any hex digits that is not a fatal error for 
+            // building our string somehow, just act like we got no digits
+            if (!is_hexadecimal(**current_ptr))
+            {
+                diagnostic_error_at(dm, loc, "\\x used with no following hex "
+                        "digits");
+                *okay = ESCAPE_SEQUENCE_RESULT_ERROR;
+                return 0;
+            }
+
+            // Otherwise we will try to parse the escape sequence
+            uint64_t value = 0;
+            while (*current_ptr != end_ptr && is_hexadecimal(**current_ptr))
+            {
+                // Get the new value and check we are in range. Note that since
+                // max escape is much less greater than values' range we should
+                // always detect overflow here
+                value *= 16; 
+                value += convert_character_base(**current_ptr, 16);
+                if (value > max_esacpe)
+                {
+                    diagnostic_error_at(dm, loc, "hex escape sequence out of "
+                            "range");
+                    *okay = ESCAPE_SEQUENCE_RESULT_FATAL;
+                    return 0;
+                }
+
+                // Get the next character
+                (*current_ptr)++;
+            }
+            assert(value <= max_esacpe);
+
+            result = (utf32) value;
+            break;
+        }
+
+        // Octal escapes.
+        case '0': case '1': case '2': case '3': 
+        case '4': case '5': case '6': case '7':
+        {
+            // Currenttly we have skipped this char (the digit we're on) so we
+            // need to undo that.
+            (*current_ptr)--;
+
+            int num_digits = 0;
+            uint64_t value = 0;
+            while (*current_ptr != end_ptr && is_octal(**current_ptr) 
+                    && num_digits < 3)
+            {
+                value *= 8;
+                value += convert_character_base(**current_ptr, 8);
+
+                // Increment our digit count
+                num_digits++;
+
+                // Get the next character
+                (*current_ptr)++;
+            }
+
+            // Finally set our result
+            assert(value <= UINT32_MAX);
+            result = (utf32) value;
+
+            // Check if we are out of range here. This can only occur if we are
+            // in 1 char mode. so recover based on that premise
+            if (value > max_esacpe)
+            {
+                diagnostic_error_at(dm, loc, "octal escape sequence out of "
+                        "range");
+                *okay = ESCAPE_SEQUENCE_RESULT_ERROR;
+
+                assert(element_size == 1);                
+                result &= 0xFF; // This is equivalent to clangs recovery.
+            }
+            break;
+        }
+
+        // Possible universal character names
+        case 'u':
+        case 'U':
+        {
+            const int required = (current == 'u') ? 4 : 8;
+            int num_digits = 0;
+
+            uint32_t value = 0;
+            while (*current_ptr != end_ptr && is_hexadecimal(**current_ptr)
+                    && num_digits < required)
+            {
+                // Convert the value
+                value *= 16;
+                value += convert_character_base(**current_ptr, 16);
+
+                // Increment the count on the number of digits
+                num_digits++;
+
+                // Go to the next digit
+                (*current_ptr)++;
+            }
+            
+            // Ensure that we have an adequet number of digits.
+            if (num_digits != required)
+            {
+                diagnostic_error_at(dm, loc, "incomplete universal character "
+                        "name");
+                *okay = ESCAPE_SEQUENCE_RESULT_FATAL;
+                return 0;
+            }
+
+            // Do the conversion.
+            result = (utf32) value;
+
+            // Finally, check UCN validity... is must not be invalid utf32 and 
+            // must not be a control characer. 0-31 are control chars.
+            if (!is_valid_utf32(result))
+            {
+                diagnostic_error_at(dm, loc,
+                        "\\%c%0*X is not a valid universal character",
+                        (num_digits == 4) ? 'u' : 'U', num_digits, value);
+                *okay = ESCAPE_SEQUENCE_RESULT_ERROR;
+                return result;
+            }
+            else if (utf32_is_control_char(result))
+            {
+                diagnostic_error_at(dm, loc, "universal character name referes "
+                        "to a control character");
+                *okay = ESCAPE_SEQUENCE_RESULT_FATAL;
+                return result;
+            }
+            else if (!lang_opts_c99(lang))
+            {
+                diagnostic_warning_at(dm, loc, "universal character names are "
+                        "only valid in C99");
+            }
+            break;
+        }
+
+        default:
+            diagnostic_warning_at(dm, loc, "unknown escape sequence '\\%c'",
+                    current);
+            *okay = ESCAPE_SEQUENCE_RESULT_ERROR;
+            return current;
+    }
+
+    *okay = ESCAPE_SEQUENCE_RESULT_OK;
+    return result;
+}
+
 static uint64_t decode_escape_sequence(const char* raw, size_t len, size_t* pos,
         bool wide, DiagnosticManager* dm, Location loc,
         EscapeSequenceResult* success)
@@ -1106,102 +1344,226 @@ bool parse_char_literal(CharValue* value, DiagnosticManager* dm,
     return true;
 }
 
-// Note that decode escape sequence can probably be reused in parsing our
-// string literals to reduce code size
-
-static bool parse_string_literal_internal(DiagnosticManager* dm, Buffer* buffer,
-        Token* token)
+const char* string_literal_prefix(TokenType type)
 {
-    assert(token->type == TOK_STRING);
-
-    const Location loc = token->loc;
-
-    const String to_convert = token->data.literal->value;
-    const char* raw = to_convert.ptr;
-    const size_t len = to_convert.len;
-
-    assert(raw[0] == '"' && raw[len - 1] == '"');
-
-    bool error = false;
-    size_t pos = 1;
-    do
+    switch (type)
     {
-        char current = raw[pos++];
+        case TOK_STRING: return "";
+        case TOK_WIDE_STRING: return "L";
+        default: panic("bad token type"); return NULL;
+    }
+}
 
-        if (current == '\\')
+void buffer_add_character(char* buffer, size_t* buffer_pos, size_t buffer_size,
+        size_t element_size, utf32 value)
+{
+    assert(element_size == 1 || element_size == 4);
+    assert(*buffer_pos + element_size <= buffer_size);
+    
+    switch (element_size)
+    {
+        case 1:
         {
-            // TODO: do we have to add in an extra string (bool) parameter?
-            // TODO: since this will error hard if it doesn't like the UCN in a
-            // TODO: char context, yet they are allowed in the string context in
-            // TODO: both clang and GCC :/
-            EscapeSequenceResult result;
-            uint64_t escape_sequence = decode_escape_sequence(raw, len - 1,
-                    &pos, false, dm, loc, &result);
-            if (result != ESCAPE_SEQUENCE_RESULT_OK)
+            // Fast case of us being an ASCII character.
+            if (value < UTF8_1_CHAR_MAX)
             {
-                // error = true;
+                buffer[(*buffer_pos)++] = (char) value;
             }
-
-            if (escape_sequence > CHAR_MAX)
+            else // Slow case of being multibyte utf8
             {
-                escape_sequence = CHAR_MAX;
-            }
-
-            current = (char) escape_sequence;
+                unsigned char utf8_buffer[4];
+                size_t num_chars;
+                utf32_to_buffer(value, utf8_buffer, &num_chars);
+                for (size_t i = 0; i < num_chars; i++)
+                {
+                    buffer[(*buffer_pos)++] = (char) utf8_buffer[i];
+                }                
+            }                        
+            break;
         }
 
-        buffer_add_char(buffer, current);
-    } while (pos < len - 1);
+        case 4:
+        {
+            // Make sure we are doing the right thing position wide and make
+            // sure we are doing aligned memory accesses.
+            assert(*buffer_pos % 4 == 0);
+            assert(((uintptr_t) buffer) % 4 == 0);
 
-    return !error;
+            // This is slightly evil but should definitely work for what we need
+            utf32* utf32_buffer = (utf32*) buffer;
+            utf32_buffer[*buffer_pos / 4] = value;
+            *buffer_pos += 4;
+            break;
+        }
+
+        default:
+            panic("bad element size");
+            break;
+    }
+
+    return;
+}
+
+bool parse_single_string_literal(const String* string, DiagnosticManager* dm,
+        Location location, LangOptions* lang, CharType type, char* buffer,
+        size_t* buffer_pos, size_t buffer_size, size_t element_size,
+        bool unevaluated)
+{
+    assert(element_size == 1 || element_size == 4);
+
+    // Skip the leading spaces at the start of the literal.
+    char* current_ptr = string_get_ptr(string);
+    if (*current_ptr == 'L')
+    {
+        assert(*(current_ptr + 1) == '"');
+        current_ptr += 2;
+    }
+    else
+    {
+        assert(*current_ptr == '"');
+        current_ptr++;
+    }
+
+    char* end_ptr = string_get_ptr(string) + string_get_len(string) - 1; // '"'
+    assert(*end_ptr == '"');
+
+    while (current_ptr != end_ptr)
+    {
+        if (*current_ptr != '\\')
+        {
+            // Decode the utf8 and then add that codepoint to the buffer.
+            utf32 value;
+            utf8_to_utf32((unsigned char**) &current_ptr,
+                    (const unsigned char*) end_ptr, &value);
+            buffer_add_character(buffer, buffer_pos, buffer_size, element_size,
+                    value);
+            continue;
+        }
+
+        // Skip the '\\'
+        current_ptr++;
+        assert(current_ptr != end_ptr);
+
+        // Special case for handling universal character names and their
+        // encodings since they wont be handled properly in strings if we do
+        // what we are doing below
+        bool ucn = false;
+        if (*current_ptr == 'u' || *current_ptr == 'U')
+        {
+            ucn = true;
+        }
+
+        // Now We want to decode the character escape sequence and get the value
+        // from it that we want and then add the decoded value into our string's
+        // buffer.
+        EscapeSequenceResult okay;
+        utf32 value = decode_escape_sequence_new(dm, location, lang, 
+                &current_ptr, end_ptr, element_size, unevaluated, &okay);
+        if (okay == ESCAPE_SEQUENCE_RESULT_FATAL)
+        {
+            return false;
+        }
+
+        // If we are just chars then truncate the given escape sequence.
+        if (element_size == 1 && !ucn)
+        {
+            // Truncate the value that we get if doing single chars
+            buffer[*buffer_pos] = value & 0xFF;
+            (*buffer_pos)++;
+        }
+        else // Otherwise just attempt to add it to our buffer as normal
+        {
+            buffer_add_character(buffer, buffer_pos, buffer_size, element_size,
+                    value);
+        }
+    }
+
+    return true;
 }
 
 bool parse_string_literal(AstAllocator* allocator, StringLiteral* value,
-        DiagnosticManager* dm, TokenVector tokens, LocationVector locs,
-        bool wide)
+        DiagnosticManager* dm, LangOptions* lang, const TokenList* tokens,
+        bool unevaluated)
 {
-    assert(token_vector_size(&tokens) == location_vector_size(&locs));
+    CharType type = CHAR_TYPE_CHAR;
+    size_t upper_bound = 0; // upper bound of final string literal length
+    size_t num_strings = 0;
 
-    if (wide)
+    TokenListEntry* start = token_list_iter(tokens);
+    for (TokenListEntry* current = start;
+            current != NULL;
+            current = token_list_entry_next(current))
     {
-        diagnostic_error_at(dm, location_vector_get(&locs, 0),
-                "cannot parse wide string literal at this time");
-        diagnostic_help_at(dm, location_vector_get(&locs, 0), 
-                "this needs to be implemented");
-        diagnostic_note_at(dm, location_vector_get(&locs, 0), 
-                "this needs to be implemented");
-        return false;
-    }
-
-    const size_t num_strings = token_vector_size(&tokens);
-
-    // Create the buffer to store our strings.
-    Buffer string = buffer_new();
-    for (size_t i = 0; i < num_strings; i++)
-    {
-        Token token = token_vector_get(&tokens, i);
-
-        bool success = parse_string_literal_internal(dm, &string, &token);
-
-        if (!success)
+        // Get basic info about the token
+        Token t = token_list_entry_token(current);
+        num_strings++;
+        
+        // Do the size calculation for the tokens length.
+        size_t t_len = token_get_length(&t);
+        assert(t_len >= 2);
+        upper_bound += t_len - 2;
+        
+        // Check what kind of conversions we are doing with each string token.
+        CharType t_type = get_char_type(&t);
+        if (type == t_type)
         {
-            // TODO: also free buffer memory
-            buffer_free(&string);
+            ; // Do nothing, got the same type
+        }
+        if (unevaluated && t_type != CHAR_TYPE_CHAR)
+        {
+            diagnostic_warning_at(dm, token_get_location(&t), "encoding prefix "
+                    "'%s' has no effect",
+                    string_literal_prefix(token_get_type(&t)));
+        }
+        else if (t_type == CHAR_TYPE_WIDE && type == CHAR_TYPE_CHAR)
+        {
+            // Support conversions with mixed wide and non-wide strings
+            type = CHAR_TYPE_WIDE;
+        }
+        else
+        {
+            // TODO: in C11 mode more string literals exist so error about 
+            // TODO: unsupported conversions here if those are ever implemented
+        }
+    }
+    
+    // Make sure we are okay to null terminate the string.
+    upper_bound++;
+
+    // Okay we now have most of what we need from all of our string literals in
+    // order to start building up our string literal. We just need to do some
+    // things in order to set up or literal evaluation.
+    size_t element_size = get_char_type_size(type);
+    size_t alloc_size = upper_bound * element_size;
+
+    // Allocate all of the space that we could possibly need in the buffer
+    char* buffer = ast_allocator_alloc(allocator, sizeof(char) * alloc_size);
+    size_t buffer_pos = 0;
+
+    // Now we want to perform all of our string literal evaluation
+    for (TokenListEntry* current = start;
+            current != NULL;
+            current = token_list_entry_next(current))
+    {
+        Token t = token_list_entry_token(current);
+        String literal = token_get_literal_node(&t);
+        if (!parse_single_string_literal(&literal, dm, token_get_location(&t),
+                lang, type, buffer, &buffer_pos, alloc_size, element_size,
+                unevaluated))
+        {
             return false;
         }
     }
 
-    // Finish creating our buffer and print it to the terminal for now
-    buffer_make_cstr(&string);
+    // Finally add the null terminating character onto the end
+    buffer_add_character(buffer, &buffer_pos, alloc_size, element_size, 0);
 
-    size_t string_len = buffer_get_len(&string);
-    char* ast_string = ast_allocator_alloc(allocator, string_len + 1);
-    snprintf(ast_string, string_len + 1, "%s", buffer_get_ptr(&string));
-    buffer_free(&string);
-
-    value->string = (String) {ast_string, string_len};
-    value->wide = false;
-    value->error = false;
+    // Finally since we have been successful in parsing all our other tokens
+    // finally we can attempt to do this one.
+    assert(buffer_pos % element_size == 0);
+    value->string = buffer;
+    value->length = buffer_pos / element_size;
+    value->char_size = element_size;
 
     return true;
 }

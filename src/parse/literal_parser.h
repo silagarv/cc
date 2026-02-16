@@ -6,8 +6,8 @@
 #include <stdbool.h>
 
 #include "driver/diagnostic.h"
+#include "driver/lang.h"
 
-#include "files/location.h"
 #include "lex/token.h"
 #include "parse/ast_allocator.h"
 
@@ -86,10 +86,12 @@ typedef struct CharValue {
 
 // Structures to represent string and wide string literal values
 typedef struct StringLiteral {
-    String string;
-
-    bool wide; // is the string wide
-    bool error;
+    char* string; // the buffer that holds the string data itself
+    size_t length; // The length of the string including null terminator in the
+                   // number of 'characters' that the string contains
+    size_t char_size; // the size of one 'character' of the string in bytes
+                      // e.g in a normal string it would be '1', but in a wide
+                      // string it is '4'
 } StringLiteral;
 
 uint64_t integer_value_get_value(const IntegerValue* val);
@@ -100,12 +102,19 @@ long double floating_value_get_value(const FloatingValue* val);
 
 ValueType literal_value_get_type(const LiteralValue* value);
 
+char* string_literal_buffer(const StringLiteral* string);
+size_t string_literal_length(const StringLiteral* string);
+size_t string_literal_char_size(const StringLiteral* string);
+
 bool parse_preprocessing_number(LiteralValue* value, DiagnosticManager* dm,
         const Token* token);
 bool parse_char_literal(CharValue* value, DiagnosticManager* dm,
         const Token* token, bool wide);
+// bool parse_string_literal(AstAllocator* allocator, StringLiteral* value,
+//         DiagnosticManager* dm, TokenVector tokens, LocationVector locs,
+//         bool wide);
 bool parse_string_literal(AstAllocator* allocator, StringLiteral* value,
-        DiagnosticManager* dm, TokenVector tokens, LocationVector locs,
-        bool wide);
+        DiagnosticManager* dm, LangOptions* lang, const TokenList* tokens,
+        bool unevaluated);
 
 #endif /* LITERAL_PARSER_H */

@@ -264,6 +264,9 @@ bool type_qualifiers_discards_quals(TypeQualifiers to, TypeQualifiers from);
 
 TypeBuiltins type_builtins_initialise(AstAllocator* allocator);
 
+// Go form Type* -> QualifiedType
+QualifiedType qualified_type_from(Type* type);
+
 // Functions for creating and maniputing types
 QualifiedType type_create_pointer(AstAllocator* allocator,
         QualifiedType base_type, TypeQualifiers qualifiers);

@@ -9,24 +9,6 @@
 #include "util/buffer.h"
 #include "util/panic.h"
 
-#define UTF8_REPLACEMENT_CHAR 0xFFFD
-
-#define UNICODE_MAX 0x10FFFF
-#define UNICODE_SURROGATE_LOW 0xD800
-#define UNICODE_SURROGATE_HIGH 0xDFFF
-
-#define UTF8_1_CHAR_MIN 0x00
-#define UTF8_1_CHAR_MAX 0x7F
-
-#define UTF8_2_CHAR_MIN 0x80
-#define UTF8_2_CHAR_MAX 0x7FF
-
-#define UTF8_3_CHAR_MIN 0x800
-#define UTF8_3_CHAR_MAX 0xFFFF
-
-#define UTF8_4_CHAR_MIN 0x10000
-#define UTF8_4_CHAR_MAX 0x10FFFF
-
 bool is_valid_utf32(utf32 value)
 {
     if (value > UNICODE_MAX)
@@ -42,39 +24,50 @@ bool is_valid_utf32(utf32 value)
     return true;
 }
 
-void ucn_add_to_buffer(utf32 value, Buffer* to_add)
+bool utf32_is_control_char(utf32 value)
+{
+    return value < 32;
+}
+
+void utf32_to_buffer(utf32 value, unsigned char* utf8buff, size_t* used)
 {
     assert(is_valid_utf32(value));
-
-    unsigned char utf8buff[sizeof(utf32)] = {0};
-    size_t num_digits = 0;
-
+    
     if (value <= UTF8_1_CHAR_MAX)
     {
-        num_digits = 1;
+        *used = 1;
         utf8buff[0] = (unsigned char) value;
     }
     else if (value <= UTF8_2_CHAR_MAX)
     {
-        num_digits = 2;
+        *used = 2;
         utf8buff[0] = (unsigned char) (0xC0 | (value >> 6));
         utf8buff[1] = (unsigned char) (0x80 | (value & 0x3F));
     }
     else if (value <= UTF8_3_CHAR_MAX)
     {
-        num_digits = 3;
+        *used = 3;
         utf8buff[0] = (unsigned char) (0xE0 | (value >> 12));
         utf8buff[1] = (unsigned char) (0x80 | ((value >> 6) & 0x3F));
         utf8buff[2] = (unsigned char) (0x80 | (value & 0x3F));
     }
     else
     {
-        num_digits = 4;
+        *used = 4;
         utf8buff[0] = (unsigned char) (0xF0 | (value >> 18));
         utf8buff[1] = (unsigned char) (0x80 | ((value >> 12) & 0x3F));
         utf8buff[2] = (unsigned char) (0x80 | ((value >> 6) & 0x3F));
         utf8buff[3] = (unsigned char) (0x80 | (value & 0x3F));
     }
+}
+
+void ucn_add_to_buffer(utf32 value, Buffer* to_add)
+{
+    assert(is_valid_utf32(value));
+
+    unsigned char utf8buff[4];
+    size_t num_digits;
+    utf32_to_buffer(value, utf8buff, &num_digits);
 
     for (size_t i = 0; i < num_digits; i++)
     {
@@ -121,25 +114,8 @@ static size_t utf8_get_num_bytes(unsigned char starting_char)
     return 5;
 }
 
-static bool utf8_is_valid(const unsigned char* start, size_t length, utf32 value)
-{
-    // TODO: go through and make sure that we get valid utf-8
-    assert(length <= 4);
-    
-    if (value > 0x10FFFF)
-    {
-        panic("value is not a valid unicode codepoint");
-
-        return false;
-    }
-
-    // TODO: implement enough error checking for the value
-    
-
-    return false;
-}
-
-bool utf8_to_utf32(unsigned char** current_ptr, const unsigned char* end, utf32* value)
+bool utf8_to_utf32(unsigned char** current_ptr, const unsigned char* end,
+        utf32* value)
 {
     const unsigned char* starting_ptr = *current_ptr;
 
@@ -189,13 +165,15 @@ bool utf8_to_utf32(unsigned char** current_ptr, const unsigned char* end, utf32*
         default: panic("unreachable"); return false;
     }
 
+    // Don't forget to advance our pointer by the number of bytes in the UTF8
+    // that we got.
+    *current_ptr += num_bytes;
+
     // TODO: make sure we modify *current_ptr so that we can correctly
     // synchronise the stream for the next character
-    
-    if (!utf8_is_valid(starting_ptr, num_bytes, *value))
+    if (!is_valid_utf32(*value))
     {
         panic("illegal utf8 in source");
-
         *value = UTF8_REPLACEMENT_CHAR;
     }
 

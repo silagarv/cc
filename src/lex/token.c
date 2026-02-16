@@ -8,6 +8,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "util/arena.h"
 #include "util/panic.h"
 #include "util/vec.h"
 #include "util/xmalloc.h"
@@ -30,6 +31,16 @@ void token_unset_flag(Token* token, TokenFlags flag)
 bool token_has_flag(const Token* token, TokenFlags flag)
 {
     return (token->flags & flag) != 0;
+}
+
+TokenType token_get_type(const Token* token)
+{
+    return token->type;
+}
+
+Location token_get_location(const Token* token)
+{
+    return token->loc;
 }
 
 bool token_is_type(const Token* token, TokenType type)
@@ -145,6 +156,11 @@ TokenData token_create_literal_node(String string)
     TokenData data = { .literal = node };
 
     return data;   
+}
+
+String token_get_literal_node(const Token* token)
+{
+    return token->data.literal->value;
 }
 
 bool token_has_opt_value(Token* tok)
@@ -433,3 +449,64 @@ bool token_concatenate(Token* tok1, Token* tok2, Token* dest);
 bool token_stringize(Token* src, Token* dest);
 
 bool token_string_cat(Token* tok1, Token* tok2, Token* dest);
+
+TokenListEntry* token_list_entry_next(const TokenListEntry* entry)
+{
+    return entry->next;
+}
+
+Token token_list_entry_token(const TokenListEntry* entry)
+{
+    return entry->tok;
+}
+
+static TokenListEntry* token_list_entry_create(TokenList* list, Token tok)
+{
+    TokenListEntry* entry = arena_allocate_size(&list->allocator,
+            sizeof(TokenListEntry));
+    *entry = (TokenListEntry)
+    {
+        .tok = tok,
+        .next = NULL
+    };
+
+    return entry;
+}
+
+TokenList token_list(Arena arena)
+{
+    TokenList tokens = (TokenList)
+    {
+        .allocator = arena,
+        .head = NULL,
+        .tail = NULL
+    };
+
+    return tokens;
+}
+
+void token_list_free(TokenList* list)
+{
+    arena_delete(&list->allocator);
+}
+
+void token_list_push(TokenList* list, Token tok)
+{
+    TokenListEntry* entry = token_list_entry_create(list, tok);
+    if (list->head == NULL)
+    {
+        list->head = entry;
+    }
+    else
+    {
+        assert(list->tail != NULL);
+        list->tail->next = entry;
+    }
+    list->tail = entry;
+
+}
+
+TokenListEntry* token_list_iter(const TokenList* list)
+{
+    return list->head;
+}

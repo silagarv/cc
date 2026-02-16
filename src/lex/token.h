@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+#include "util/arena.h"
 #include "util/str.h"
 
 #include "files/location.h"
@@ -212,12 +213,25 @@ typedef struct Token {
     TokenData data; // data the token needs
 } Token;
 
+typedef struct TokenListEntry {
+    Token tok;
+    struct TokenListEntry* next;
+} TokenListEntry;
+
+typedef struct TokenList {
+    Arena allocator;
+    TokenListEntry* head;
+    TokenListEntry* tail;
+} TokenList;
+
 vector_of_decl(Token, Token, token);
 
 void token_set_flag(Token* token, TokenFlags flag);
 void token_unset_flag(Token* token, TokenFlags flag);
 bool token_has_flag(const Token* token, TokenFlags flag);
 
+TokenType token_get_type(const Token* token);
+Location token_get_location(const Token* token);
 bool token_is_type(const Token* token, TokenType type);
 bool token_is_identifier(const Token* token);
 bool token_is_literal(const Token* token);
@@ -227,6 +241,7 @@ void token_set_type(Token* token, TokenType type);
 
 TokenData token_create_identifier_node(String string);
 TokenData token_create_literal_node(String string);
+String token_get_literal_node(const Token* token);
 
 void token_free_data(Token* tok);
 void token_free(Token* tok);
@@ -240,5 +255,14 @@ const char* token_get_name(Token* tok);
 const char* token_get_string(Token* tok);
 
 bool token_equal_string(Token* tok, const char* str);
+
+TokenListEntry* token_list_entry_next(const TokenListEntry* entry);
+Token token_list_entry_token(const TokenListEntry* entry);
+
+TokenList token_list(Arena arena);
+void token_list_free(TokenList* list);
+void token_list_push(TokenList* list, Token tok);
+TokenListEntry* token_list_iter(const TokenList* list);
+
 
 #endif /* TOKEN_H */
