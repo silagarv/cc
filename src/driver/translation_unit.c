@@ -19,27 +19,24 @@ bool translation_unit_create(TranslationUnit* tu, Filepath main_file,
         Filepath out_file, CompilerOptions* options, Target target,
         DiagnosticManager* dm)
 {
-
+    // Build our language opts before doing anything.
+    LangOptions lang = lang_opts(options->standard, options->trigraphs,
+            options->strict, options->gnu);
+    
     *tu = (TranslationUnit)
     {
         .main_file = main_file,
         .out_file = out_file,
         .options = options,
-        .lang = lang_opts(options->standard, options->trigraphs,
-                options->strict, options->gnu),
+        .lang = lang,
         .target = target,
         .dm = dm,
         .sm = source_manager(),
-        /*.ids = identifier_table_create(tu->lang),*/
+        .ids = identifier_table_create(&lang),
         .ast = ast_create()
     };
 
-    // Must initialise id's after since we need to create our identifier table
-    // with the specific language in mind.
-    tu->ids = identifier_table_create(&tu->lang);
-
     diagnostic_manager_set_sm(tu->dm, &tu->sm);
-
     return true;
 }
 

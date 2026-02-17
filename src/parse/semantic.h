@@ -40,7 +40,7 @@ typedef struct SemanticChecker {
     Ast* ast;
 
     // The current external scope.
-    Scope* externals;
+    Scope* externs;
 
     // The current scope in the semantic checker. This is not allocated at all
     // but needs popping after each time it is used.
@@ -55,6 +55,7 @@ typedef struct SemanticChecker {
 
 SemanticChecker sematic_checker_create(DiagnosticManager* dm, LangOptions* opts,
         IdentifierTable* identifiers, Ast* ast);
+void semantic_checker_initialize_implicit_decls(SemanticChecker* sc);
 
 void declaration_specifiers_finish(SemanticChecker* sc,
         DeclarationSpecifiers* specifiers);
@@ -69,6 +70,9 @@ void semantic_checker_push_scope(SemanticChecker* sc, Scope* scope);
 void semantic_checker_pop_scope(SemanticChecker* sc);
 Scope* semantic_checker_current_scope(SemanticChecker* sc);
 bool semantic_checker_current_scope_is(SemanticChecker* sc, ScopeFlags type);
+
+void semantic_checker_insert_ordinairy(SemanticChecker* sc,
+        Declaration* declaration);
 
 void semantic_checker_push_switch_stack(SemanticChecker* sc);
 SwitchStack* semantic_checker_pop_switch_stack(SemanticChecker* sc);
@@ -184,6 +188,8 @@ Expression* semantic_checker_handle_string_expression(SemanticChecker* sc,
 Expression* semantic_checker_handle_array_expression(SemanticChecker* sc,
         Expression* lhs, Location lbracket_loc, Expression* member,
         Location rbracket_loc);
+Expression* semantic_checker_handle_function_param(SemanticChecker* sc,
+        Expression* param);
 Expression* semantic_checker_handle_call_expression(SemanticChecker* sc,
         Expression* lhs, Location lparen_location, ExpressionList expr_list,
         Location rparen_location);

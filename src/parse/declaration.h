@@ -178,7 +178,8 @@ typedef enum DeclarationType {
     DECLARATION_ENUM_CONSTANT, /* constants within an enum */
     DECLARATION_ENUM, /* an enum */
     DECLARATION_LABEL, /* A label within the source e.g. `foo:` */
-    DECLARATION_STATIC_ASSERT /* A static assert */
+    DECLARATION_STATIC_ASSERT, /* A static assert */
+    DECLARATION_TRANSLATION_UNIT  /* an entire translation unit and all */
 } DeclarationType;
 
 // A structure to hold all of the basics needed in a declaration. This helps us
@@ -405,6 +406,9 @@ union Declaration {
 
     // A static assert declaration
     DeclarationStaticAssert sa;
+
+    // A translation unit declaration
+    // DeclarationTranslationUnit tu;
 };
 
 // A structure to hold 0 or more declarations. If num_decls is 0 then d should
@@ -503,6 +507,8 @@ Identifier* declaration_get_identifier(const Declaration* decl);
 bool declaration_is_external(const Declaration* decl);
 bool declaration_is_valid(const Declaration* decl);
 void declaration_set_invalid(Declaration* decl);
+bool declaration_is_implicit(const Declaration* declaration);
+void declaration_set_implicit(Declaration* declaration);
 void declaration_set_type(Declaration* decl, QualifiedType type);
 QualifiedType declaration_get_type(const Declaration* decl);
 StorageSpecifier declaration_get_storage_class(const Declaration* decl);

@@ -158,34 +158,34 @@ static Type* type_create_error(AstAllocator* allocator)
 TypeBuiltins type_builtins_initialise(AstAllocator* allocator)
 {
     TypeBuiltins builtins;
-    builtins.type_error = type_create_error(allocator);
-    builtins.type_void = type_create_builtin(allocator, TYPE_VOID, 0, 0, false);    
-    builtins.type_char = type_create_builtin(allocator, TYPE_CHAR, 1, 1, true);
-    builtins.type_unsigned_char = type_create_builtin(allocator, TYPE_U_CHAR, 1,
+    builtins.t_error = type_create_error(allocator);
+    builtins.t_void = type_create_builtin(allocator, TYPE_VOID, 0, 0, false);    
+    builtins.t_char = type_create_builtin(allocator, TYPE_CHAR, 1, 1, true);
+    builtins.t_unsigned_char = type_create_builtin(allocator, TYPE_U_CHAR, 1,
             1, true);
-    builtins.type_signed_char = type_create_builtin(allocator, TYPE_S_CHAR, 1,
+    builtins.t_signed_char = type_create_builtin(allocator, TYPE_S_CHAR, 1,
             1, true);
-    builtins.type_unsigned_short = type_create_builtin(allocator, TYPE_U_SHORT,
+    builtins.t_unsigned_short = type_create_builtin(allocator, TYPE_U_SHORT,
             2, 2, true);
-    builtins.type_signed_short = type_create_builtin(allocator, TYPE_S_SHORT,
+    builtins.t_short = type_create_builtin(allocator, TYPE_S_SHORT,
             2, 2, true);
-    builtins.type_unsigned_int = type_create_builtin(allocator, TYPE_U_INT,
+    builtins.t_unsigned_int = type_create_builtin(allocator, TYPE_U_INT,
             4, 4, true);
-    builtins.type_signed_int = type_create_builtin(allocator, TYPE_S_INT,
+    builtins.t_int = type_create_builtin(allocator, TYPE_S_INT,
             4, 4, true);
-    builtins.type_unsigned_long = type_create_builtin(allocator, TYPE_U_LONG,
+    builtins.t_unsigned_long = type_create_builtin(allocator, TYPE_U_LONG,
             8, 8, true);
-    builtins.type_signed_long = type_create_builtin(allocator, TYPE_S_LONG,
+    builtins.t_long = type_create_builtin(allocator, TYPE_S_LONG,
             8, 8, true);
-    builtins.type_unsigned_long_long = type_create_builtin(allocator, 
+    builtins.t_unsigned_long_long = type_create_builtin(allocator, 
             TYPE_U_LONG_LONG, 8, 8, true);
-    builtins.type_signed_long_long = type_create_builtin(allocator, 
+    builtins.t_long_long = type_create_builtin(allocator, 
             TYPE_S_LONG_LONG, 8, 8, true);
-    builtins.type_float = type_create_builtin(allocator, TYPE_FLOAT, 4, 4, true);
-    builtins.type_double = type_create_builtin(allocator, TYPE_DOUBLE, 8, 8, true);
-    builtins.type_long_double = type_create_builtin(allocator, TYPE_LONG_DOUBLE,
+    builtins.t_float = type_create_builtin(allocator, TYPE_FLOAT, 4, 4, true);
+    builtins.t_double = type_create_builtin(allocator, TYPE_DOUBLE, 8, 8, true);
+    builtins.t_long_double = type_create_builtin(allocator, TYPE_LONG_DOUBLE,
             16, 16, true);
-    builtins.type_bool = type_create_builtin(allocator, TYPE_BOOL, 1, 1, true);
+    builtins.t_bool = type_create_builtin(allocator, TYPE_BOOL, 1, 1, true);
 
     return builtins;
 }
@@ -233,7 +233,7 @@ QualifiedType type_create_array(AstAllocator* allocator,
     size_t size = length * element_type.type->type_base.type_size;
 
     // Array of unknown length are considered complete types for simplicity.
-    bool is_complete = (expression != NULL) || is_star || is_vla;
+    bool is_complete = (expression != NULL) || length != 0 || is_star || is_vla;
 
     // Need to determine the size and align or the array.
     QualifiedType real_elem_type = qualified_type_get_canonical(&element_type);

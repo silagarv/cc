@@ -813,7 +813,7 @@ static bool is_string_like_token(Parser* parser)
     }
 }
 
-static Expression* parse_string_expression(Parser* parser, bool unevalulated)
+static Expression* parse_string_expression(Parser* parser)
 {
     assert(is_string_like_token(parser));
 
@@ -831,8 +831,8 @@ static Expression* parse_string_expression(Parser* parser, bool unevalulated)
 
     // Attempt the conversion using the information we have here
     StringLiteral string;
-    bool conversion = parse_string_literal(&parser->ast->ast_allocator,
-            &string, parser->dm, parser->lang, &strings, unevalulated);
+    bool conversion = parse_string_literal(ast_get_allocator(parser->ast),
+            &string, parser->dm, parser->lang, &strings, false);
 
     // Make sure to free our token list since we are done with it
     token_list_free(&strings);
@@ -1027,7 +1027,7 @@ static Expression* parse_primary_expression(Parser* parser)
 
         case TOK_STRING:
         case TOK_WIDE_STRING:
-            return parse_string_expression(parser, false);
+            return parse_string_expression(parser);
 
         case TOK___func__:
             return parse_builtin_identifier(parser);
@@ -1057,6 +1057,8 @@ static void parse_argument_expression_list(Parser* parser,
     do
     {
         Expression* arg = parse_assignment_expression(parser);
+        arg = semantic_checker_handle_function_param(&parser->sc, arg);
+        
         expression_list_push(&parser->ast->ast_allocator, list, arg);
     }
     while (try_match(parser, TOK_COMMA, NULL));
@@ -2714,7 +2716,6 @@ static void parse_declarator_internal(Parser* parser, Declarator* declarator)
         parse_declarator_internal(parser, declarator);
 
         declarator_push_pointer(declarator, qualifiers);
-
         return;
     }
     
@@ -3495,12 +3496,7 @@ static TypeQualifiers parse_type_qualifier_list_opt(Parser* parser)
 // there would be a bit nicer and more informative I think
 static DeclarationSpecifiers parse_specifier_qualifier_list(Parser* parser)
 {
-    DeclarationSpecifiers specifiers = parse_declaration_specifiers(parser,
-            true);
-    assert(specifiers.storage_spec == STORAGE_NONE);
-    assert(specifiers.function_spec == FUNCTION_SPECIFIER_NONE);
-
-    return specifiers;
+    return parse_declaration_specifiers(parser, true);
 }
 
 static void parse_struct_declaration(Parser* parser, Declaration* decl)
@@ -4042,7 +4038,7 @@ static void declaration_specifiers_add_declaration(
     if (specifiers->declaration == NULL && specifiers->type == NULL)
     {
         specifiers->declaration = declaration;
-        specifiers->type = declaration->base.qualified_type.type;
+        specifiers->type = declaration_get_type(declaration).type;
     }
 }
 
@@ -4344,7 +4340,7 @@ static Declaration* parse_static_assert_declaration(Parser* parser,
             recover(parser, TOK_SEMI, RECOVER_EAT_TOKEN);
             return NULL;    
         }
-        string = parse_string_expression(parser, true);
+        string = parse_string_expression(parser);
     }
 
     bool should_parse_semi = true;
@@ -4449,48 +4445,22 @@ static void parse_top_level(Parser* parser)
 
 static void parse_translation_unit_internal(Parser* parser)
 {
-    // Create our file scope which will be used throughout parsing the t-unit
-    Scope externals = scope_extern(&parser->ast->ast_allocator);
-    semantic_checker_push_externals(&parser->sc, &externals);
+    // Parse declarations until we hit end of file tracking if we got a 
+    // declaration in the translation unit or not.
+    bool had_decl = false;
+    while (!is_match(parser, TOK_EOF))
+    {
+        parse_top_level(parser);
+        had_decl = true;
+    }
 
-    Scope file = scope_file(&parser->ast->ast_allocator);
-    semantic_checker_push_scope(&parser->sc, &file);
-
-    // Check for case of empty translation unit which is not allowed. Note, this
-    // occurs when we try to parse the first top level declaration and instead
-    // get an end of file token (no useful input).
-    if (is_match(parser, TOK_EOF))
+    // Warn if we did not recieve any declarations at all.
+    if (!had_decl)
     {
         diagnostic_warning_at(parser->dm, current_token_location(parser),
                 "ISO C requires a translation unit to contain at least one "
                 "declaration");
     }
-
-    // Otherwise parse the rest of the translation unit until we hit the end of
-    // the file.
-    while (!is_match(parser, TOK_EOF))
-    {
-        parse_top_level(parser);
-    }
-
-    // Finally, after EOF, we can check all of our external definitions.
-    semantic_checker_check_externals(&parser->sc);
-
-    // Ast the last thing we do, set our top level and external declarations so
-    // that we are able to keep using these.
-    DeclarationList top_level_decls = scope_get_declarations(&file);
-    ast_set_top_level_decls(parser->ast, top_level_decls);
-    
-    DeclarationList external_decls = scope_get_declarations(&externals);
-    ast_set_external_decls(parser->ast, external_decls);
-
-    // Here we can pop and delete since all of our needed decl's are in the top
-    // level delcaration vector.
-    semantic_checker_pop_scope(&parser->sc);
-    scope_delete(&file);
-
-    semantic_checker_pop_externals(&parser->sc);
-    scope_delete(&externals);
 }
 
 bool parser_create_for_translation_unit(Parser* parser, DiagnosticManager* dm,
@@ -4509,6 +4479,8 @@ bool parser_create_for_translation_unit(Parser* parser, DiagnosticManager* dm,
     parser->paren_count = 0;
     parser->bracket_count = 0;
     parser->brace_count = 0;
+    parser->externs = scope_extern(ast_get_allocator(ast));
+    parser->top_level = scope_file(ast_get_allocator(ast));
     parser->ast = ast;
     parser->sc = sematic_checker_create(dm, opts, ids, ast);
     
@@ -4517,14 +4489,39 @@ bool parser_create_for_translation_unit(Parser* parser, DiagnosticManager* dm,
 
 void parser_delete(Parser* parser)
 {
+    scope_delete(&parser->top_level);
+    scope_delete(&parser->externs);
     preprocessor_delete(&parser->pp);
 }
 
 void parse_translation_unit(Parser* parser)
 {
-    // Advance the token initially to ensure that we have something
-    preprocessor_advance_token(&parser->pp, &parser->token);
+    // Completely finish initialising and creating the parser and semantic 
+    // checker by pushing their scope and creating all of the necessary implicit
+    // declarations that we are going to use.
+    semantic_checker_push_externals(&parser->sc, &parser->externs);
+    semantic_checker_push_scope(&parser->sc, &parser->top_level);
 
-    // Now we can go and parse the translation unit.
+    // Now before we even thing about getting tokens we need to complete 
+    // initializing the semantic checker with our implicit declarations.
+    semantic_checker_initialize_implicit_decls(&parser->sc);
+
+    // Advance the token initially to ensure that we have something. Don't do 
+    // this when creating as this could produce diagnostics.
+    preprocessor_advance_token(&parser->pp, &parser->token);
     parse_translation_unit_internal(parser);
+
+    // After we have parsed the entire translation unit we can finish off all
+    // the declarations and ensure that they are nice and valid
+    semantic_checker_check_externals(&parser->sc);
+
+    // Grab our top level and external declarations from our parses scopes.
+    DeclarationList top_level = scope_get_declarations(&parser->top_level);
+    ast_set_top_level_decls(parser->ast, top_level);
+    DeclarationList externs = scope_get_declarations(&parser->externs);
+    ast_set_external_decls(parser->ast, externs);
+
+    // Then finally we can pop off the scopes from the semantic checker.
+    semantic_checker_pop_scope(&parser->sc);
+    semantic_checker_pop_externals(&parser->sc);
 }

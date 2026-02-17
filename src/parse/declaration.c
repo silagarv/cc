@@ -351,19 +351,17 @@ void declarator_function_piece_set_all_decls(DeclaratorPiece* piece,
 
 bool declarator_is_function(const Declarator* declarator)
 {
-    DeclaratorPiece* piece = declarator->piece_stack;
 
-    // Okay keep track of if we maybe have a function we want to parse. We 
-    // essentially want to look through the pieces in reverse order but cannot
-    // do this effeciently since we have stack.
-    // void* func(void); -> pointer -> func (is the piece stack here)
-    // void (*func)(void); -> func -> pointer (is the stack here)
-    //
-    // So while we traverse through the stack if we see a pointer or array
-    // then the func that is okay. Otherwise if we see func the pointer we
-    // cannot be a function
+    // Ideally we would look though our piece stack going forwards because then
+    // we would be able to simply return true or false depending on what we
+    // hit first. However, we basically want to know if a function was last or
+    // if an array/pointer was last. If a function was last it's a function,
+    // otherwise it's an array / pointer. For most declarations this is really
+    // fast, howver, for heavily nested declarations this may be a problem.
     bool maybe_function = false;
-    while (piece != NULL)
+    for (DeclaratorPiece* piece = declarator->piece_stack;
+            piece != NULL;
+            piece = piece->base.next)
     {
         switch (piece->base.type)
         {
@@ -373,22 +371,13 @@ bool declarator_is_function(const Declarator* declarator)
 
             case DECLARATOR_PIECE_ARRAY:
             case DECLARATOR_PIECE_POINTER:
-                // if we have one of these we have already seen a function
-                // declarator so we cannot be a function.
-                if (maybe_function)
-                {
-                    return false;
-                }
-
-                // Otherwise we are good to continue
+                maybe_function = false;
                 break;
 
             default:
                 panic("unexpected declarator piece type");
                 break;
         }
-        
-        piece = piece->base.next;
     }
     
     return maybe_function;
@@ -595,6 +584,16 @@ void declaration_set_invalid(Declaration* decl)
     }
 
     decl->base.invalid = true;
+}
+
+bool declaration_is_implicit(const Declaration* declaration)
+{
+    return declaration->base.implicit;
+}
+
+void declaration_set_implicit(Declaration* declaration)
+{
+    declaration->base.implicit = true;
 }
 
 void declaration_set_type(Declaration* decl, QualifiedType type)

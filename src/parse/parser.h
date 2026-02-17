@@ -44,6 +44,13 @@ typedef struct Parser {
     size_t bracket_count;
     size_t brace_count;
 
+    // Special case of parser storing some scopes that we would like to 
+    // initialise before we need to parse anything. These are the only scopes
+    // that should be stored here. Mainly so we can install implicit top-level
+    // decls in the semantic checker before we even parse
+    Scope externs;
+    Scope top_level;
+
     // Stores the ast. This includes all of the statements, expressions,
     // declaration, and anything else that we might need. This is held in one
     // large arena so that we can effeciently free and allocate it.

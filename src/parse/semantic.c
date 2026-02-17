@@ -6,18 +6,19 @@
 #include <string.h>
 #include <assert.h>
 
-#include "driver/lang.h"
-#include "parse/ast_allocator.h"
-#include "parse/compound_layout_calculator.h"
-#include "parse/expression_eval.h"
 #include "util/panic.h"
+
+#include "driver/diagnostic.h"
+#include "driver/lang.h"
 
 #include "files/location.h"
 
-#include "driver/diagnostic.h"
-
 #include "lex/identifier_table.h"
 
+#include "parse/ast.h"
+#include "parse/ast_allocator.h"
+#include "parse/compound_layout_calculator.h"
+#include "parse/expression_eval.h"
 #include "parse/scope.h"
 #include "parse/statement.h"
 #include "parse/type.h"
@@ -25,6 +26,8 @@
 #include "parse/expression.h"
 #include "parse/initializer.h"
 #include "parse/literal_parser.h"
+
+#define VA_LIST_NUM_FIELDS 4
 
 SemanticChecker sematic_checker_create(DiagnosticManager* dm, LangOptions* opts,
         IdentifierTable* identifiers, Ast* ast)
@@ -41,7 +44,107 @@ SemanticChecker sematic_checker_create(DiagnosticManager* dm, LangOptions* opts,
         .switches = NULL
     };
 
+    // Now that we have everything and want to be able to start semantic 
+    // checking we also need to build and create our builtin types.
+
     return sc;
+}
+
+// Some forward decarlations of functions needed to create the tag va_list
+static QualifiedType semantic_checker_get_uint_type(SemanticChecker* sc);
+static QualifiedType semantic_checker_get_void_type(SemanticChecker* sc);
+static QualifiedType semantic_checker_create_pointer(SemanticChecker* sc,
+        QualifiedType pointee, TypeQualifiers qualifiers);
+static QualifiedType semantic_checker_create_array(SemanticChecker* sc,
+        QualifiedType element_type, Expression* expression, size_t length,
+        bool is_static, bool is_star, bool is_vla);
+static Declaration* semantic_checker_create_typedef(SemanticChecker* sc,
+        Location location, Identifier* id, QualifiedType type);
+
+static Declaration* semantic_checker_builtin_va_list_tag(SemanticChecker* sc)
+{
+    // typedef struct /*__va_list_tag*/ {
+    //     unsigned int gp_offset;
+    //     unsigned int fp_offset;
+    //     void *overflow_arg_area;
+    //     void *reg_save_area;
+    // } va_list[1];
+
+    // TODO: I want the struct to have the name __va_list_tag but that is not
+    // TODO: easily possible right now. We either need to modify the tag 
+    // TODO: creating here or redo it in declarations... If we modify handle tag
+    // TODO: we simply need it to not insert into the current scope.
+    // Create our struct decl and set it to be an implicit declaration.
+    Declaration* decl = semantic_checker_handle_tag(sc, DECLARATION_STRUCT,
+            LOCATION_INVALID, NULL, LOCATION_INVALID, true);
+    declaration_set_implicit(decl);
+
+    // Get an array of our field names and of the types for each of these field 
+    // names. So that we can quickly create each of the fields for the struct.
+    const char* field_names[VA_LIST_NUM_FIELDS] =
+    { 
+        [0] = "gp_offset", 
+        [1] = "fp_offset",
+        [2] = "overflow_arg_area",
+        [3] = "reg_save_area"
+    };
+
+    QualifiedType field_types[VA_LIST_NUM_FIELDS] =
+    {
+        [0] = semantic_checker_get_uint_type(sc),
+        [1] = semantic_checker_get_uint_type(sc),
+        [2] = semantic_checker_create_pointer(sc,
+                semantic_checker_get_void_type(sc), QUALIFIER_NONE),
+        [3] = semantic_checker_create_pointer(sc,
+                semantic_checker_get_void_type(sc), QUALIFIER_NONE)
+    };
+    
+    // Now create the fields of our struct declaration.
+    for (size_t i = 0; i < VA_LIST_NUM_FIELDS; i++)
+    {
+        Declaration* member = declaration_create_field(
+                ast_get_allocator(sc->ast), LOCATION_INVALID,
+                identifier_table_get(sc->identifiers, field_names[i]),
+                field_types[i], LOCATION_INVALID, NULL, 0, false);
+        declaration_struct_add_member(decl, member);
+    }
+    
+    // Finally set the type to be complete (imitate the closing curly)
+    declaration_struct_set_complete(decl);
+
+    // Finally set up stuff so that we can create our typedef of the 'va_list'
+    Identifier* type_name = identifier_table_get(sc->identifiers,
+            "__builtin_va_list");
+    QualifiedType array = semantic_checker_create_array(sc,
+            declaration_get_type(decl), NULL, 1, false, false, false);
+    Declaration* tdef = semantic_checker_create_typedef(sc, LOCATION_INVALID,
+            type_name, array);
+
+    // Again set it to be an implicit declaration
+    declaration_set_implicit(tdef);
+
+    // Finally, return the typedef.
+    return tdef;
+}
+
+static Declaration* semantic_checker_builtin_va_list(SemanticChecker* sc)
+{
+    // TODO: other types of VAList exist apart from the X86-64 one.
+    return semantic_checker_builtin_va_list_tag(sc);
+}
+
+void semantic_checker_initialize_implicit_decls(SemanticChecker* sc)
+{
+    assert(ast_get___builtin_va_list(sc->ast) == NULL);
+    assert(scope_is(sc->scope, SCOPE_FILE));
+
+    // Create the current builtin_va_list and add it to both the ast's 
+    // understanding and to the top level scope
+    Declaration* builtin_va_list = semantic_checker_builtin_va_list(sc);
+    ast_set___builtin_va_list(sc->ast, builtin_va_list);
+    semantic_checker_insert_ordinairy(sc, builtin_va_list);
+
+    // TODO: other implicit declarations...
 }
 
 // -----------------------------------------------------------------------------
@@ -50,26 +153,24 @@ SemanticChecker sematic_checker_create(DiagnosticManager* dm, LangOptions* opts,
 
 void semantic_checker_push_externals(SemanticChecker* sc, Scope* scope)
 {
-    sc->externals = scope;
+    sc->externs = scope;
 }
 
 void semantic_checker_pop_externals(SemanticChecker* sc)
 {
-    sc->externals = NULL;
+    sc->externs = NULL;
 }
 
 void semantic_checker_push_scope(SemanticChecker* sc, Scope* scope)
 {
-    // Set the scopes parent
     scope_set_parent(scope, sc->scope);
-
-    // Set the sematic checkers scope.
     sc->scope = scope;
 }
 
 void semantic_checker_pop_scope(SemanticChecker* sc)
 {
-    sc->scope = scope_get_parent(sc->scope);
+    Scope* parent = scope_get_parent(sc->scope);
+    sc->scope = parent;
 }
 
 Scope* semantic_checker_current_scope(SemanticChecker* sc)
@@ -209,18 +310,18 @@ void semantic_checker_insert_member(SemanticChecker* sc, Declaration* decl)
 Declaration* semantic_checker_lookup_external(SemanticChecker* sc,
         Identifier* identifier)
 {
-    assert(sc->externals != NULL);
+    assert(sc->externs != NULL);
 
-    return scope_lookup_ordinairy(sc->externals, identifier, false);
+    return scope_lookup_ordinairy(sc->externs, identifier, false);
 }
 
 void semantic_checker_insert_external(SemanticChecker* sc, Declaration* decl)
 {
     assert(declaration_is(decl, DECLARATION_FUNCTION)
             || declaration_is(decl, DECLARATION_VARIABLE));
-    assert(sc->externals != NULL);
+    assert(sc->externs != NULL);
 
-    scope_insert_ordinairy(sc->externals, decl);
+    scope_insert_ordinairy(sc->externs, decl);
 }
 
 static bool semantic_checker_in_function(const SemanticChecker* sc)
@@ -245,67 +346,67 @@ static Declaration* semantic_checker_get_function(const SemanticChecker* sc)
 
 static QualifiedType semantic_checker_get_float_type(SemanticChecker* sc)
 {
-    Type* flt = sc->ast->base_types.type_float;
+    Type* flt = sc->ast->base_types.t_float;
     return (QualifiedType) {QUALIFIER_NONE, flt};
 }
 
 static QualifiedType semantic_checker_get_double_type(SemanticChecker* sc)
 {
-    Type* dbl = sc->ast->base_types.type_double;
+    Type* dbl = sc->ast->base_types.t_double;
     return (QualifiedType) {QUALIFIER_NONE, dbl};
 }
 
 static QualifiedType semantic_checker_get_long_double_type(SemanticChecker* sc)
 {
-    Type* long_double = sc->ast->base_types.type_long_double;
+    Type* long_double = sc->ast->base_types.t_long_double;
     return (QualifiedType) {QUALIFIER_NONE, long_double};
 }
 
 static QualifiedType semantic_checker_get_char_type(SemanticChecker* sc)
 {
-    Type* char_type = sc->ast->base_types.type_char;
+    Type* char_type = sc->ast->base_types.t_char;
     return (QualifiedType) {QUALIFIER_NONE, char_type};
 }
 
 static QualifiedType semantic_checker_get_int_type(SemanticChecker* sc)
 {
-    Type* int_type = sc->ast->base_types.type_signed_int;
+    Type* int_type = sc->ast->base_types.t_int;
     return (QualifiedType) {QUALIFIER_NONE, int_type};
 }
 
 static QualifiedType semantic_checker_get_uint_type(SemanticChecker* sc)
 {
-    Type* uint_type = sc->ast->base_types.type_unsigned_int;
+    Type* uint_type = sc->ast->base_types.t_unsigned_int;
     return (QualifiedType) {QUALIFIER_NONE, uint_type};
 }
 
 static QualifiedType semantic_checker_get_long_type(SemanticChecker* sc)
 {
-    Type* long_type = sc->ast->base_types.type_signed_long;
+    Type* long_type = sc->ast->base_types.t_long;
     return (QualifiedType) {QUALIFIER_NONE, long_type};
 }
 
 static QualifiedType semantic_checker_get_ulong_type(SemanticChecker* sc)
 {
-    Type* ulong_type = sc->ast->base_types.type_unsigned_long;
+    Type* ulong_type = sc->ast->base_types.t_unsigned_long;
     return (QualifiedType) {QUALIFIER_NONE, ulong_type};
 }
 
 static QualifiedType semantic_checker_get_ulong_long_type(SemanticChecker* sc)
 {
-    Type* ulong_long_type = sc->ast->base_types.type_unsigned_long_long;
+    Type* ulong_long_type = sc->ast->base_types.t_unsigned_long_long;
     return (QualifiedType) {QUALIFIER_NONE, ulong_long_type};
 }
 
 static QualifiedType semantic_checker_get_void_type(SemanticChecker* sc)
 {
-    Type* void_type = sc->ast->base_types.type_void;
+    Type* void_type = sc->ast->base_types.t_void;
     return (QualifiedType) {QUALIFIER_NONE, void_type};
 }
 
 static QualifiedType semantic_checker_get_size_type(SemanticChecker* sc)
 {
-    return sc->ast->size_type;
+    return sc->ast->t_size;
 }
 
 static QualifiedType semantic_checker_create_array(SemanticChecker* sc,
@@ -723,25 +824,25 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
                     "missing, defaults to 'int'; ISO C99 and later do not "
                     "support implicit int");
             }
-            type = builtins->type_signed_int;
+            type = builtins->t_int;
             break;
 
         case TYPE_SPECIFIER_VOID:
-            type = builtins->type_void;
+            type = builtins->t_void;
             break;
 
         case TYPE_SPECIFIER_CHAR:
             if (specifiers->type_spec_sign == SIGN_SPECIFIER_NONE)
             {
-                type = builtins->type_char;
+                type = builtins->t_char;
             }
             else if (specifiers->type_spec_sign == SIGN_SPECIFIER_SIGNED)
             {
-                type = builtins->type_signed_char;
+                type = builtins->t_signed_char;
             }
             else
             {
-                type = builtins->type_unsigned_char;
+                type = builtins->t_unsigned_char;
             }
             break;
 
@@ -752,19 +853,19 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
                 switch (specifiers->type_spec_width)
                 {
                     case WIDTH_SPECIFIER_NONE:
-                        type = builtins->type_signed_int;
+                        type = builtins->t_int;
                         break;
 
                     case WIDTH_SPECIFIER_SHORT:
-                        type = builtins->type_signed_short;
+                        type = builtins->t_short;
                         break;
 
                     case WIDTH_SPECIFIER_LONG:
-                        type = builtins->type_signed_long;
+                        type = builtins->t_long;
                         break;
 
                     case WIDTH_SPECIFIER_LONG_LONG:
-                        type = builtins->type_signed_long_long;
+                        type = builtins->t_long_long;
                         break;
                 }
             }
@@ -773,41 +874,41 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
                 switch (specifiers->type_spec_width)
                 {
                     case WIDTH_SPECIFIER_NONE:
-                        type = builtins->type_unsigned_int;
+                        type = builtins->t_unsigned_int;
                         break;
 
                     case WIDTH_SPECIFIER_SHORT:
-                        type = builtins->type_unsigned_short;
+                        type = builtins->t_unsigned_short;
                         break;
 
                     case WIDTH_SPECIFIER_LONG:
-                        type = builtins->type_unsigned_long;
+                        type = builtins->t_unsigned_long;
                         break;
 
                     case WIDTH_SPECIFIER_LONG_LONG:
-                        type = builtins->type_unsigned_long_long;
+                        type = builtins->t_unsigned_long_long;
                         break;
                 }
             }
             break;
 
         case TYPE_SPECIFIER_FLOAT:
-            type = builtins->type_float;
+            type = builtins->t_float;
             break;
 
         case TYPE_SPECIFIER_DOUBLE:
             if (specifiers->type_spec_width == WIDTH_SPECIFIER_LONG)
             {
-                type = builtins->type_long_double;
+                type = builtins->t_long_double;
             }
             else
             {
-                type = builtins->type_double;
+                type = builtins->t_double;
             }
             break;
 
         case TYPE_SPECIFIER_BOOL:
-            type = builtins->type_bool;
+            type = builtins->t_bool;
             break;
 
         case TYPE_SPECIFIER_ENUM:
@@ -1233,8 +1334,9 @@ QualifiedType semantic_checker_process_type(SemanticChecker* sc,
     
     // The go through all of our pieces until we reach the end of our piece
     // stack. Keeping track of if we got an invalid declaration
-    DeclaratorPiece* piece = declarator->piece_stack;
-    for (; piece != NULL; piece = piece->base.next)
+    for (DeclaratorPiece* piece = declarator->piece_stack;
+            piece != NULL;
+            piece = piece->base.next)
     {
         switch (piece->base.type)
         {
@@ -2283,6 +2385,17 @@ Declaration* semantic_checker_process_variable(SemanticChecker* sc,
     return new_var;
 }
 
+static Declaration* semantic_checker_create_typedef(SemanticChecker* sc,
+        Location location, Identifier* id, QualifiedType type)
+{
+    Declaration* tdef = declaration_create_typedef(&sc->ast->ast_allocator,
+            location, id, type);
+    Type* new_type = type_create_typedef(&sc->ast->ast_allocator, type, tdef);
+    declaration_typedef_set_type(tdef, new_type);
+
+    return tdef;
+}
+
 Declaration* semantic_checker_process_typedef(SemanticChecker* sc,
         Declarator* declarator, QualifiedType type)
 {
@@ -2294,10 +2407,8 @@ Declaration* semantic_checker_process_typedef(SemanticChecker* sc,
     semantic_checker_diagnose_inline(sc, specifiers);
 
     // Create the typedef and the new type setting up the declaration fully.
-    Declaration* tdef = declaration_create_typedef(&sc->ast->ast_allocator,
-            identifer_loc, identifier, type);
-    Type* new_type = type_create_typedef(&sc->ast->ast_allocator, type, tdef);
-    declaration_typedef_set_type(tdef, new_type);
+    Declaration* tdef = semantic_checker_create_typedef(sc, identifer_loc,
+            identifier, type);    
     
     // Check for other declarations already present
     Declaration* previous = semantic_checker_lookup_ordinairy(sc, identifier,
@@ -2390,7 +2501,7 @@ Declaration* semantic_checker_process_static_assert(SemanticChecker* sc,
     if (!assert_failed && expression_integer_value_get(&value) == 0)
     {
         assert_failed = true;
-        if (c23 /*|| expression_string_get_length(string)*/)
+        if (c23)
         {
             diagnostic_error_at(sc->dm, expression_get_location(ice), "static "
                     "assertion failed");
@@ -2911,7 +3022,7 @@ static void semantic_checker_finish_external(SemanticChecker* sc,
 
 void semantic_checker_check_externals(SemanticChecker* sc)
 {
-    DeclarationList decls = scope_get_declarations(sc->externals);
+    DeclarationList decls = scope_get_declarations(sc->externs);
     DeclarationListEntry* entry = declaration_list_iter(&decls);
 
     // For each of our declarations go ahead and try to complete it without 
@@ -3130,7 +3241,7 @@ static Declaration* semantic_checker_create_enum(SemanticChecker* sc,
 {
     // Create the enum type and a declaration for the enum itself
     QualifiedType type = type_create_enum(&sc->ast->ast_allocator,
-            sc->ast->base_types.type_signed_int);
+            sc->ast->base_types.t_int);
     Declaration* decl = declaration_create_enum(&sc->ast->ast_allocator, 
             enum_location, name, type, anonymous);
     type_enum_set_declaration(&type, decl);
@@ -3184,7 +3295,7 @@ static Declaration* semantic_checker_create_union(SemanticChecker* sc,
     return decl;
 }
 
-static Declaration* sematantic_checker_create_tag(SemanticChecker* sc,
+static Declaration* semantic_checker_create_tag(SemanticChecker* sc,
         DeclarationType type, Location tag_type_loc, Identifier* identifier,
         Location identifier_loc)
 {
@@ -3218,6 +3329,8 @@ Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
         DeclarationType type, Location tag_type_loc, Identifier* identifier,
         Location identifier_location, bool is_definition)
 {
+    assert(identifier != NULL || is_definition);
+
     // If we know it's a definition, don't look it up recursively, otherwise
     // do so since we will want to get a previous declaration.
     Declaration* previous = semantic_checker_lookup_tag(sc, identifier,
@@ -3242,7 +3355,7 @@ Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
     {
         // Create the implicit tag and make a warning about the implicit decl if
         // it is an enum declaration.
-        declaration =  sematantic_checker_create_tag(sc, type, tag_type_loc,
+        declaration =  semantic_checker_create_tag(sc, type, tag_type_loc,
                 identifier, identifier_location);
         if (type == DECLARATION_ENUM && identifier != NULL)
         {
@@ -3257,7 +3370,7 @@ Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
     else if (is_definition && previous == NULL)
     {
         // Can simply create the tag with no worries.
-        declaration = sematantic_checker_create_tag(sc, type, tag_type_loc,
+        declaration = semantic_checker_create_tag(sc, type, tag_type_loc,
                 identifier, identifier_location);
     }
     else if (is_definition && previous != NULL)
@@ -3294,7 +3407,7 @@ Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
             previous = NULL;
 
             // Can simply create the tag with no worries.
-            declaration = sematantic_checker_create_tag(sc, type, tag_type_loc,
+            declaration = semantic_checker_create_tag(sc, type, tag_type_loc,
                     identifier, identifier_location);
         }
     }
@@ -4123,7 +4236,7 @@ Expression* semantic_checker_handle_error_expression(SemanticChecker* sc,
         Location location)
 {
      return expression_create_error(&sc->ast->ast_allocator,
-                sc->ast->base_types.type_error, location);
+                sc->ast->base_types.t_error, location);
 }
 
 Expression* semantic_checker_handle_parenthesis_expression(SemanticChecker* sc,
@@ -4251,27 +4364,27 @@ static Expression* semantic_checker_handle_integer_constant(SemanticChecker* sc,
             break;
 
         case INTEGER_VALUE_INTEGER:
-            type = sc->ast->base_types.type_signed_int;
+            type = sc->ast->base_types.t_int;
             break;
 
         case INTEGER_VALUE_UNSIGNED_INTEGER:
-            type = sc->ast->base_types.type_unsigned_int;
+            type = sc->ast->base_types.t_unsigned_int;
             break;
 
         case INTEGER_VALUE_LONG:
-            type = sc->ast->base_types.type_signed_long;
+            type = sc->ast->base_types.t_long;
             break;
 
         case INTEGER_VALUE_UNSIGNED_LONG:
-            type = sc->ast->base_types.type_unsigned_long;
+            type = sc->ast->base_types.t_unsigned_long;
             break;
 
         case INTEGER_VALUE_LONG_LONG:
-            type = sc->ast->base_types.type_signed_long_long;
+            type = sc->ast->base_types.t_long_long;
             break;
 
         case INTEGER_VALUE_UNSIGNED_LONG_LONG:
-            type = sc->ast->base_types.type_unsigned_long_long;
+            type = sc->ast->base_types.t_unsigned_long_long;
             break;
     }
 
@@ -4291,15 +4404,15 @@ static Expression* semantic_checker_handle_floating_constant(SemanticChecker* sc
             break;
 
         case FLOATING_VALUE_FLOAT:
-            type = sc->ast->base_types.type_float;
+            type = sc->ast->base_types.t_float;
             break;
 
         case FLOATING_VALUE_DOUBLE:
-            type = sc->ast->base_types.type_double;
+            type = sc->ast->base_types.t_double;
             break;
 
         case FLOATING_VALUE_LONG_DOUBLE:
-            type = sc->ast->base_types.type_long_double;
+            type = sc->ast->base_types.t_long_double;
             break;
     }
 
@@ -4339,7 +4452,7 @@ Expression* semantic_checker_handle_char_expression(SemanticChecker* sc,
     }
 
     // TODO: is this correct if the char is wide?
-    Type* type = sc->ast->base_types.type_signed_int;
+    Type* type = sc->ast->base_types.t_int;
     QualifiedType qual_type = {QUALIFIER_NONE, type};
     return expression_create_character(&sc->ast->ast_allocator, char_location,
             value, qual_type);
@@ -4426,6 +4539,13 @@ Expression* semantic_checker_handle_array_expression(SemanticChecker* sc,
     // Create the array expression remembering which side is the array side
     return expression_create_array(&sc->ast->ast_allocator,
             lbracket_loc, rbracket_loc, lhs, member, expr_type, lhs_is_array);
+}
+
+Expression* semantic_checker_handle_function_param(SemanticChecker* sc,
+        Expression* param)
+{
+    // All we have to do is to decay the parameter as required.
+    return semantic_checker_func_array_lvalue_convert(sc, param);
 }
 
 static bool semantic_checker_is_callable(SemanticChecker* sc,
@@ -4689,12 +4809,6 @@ Expression* semantic_checker_handle_member_expression(SemanticChecker* sc,
                 identifier_cstr(declaration_get_identifier(struct_decl)));
         return semantic_checker_handle_error_expression(sc, operator_loc);
     }
-
-    QualifiedType canonical_base = qualified_type_get_canonical(&base_type);
-    CompoundLayout* layout = type_struct_get_layout(canonical_base.type);
-    uint64_t bytes, bits;
-    compound_layout_member_offset(layout, member, &bytes, &bits);
-
 
     // The type of the expresion we are about to create is the type of the 
     // member that we are referencing.
@@ -5120,6 +5234,10 @@ Expression* semantic_checker_handle_cast_expression(SemanticChecker* sc,
     {
         return semantic_checker_handle_error_expression(sc, lparen_loc);
     }
+
+    // Decay any expressions as needed. e.g. cast one function pointer to 
+    // another function pointer type.
+    rhs = semantic_checker_func_array_lvalue_convert(sc, rhs);
 
     // Both the named type and the right hand side should have scaler type
     // unless the named type is a void type
@@ -5735,6 +5853,19 @@ Expression* semantic_checker_handle_equality_expression(SemanticChecker* sc,
             || type == EXPRESSION_BINARY_NOT_EQUAL);
     assert(expression_is_valid(lhs) && expression_is_valid(rhs));
     // TODO: add assert that we're not an lvalue?
+
+    // Do lvalue to rvalue conversion for both sides of the expression.
+    lhs = semantic_checker_func_array_lvalue_convert(sc, lhs);
+    if (expression_is_invalid(lhs))
+    {
+        return semantic_checker_handle_error_expression(sc, op_location);
+    }
+
+    rhs = semantic_checker_func_array_lvalue_convert(sc, rhs);
+    if (expression_is_invalid(rhs))
+    {
+        return semantic_checker_handle_error_expression(sc, op_location);
+    }
 
     // For equality expressions one of the following should hold:
     // Both operands have arithemetic type
@@ -6392,7 +6523,7 @@ Expression* semantic_checker_expression_finalize(SemanticChecker* sc,
     // certain cases. So do this as the last thing we do. Otherwise it should
     // already be done in all scenarious.
     if (expression_is(expression, EXPRESSION_REFERENCE)
-            || expression_is(expression, EXPRESSION_STRING_LITERAL))
+            /*|| expression_is(expression, EXPRESSION_STRING_LITERAL)*/)
     {
         return semantic_checker_func_array_lvalue_convert(sc, expression);
     }
@@ -7148,9 +7279,12 @@ Statement* semantic_checker_handle_return_statement(SemanticChecker* sc,
         Location return_location, Expression* expression,
         Location semi_location)
 {
-    if (expression != NULL && expression_is_invalid(expression))
-    {
-        return semantic_checker_handle_error_statement(sc);
+    // Here we have an expression that we should have, so we should 
+    // finish off the expression by decaying it if needed
+    if (expression != NULL && expression_is_valid(expression))
+    {        
+        expression = semantic_checker_func_array_lvalue_convert(sc,
+                expression);
     }
 
     FunctionScope* scope = sc->function;
@@ -7169,6 +7303,7 @@ Statement* semantic_checker_handle_return_statement(SemanticChecker* sc,
         QualifiedType real_expr = qualified_type_get_canonical(&expr_type);
 
         // Note: this below, is a -Wpedantic in Clang and GCC
+        // TODO: I think this is an extension in C23?
         if (qualified_type_is(&real_expr, TYPE_VOID))
         {
             diagnostic_error_at(sc->dm, return_location,

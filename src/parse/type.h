@@ -226,23 +226,23 @@ union Type {
 // TODO: should I instead implement some kind of way where types can be compared
 // via pointer equality instead of having to possible walk a large type tree
 typedef struct TypeBuiltins {
-    Type* type_error;
-    Type* type_void;
-    Type* type_bool;
-    Type* type_char;
-    Type* type_signed_char;
-    Type* type_unsigned_char;
-    Type* type_signed_short;
-    Type* type_unsigned_short;
-    Type* type_signed_int;
-    Type* type_unsigned_int;
-    Type* type_signed_long;
-    Type* type_unsigned_long;
-    Type* type_signed_long_long;
-    Type* type_unsigned_long_long;
-    Type* type_float;
-    Type* type_double;
-    Type* type_long_double;
+    Type* t_error;
+    Type* t_void;
+    Type* t_bool;
+    Type* t_char;
+    Type* t_signed_char;
+    Type* t_unsigned_char;
+    Type* t_short;
+    Type* t_unsigned_short;
+    Type* t_int;
+    Type* t_unsigned_int;
+    Type* t_long;
+    Type* t_unsigned_long;
+    Type* t_long_long;
+    Type* t_unsigned_long_long;
+    Type* t_float;
+    Type* t_double;
+    Type* t_long_double;
 } TypeBuiltins;
 
 const char* storage_specifier_to_name(StorageSpecifier specifier);
