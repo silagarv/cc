@@ -216,9 +216,9 @@ static int compiler_driver_execute(CompilerDriver* driver)
 
 static void compiler_driver_finish_init(CompilerDriver* driver)
 {
-    // Finish options set up here with our diagnostics engine if we got these
+    // Finish options set up here with our diagnostics engine if we got these.
+    // The only one to do here is to disable warnings.
     diagnostic_manager_set_disable_warnings(&driver->dm, driver->options.w);
-    diagnostic_manager_set_werror(&driver->dm, driver->options.werror);
 
     // TODO: set up backend specific stuff?
 }

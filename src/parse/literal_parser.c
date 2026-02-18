@@ -11,6 +11,7 @@
 #include <assert.h>
 
 #include "driver/lang.h"
+#include "driver/warning.h"
 #include "lex/unicode.h"
 #include "parse/ast_allocator.h"
 #include "util/buffer.h"
@@ -444,7 +445,7 @@ bool parse_integer_literal(LiteralValue* value, DiagnosticManager* dm,
     // is the unsigned long long type. We will simply warn about it and move on
     if (type == INTEGER_VALUE_ERROR)
     {
-        diagnostic_warning_at(dm, location,
+        diagnostic_warning_at(dm, location, Wother,
                 "integer constant is so large that it is unsigned");
         type = INTEGER_VALUE_UNSIGNED_LONG_LONG;
     }
@@ -751,7 +752,7 @@ bool parse_float_literal(LiteralValue* value, DiagnosticManager* dm,
     if (error)
     {   
         const char* type_name = floating_type_to_name(type);
-        diagnostic_warning_at(dm, location,
+        diagnostic_warning_at(dm, location, Wother,
                 "floating-point constant too large for type '%s'", type_name);
     }
 
@@ -1036,15 +1037,15 @@ static utf32 decode_escape_sequence_new(DiagnosticManager* dm, Location loc,
             }
             else if (!lang_opts_c99(lang))
             {
-                diagnostic_warning_at(dm, loc, "universal character names are "
-                        "only valid in C99");
+                diagnostic_warning_at(dm, loc, Wunicode, "universal character "
+                        "names are only valid in C99");
             }
             break;
         }
 
         default:
-            diagnostic_warning_at(dm, loc, "unknown escape sequence '\\%c'",
-                    current);
+            diagnostic_warning_at(dm, loc, Wunknown_escape_sequence,
+                    "unknown escape sequence '\\%c'", current);
             *okay = ESCAPE_SEQUENCE_RESULT_ERROR;
             return current;
     }
@@ -1234,8 +1235,8 @@ static uint64_t decode_escape_sequence(const char* raw, size_t len, size_t* pos,
         // Unknown escape sequence. Make a warning and simply return the value
         // of whatever char we got.
         default:
-            diagnostic_warning_at(dm, loc, "unknown escape sequence '\\%c'",
-                    current);
+            diagnostic_warning_at(dm, loc, Wunknown_escape_sequence,
+                    "unknown escape sequence '\\%c'", current);
             *success = ESCAPE_SEQUENCE_RESULT_ERROR;
 
             return current;
@@ -1308,8 +1309,8 @@ bool parse_char_literal(CharValue* value, DiagnosticManager* dm,
 
     if (!wide && num_digits > 1)
     {
-        diagnostic_warning_at(dm, loc, "multi-character character constant");
-
+        diagnostic_warning_at(dm, loc, Wmultichar, "multi-character character "
+                "constant");
         // WIDE CHARACTER LITERALS MAY NOT CONTAIN MORE THAN 1 DIGIT!!!
     }
     else if (wide && num_digits > 1)
@@ -1321,7 +1322,7 @@ bool parse_char_literal(CharValue* value, DiagnosticManager* dm,
     
     if (!wide && val > INT_MAX)
     {
-        diagnostic_warning_at(dm, loc,
+        diagnostic_warning_at(dm, loc, Wother,
                 "character constant too long for its type");
     }
 
@@ -1511,8 +1512,8 @@ bool parse_string_literal(AstAllocator* allocator, StringLiteral* value,
         }
         if (unevaluated && t_type != CHAR_TYPE_CHAR)
         {
-            diagnostic_warning_at(dm, token_get_location(&t), "encoding prefix "
-                    "'%s' has no effect",
+            diagnostic_warning_at(dm, token_get_location(&t), Wother,
+                    "encoding prefix '%s' has no effect",
                     string_literal_prefix(token_get_type(&t)));
         }
         else if (t_type == CHAR_TYPE_WIDE && type == CHAR_TYPE_CHAR)

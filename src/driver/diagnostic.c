@@ -8,9 +8,9 @@
 #include <unistd.h>
 #include <assert.h>
 
-#include "files/file_manager.h"
-#include "util/panic.h"
+#include "driver/warning.h"
 
+#include "files/file_manager.h"
 #include "files/line_map.h"
 #include "files/location.h"
 #include "files/source_manager.h"
@@ -79,6 +79,12 @@ DiagnosticManager diagnostic_manager_init(SourceManager* sm)
     dm.disable_warnings = false;
     dm.werror = false;
 
+    // For each warning initialize with the default value
+    for (DiagnosticWarning i = 0; i < WARNING_COUNT; i++)
+    {
+        dm.options[(size_t) i] = diagnostic_warning_default(i);
+    }
+
     return dm;
 }
 
@@ -89,12 +95,84 @@ void diagnostic_manager_set_sm(DiagnosticManager* dm, SourceManager* sm)
 
 void diagnostic_manager_set_werror(DiagnosticManager* dm, bool value)
 {
+    for (DiagnosticWarning i = 0; i < WARNING_COUNT; i++)
+    {
+        // If true set werror, otherwise unset werror
+        if (value)
+        {
+            dm->options[i] |= DIAG_STATE_ERROR;
+        }
+        else
+        {
+            dm->options[i] &= ~DIAG_STATE_ERROR;
+        }
+    }
     dm->werror = value;
 }
 
 void diagnostic_manager_set_disable_warnings(DiagnosticManager* dm, bool value)
 {
     dm->disable_warnings = value;
+}
+
+static bool diagnostic_manager_modifiable_warning(const DiagnosticManager* dm,
+        DiagnosticWarning warning)
+{
+    return warning > 0 && warning < WARNING_COUNT;
+}
+
+void diagnostic_manager_handle_warning_option(DiagnosticManager* dm,
+        DiagnosticWarning warning, bool no, bool error)
+{
+    if (warning == Wunknown)
+    {
+        return;
+    }
+
+    if (warning == Werror)
+    {
+        diagnostic_manager_set_werror(dm, !no);
+        return;
+    }
+
+    // TODO: not handled yet... but do this in the future
+    if (warning >= WARNING_COUNT)
+    {
+        return;
+    }
+
+    // In the case of having no and error we want to maintain the current state
+    // but just disable the error if it was going to occur.
+    if (no && error)
+    {
+        dm->options[warning] &= ~DIAG_STATE_ERROR;
+    }
+    else if (no) // Otherwise turn it off completely including the error
+    {
+        dm->options[warning] = DIAG_STATE_OFF;
+    }
+    else if (error) // Otherwise on and error
+    {
+        dm->options[warning] = DIAG_STATE_ON | DIAG_STATE_ERROR;
+    }
+    else
+    {
+        dm->options[warning] = DIAG_STATE_ON;
+    }
+}
+
+bool diagnostic_manager_warning_active(const DiagnosticManager* dm,
+        DiagnosticWarning warning)
+{
+    assert(diagnostic_manager_modifiable_warning(dm, warning));
+    return dm->options[warning] & DIAG_STATE_ON;
+}
+
+bool diagnostic_manager_warning_error(const DiagnosticManager* dm,
+        DiagnosticWarning warning)
+{
+    assert(diagnostic_manager_modifiable_warning(dm, warning));
+    return dm->options[warning] & DIAG_STATE_ERROR;
 }
 
 size_t diagnostic_manager_get_warning_count(const DiagnosticManager* dm)
@@ -167,8 +245,35 @@ static const char* kind_to_colour(DiagnosticManager* dm, DiagnosticKind kind)
 }
 
 void diagnostic_internal(DiagnosticManager* dm, DiagnosticKind kind,
-        const char* fmt, va_list ap)
+        DiagnosticWarning warning, const char* fmt, va_list ap)
 {
+    // This takes precedence in Clang
+    if (kind == DIAGNOSTIC_WARNING && dm->disable_warnings)
+    {
+        return;
+    }
+
+    bool print_warning_name = false;
+    if (kind == DIAGNOSTIC_WARNING 
+            && diagnostic_manager_modifiable_warning(dm, warning))
+    {
+        if (!diagnostic_manager_warning_active(dm, warning))
+        {
+            return;
+        }
+
+        print_warning_name = true;
+        if (diagnostic_manager_warning_error(dm, warning))
+        {
+            kind = DIAGNOSTIC_ERROR;
+        }
+    }
+    else if (kind == DIAGNOSTIC_WARNING && dm->werror)
+    {
+        kind = DIAGNOSTIC_ERROR;
+    }
+
+    // Handle the error counting.
     if (kind == DIAGNOSTIC_ERROR)
     {
         dm->error_count++;
@@ -179,12 +284,18 @@ void diagnostic_internal(DiagnosticManager* dm, DiagnosticKind kind,
     }
 
     fprintf(stderr, "%s%scc: %s%s: %s%s", dm->colours->white,
-            dm->colours->highlight,
-            kind_to_colour(dm, kind),
-            kind_to_name(kind),
-            dm->colours->reset_all,
-            dm->colours->white);
+            dm->colours->highlight, kind_to_colour(dm, kind),
+            kind_to_name(kind), dm->colours->reset_all, dm->colours->white);
     vfprintf(stderr, fmt, ap);
+    
+    if (print_warning_name)
+    {
+        const char* name = diagnostic_warning_to_string(warning);
+        fprintf(stderr, " [%s%s-W%s%s%s]", dm->colours->highlight,
+                kind_to_colour(dm, kind), name, dm->colours->reset_all,
+                dm->colours->white);
+    }
+    
     fprintf(stderr, "\n");
 }
 
@@ -192,7 +303,7 @@ void diagnostic_fatal_error(DiagnosticManager* dm, const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    diagnostic_internal(dm, DIAGNOSTIC_FATAL, fmt, ap);
+    diagnostic_internal(dm, DIAGNOSTIC_FATAL, Wunknown, fmt, ap);
     va_end(ap);
 }
 
@@ -200,22 +311,16 @@ void diagnostic_error(DiagnosticManager* dm, const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    diagnostic_internal(dm, DIAGNOSTIC_ERROR, fmt, ap);
+    diagnostic_internal(dm, DIAGNOSTIC_ERROR, Wunknown, fmt, ap);
     va_end(ap);
 }
 
-void diagnostic_warning(DiagnosticManager* dm, const char* fmt, ...)
+void diagnostic_warning(DiagnosticManager* dm, DiagnosticWarning type,
+        const char* fmt, ...)
 {
-    // In clang disabling warnings takes priority over having them at all
-    if (dm->disable_warnings)
-    {
-        return;
-    }
-
     va_list ap;
     va_start(ap, fmt);
-    diagnostic_internal(dm, dm->werror ? DIAGNOSTIC_ERROR : DIAGNOSTIC_WARNING,
-            fmt, ap);
+    diagnostic_internal(dm, DIAGNOSTIC_WARNING, type, fmt, ap);
     va_end(ap);
 }
 
@@ -223,7 +328,7 @@ void diagnostic_note(DiagnosticManager* dm, const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    diagnostic_internal(dm, DIAGNOSTIC_NOTE, fmt, ap);
+    diagnostic_internal(dm, DIAGNOSTIC_NOTE, Wunknown, fmt, ap);
     va_end(ap);
 }
 
@@ -231,7 +336,7 @@ void diagnostic_help(DiagnosticManager* dm, const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    diagnostic_internal(dm, DIAGNOSTIC_HELP, fmt, ap);
+    diagnostic_internal(dm, DIAGNOSTIC_HELP, Wunknown, fmt, ap);
     va_end(ap);
 }
 
@@ -330,12 +435,39 @@ void diagnostic_print_snippet(DiagnosticManager* dm, DiagnosticKind kind,
             dm->colours->reset_all);
 }
 
-void diagnostic_internal_at(DiagnosticManager* dm, DiagnosticKind kind,
-        Location loc, const char* fmt, va_list ap)
+static void diagnostic_internal_at(DiagnosticManager* dm, DiagnosticKind kind,
+        Location loc, DiagnosticWarning warning, const char* fmt, va_list ap)
 {
     assert(dm->sm);
     assert(loc != LOCATION_INVALID);
 
+    // This takes precedence in Clang
+    if (kind == DIAGNOSTIC_WARNING && dm->disable_warnings)
+    {
+        return;
+    }
+
+    bool print_warning_name = false;
+    if (kind == DIAGNOSTIC_WARNING 
+            && diagnostic_manager_modifiable_warning(dm, warning))
+    {
+        if (!diagnostic_manager_warning_active(dm, warning))
+        {
+            return;
+        }
+
+        print_warning_name = true;
+        if (diagnostic_manager_warning_error(dm, warning))
+        {
+            kind = DIAGNOSTIC_ERROR;
+        }
+    }
+    else if (kind == DIAGNOSTIC_WARNING && dm->werror)
+    {
+        kind = DIAGNOSTIC_ERROR;
+    }
+
+    // Now increment the diagnostic counts.
     if (kind == DIAGNOSTIC_ERROR)
     {
         dm->error_count++;
@@ -360,6 +492,15 @@ void diagnostic_internal_at(DiagnosticManager* dm, DiagnosticKind kind,
             dm->colours->white
         );
     vfprintf(stderr, fmt, ap);
+    
+    if (print_warning_name)
+    {
+        const char* name = diagnostic_warning_to_string(warning);
+        fprintf(stderr, " [%s%s-W%s%s%s]", dm->colours->highlight,
+                kind_to_colour(dm, kind), name, dm->colours->reset_all,
+                dm->colours->white);
+    }
+
     fprintf(stderr, "%s\n", dm->colours->reset_all);
 
     diagnostic_print_snippet(dm, kind, sf, loc, line);
@@ -370,7 +511,7 @@ void diagnostic_fatal_error_at(DiagnosticManager* dm, Location loc,
 {
     va_list ap;
     va_start(ap, fmt);
-    diagnostic_internal_at(dm, DIAGNOSTIC_FATAL, loc, fmt, ap);
+    diagnostic_internal_at(dm, DIAGNOSTIC_FATAL, loc, Wunknown, fmt, ap);
     va_end(ap);
 }
 
@@ -379,23 +520,16 @@ void diagnostic_error_at(DiagnosticManager* dm, Location loc,
 {
     va_list ap;
     va_start(ap, fmt);
-    diagnostic_internal_at(dm, DIAGNOSTIC_ERROR, loc, fmt, ap);
+    diagnostic_internal_at(dm, DIAGNOSTIC_ERROR, loc, Wunknown, fmt, ap);
     va_end(ap);
 }
 
 void diagnostic_warning_at(DiagnosticManager* dm, Location loc,
-        const char* fmt, ...)
+        DiagnosticWarning type, const char* fmt, ...)
 {
-    // In clang disabling warnings takes priority over having them at all
-    if (dm->disable_warnings)
-    {
-        return;
-    }
-
     va_list ap;
     va_start(ap, fmt);
-    diagnostic_internal_at(dm,
-            dm->werror ? DIAGNOSTIC_ERROR : DIAGNOSTIC_WARNING, loc, fmt, ap);
+    diagnostic_internal_at(dm, DIAGNOSTIC_WARNING, loc, type, fmt, ap);
     va_end(ap);
 }
 
@@ -404,7 +538,7 @@ void diagnostic_note_at(DiagnosticManager* dm, Location loc,
 {
     va_list ap;
     va_start(ap, fmt);
-    diagnostic_internal_at(dm, DIAGNOSTIC_NOTE, loc, fmt, ap);
+    diagnostic_internal_at(dm, DIAGNOSTIC_NOTE, loc, Wunknown, fmt, ap);
     va_end(ap);
 }
 
@@ -413,6 +547,6 @@ void diagnostic_help_at(DiagnosticManager* dm, Location loc,
 {
     va_list ap;
     va_start(ap, fmt);
-    diagnostic_internal_at(dm, DIAGNOSTIC_HELP, loc, fmt, ap);
+    diagnostic_internal_at(dm, DIAGNOSTIC_HELP, loc, Wunknown, fmt, ap);
     va_end(ap);
 }

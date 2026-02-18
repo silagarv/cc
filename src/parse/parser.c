@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "driver/warning.h"
 #include "util/panic.h"
 
 #include "driver/lang.h"
@@ -1739,7 +1740,8 @@ static Statement* parse_statement_after_label(Parser* parser, const char* ctx)
         if (!lang_opts_c23(parser->lang))
         {
             diagnostic_warning_at(parser->dm, current_token_location(parser),
-                    "%s at end of compound statement is a C23 extension", ctx);
+                    Wc23_extensions, "%s at end of compound statement is a C23 "
+                    "extension", ctx);
         }
     
         // Return an empty statement so we can actually build the label without
@@ -1752,7 +1754,8 @@ static Statement* parse_statement_after_label(Parser* parser, const char* ctx)
         if (!lang_opts_c23(parser->lang))
         {
             diagnostic_warning_at(parser->dm, current_token_location(parser),
-                    "%s followed by a declaration is a C23 extension", ctx);
+                    Wc23_extensions, "%s followed by a declaration is a C23 "
+                    "extension", ctx);
         }
         // Don't return and go on to parse a statement after.
     }
@@ -2272,8 +2275,8 @@ static Statement* parse_for_statement(Parser* parser)
         if (!lang_opts_c99(parser->lang))
         {
             diagnostic_warning_at(parser->dm, current_token_location(parser),
-                    "variable declarations in for loop is a C99-specific "
-                    "feature");
+                    Wc99_extensions, "variable declarations in for loop is a "
+                    "C99-specific feature");
         }
         init_declaration = parse_declaration(parser, DECL_CTX_BLOCK, NULL);
     }
@@ -2620,7 +2623,7 @@ static Initializer* parse_initializer_list(Parser* parser)
     {
         if (lang_opts_c23(parser->lang))
         {
-            diagnostic_warning_at(parser->dm, lcurly,
+            diagnostic_warning_at(parser->dm, lcurly, Wc23_extensions,
                 "use of an empty initializer is a C23 extension");
         }
         
@@ -3523,7 +3526,7 @@ static void parse_struct_declaration(Parser* parser, Declaration* decl)
         Location semi = consume(parser);
         if (!lang_opts_c11(parser->lang))
         {
-            diagnostic_warning_at(parser->dm, semi,
+            diagnostic_warning_at(parser->dm, semi, Wmissing_decls,
                     "declaration does not declare anything");
         }
         return;
@@ -3552,7 +3555,7 @@ parse_semi:;
     if (is_match(parser, TOK_RCURLY))
     {
         diagnostic_warning_at(parser->dm, current_token_location(parser),
-                "expected ';' after %s declarator",
+                Wother, "expected ';' after %s declarator",
                 declaration_is(decl, DECLARATION_STRUCT) ? "struct" : "union");
     }
     else
@@ -3570,7 +3573,8 @@ static void parse_struct_declaration_list(Parser* parser, Declaration* decl,
     if (is_match(parser, TOK_RCURLY))
     {
         diagnostic_warning_at(parser->dm, declaration_get_location(decl),
-                "empty %s is a GNU extension", is_struct ? "struct" : "union");
+                Wgnu_empty_struct, "empty %s is a GNU extension",
+                is_struct ? "struct" : "union");
     }
 
     // Create and push our member scope.
@@ -3583,7 +3587,8 @@ static void parse_struct_declaration_list(Parser* parser, Declaration* decl,
         if (is_match(parser, TOK_SEMI))
         {
             Location sem = eat_all(parser, TOK_SEMI);
-            diagnostic_warning_at(parser->dm, sem, "extra ';' inside a struct");
+            diagnostic_warning_at(parser->dm, sem, Wextra_semi, "extra ';' "
+                    "inside a struct");
             continue;
         }
 
@@ -3899,7 +3904,7 @@ static void declaration_specifiers_add_storage(Parser* parser,
     }
     else if (specifiers->storage_spec == storage)
     {
-        diagnostic_warning_at(parser->dm, location,
+        diagnostic_warning_at(parser->dm, location, Wduplicate_decl_spec,
                 "duplicate '%s' storage specifier",
                 storage_specifier_to_name(storage));
     }
@@ -3918,7 +3923,7 @@ static void declaration_specifiers_add_qualifier(Parser* parser,
 {
     if (specifiers->qualifiers & qualifier)
     {
-        diagnostic_warning_at(parser->dm, location,
+        diagnostic_warning_at(parser->dm, location, Wduplicate_decl_spec,
                 "duplicate '%s' type qualifier",
                 type_qualifier_to_name(qualifier));
     }
@@ -3941,7 +3946,7 @@ static void declaration_specifiers_add_function(Parser* parser,
 
     if (specifiers->function_spec & function)
     {
-        diagnostic_warning_at(parser->dm, location,
+        diagnostic_warning_at(parser->dm, location, Wduplicate_decl_spec,
                 "duplicate '%s' function specifier",
                 function_specifier_to_name(function));
     }
@@ -3989,7 +3994,7 @@ static void declaration_specifiers_add_sign(Parser* parser,
     }
     else if (specifiers->type_spec_sign == sign)
     {
-        diagnostic_warning_at(parser->dm, location,
+        diagnostic_warning_at(parser->dm, location, Wduplicate_decl_spec,
                 "got duplicate '%s' sign specifier",
                 sign_specifier_to_name(sign));
     }
@@ -4012,7 +4017,7 @@ static void declaration_specifiers_add_complex(Parser* parser,
     }
     else if (specifiers->type_spec_complex == complex)
     {
-        diagnostic_warning_at(parser->dm, location,
+        diagnostic_warning_at(parser->dm, location, Wduplicate_decl_spec,
                 "got duplicate '%s' complex specifier",
                 complex_specifier_to_name(complex));
     }
@@ -4319,7 +4324,8 @@ static Declaration* parse_static_assert_declaration(Parser* parser,
         if (!lang_opts_c23(parser->lang))
         {
             diagnostic_warning_at(parser->dm, current_token_location(parser),
-                    "'_Static_assert' with no message is a C23 extension");
+                    Wc23_extensions, "'_Static_assert' with no message is a "
+                    "C23 extension");
         }
         c23_sa = true;
     }
@@ -4422,7 +4428,7 @@ static void parse_top_level(Parser* parser)
 
         case TOK_SEMI:
         {
-            diagnostic_warning_at(parser->dm, consume(parser),
+            diagnostic_warning_at(parser->dm, consume(parser), Wextra_semi,
                     "extra ';' outside of a function");
             return;
         }
@@ -4458,8 +4464,8 @@ static void parse_translation_unit_internal(Parser* parser)
     if (!had_decl)
     {
         diagnostic_warning_at(parser->dm, current_token_location(parser),
-                "ISO C requires a translation unit to contain at least one "
-                "declaration");
+                Wempty_translation_unit, "ISO C requires a translation unit to "
+                "contain at least one declaration");
     }
 }
 

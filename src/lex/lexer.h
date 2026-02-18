@@ -14,20 +14,21 @@
 
 typedef struct Lexer {
     DiagnosticManager* dm;
-
     LangOptions* lang;
-
     Arena* literal_arena;
-
     IdentifierTable* identifiers;
 
     const char* buffer_start;
     const char* buffer_end;
-    
-    char* current_ptr;
 
     Location start_loc;
 
+    char* current_ptr;
+
+    // True if we have warned about a line comment in this lexer
+    bool err_line_comment;
+
+    // Some lexer flags for helping us do some preprocessor stuff
     bool start_of_line;
     bool lexing_directive;
     bool can_lex_header;

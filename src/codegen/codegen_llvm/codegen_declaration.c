@@ -5,6 +5,7 @@
 
 #include "driver/diagnostic.h"
 
+#include "driver/warning.h"
 #include "lex/identifier_table.h"
 
 #include "parse/type.h"
@@ -53,8 +54,8 @@ LLVMValueRef llvm_codegen_variable_declaration(CodegenContext* context,
     {
         Identifier* id = declaration_get_identifier(variable);
         diagnostic_warning_at(context->dm, declaration_get_location(variable),
-                "initializer cannot be created for '%s'; this is not "
-                "implemented", identifier_cstr(id));
+                Wexperimental, "initializer cannot be created for '%s'; this "
+                "is not implemented", identifier_cstr(id));
     }
 
     // Finally, once everything is build we need to insert this into our 

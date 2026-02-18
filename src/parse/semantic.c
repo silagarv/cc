@@ -6,6 +6,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "driver/warning.h"
 #include "util/panic.h"
 
 #include "driver/diagnostic.h"
@@ -290,7 +291,7 @@ void semantic_checker_insert_tag(SemanticChecker* sc, Declaration* decl)
     // so producte a warning about this.
     if (scope_is(sc->scope, SCOPE_FUNCTION))
     {
-        diagnostic_warning_at(sc->dm, decl->base.location,
+        diagnostic_warning_at(sc->dm, decl->base.location, Wvisibility,
                 "declaration of '%s %s' will not be visible outside of this "
                 "function", tag_kind_to_name(decl->base.declaration_type),
                 identifier_cstr(declaration_get_identifier(decl)));
@@ -748,7 +749,7 @@ void declaration_specifiers_finish(SemanticChecker* sc,
         case COMPLEX_SPECIFIER_IMAGINAIRY:
             if (specifiers->type_spec_type == TYPE_SPECIFIER_NONE)
             {
-                diagnostic_warning_at(sc->dm, specifiers->location,
+                diagnostic_warning_at(sc->dm, specifiers->location, Wother,
                         "'%s' requires type specifier; assuming 'double'",
                         complex_specifier_to_name(
                         specifiers->type_spec_complex));
@@ -820,9 +821,9 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
             // the other standards
             if (lang_opts_c99(sc->lang))
             {
-                diagnostic_warning_at(sc->dm, location, "type specifier "
-                    "missing, defaults to 'int'; ISO C99 and later do not "
-                    "support implicit int");
+                diagnostic_warning_at(sc->dm, location, Wimplicit_int, "type "
+                    "specifier missing, defaults to 'int'; ISO C99 and later "
+                    "do not support implicit int");
             }
             type = builtins->t_int;
             break;
@@ -1047,7 +1048,7 @@ static QualifiedType process_array_type(SemanticChecker* sc, Declarator* d,
         if (declaration_struct_get_flexible_array(decl))
         {
             bool is_struct = qualified_type_is(&real_type, TYPE_STRUCT);
-            diagnostic_warning_at(sc->dm, array->lbracket,
+            diagnostic_warning_at(sc->dm, array->lbracket, Wflexible_array_exts,
                     "'%s %s' may not be used as an array element due to "
                     "flexible array member", is_struct ? "struct" : "union",
                     identifier_cstr(declaration_get_identifier(decl)));
@@ -1081,7 +1082,7 @@ static QualifiedType process_array_type(SemanticChecker* sc, Declarator* d,
             if (int_value == 0)
             {
                 diagnostic_warning_at(sc->dm,
-                        expression_get_location(expression),
+                        expression_get_location(expression), Wzero_length_array,
                         "zero size arrays are an extension");
             }
             else if (int_value < 0)
@@ -1249,19 +1250,19 @@ static QualifiedType process_function_type(SemanticChecker* sc, Declarator* d,
         Location location = d->identifier_location;
         if (type_qualifier_is_const(quals))
         {
-            diagnostic_warning_at(sc->dm, location,
+            diagnostic_warning_at(sc->dm, location, Wignored_qualifiers,
                     "'const' type qualifier on return type has no effect");
         }
 
         if (type_qualifier_is_volatile(quals))
         {
-            diagnostic_warning_at(sc->dm, location,
+            diagnostic_warning_at(sc->dm, location, Wignored_qualifiers,
                     "'volatile' type qualifier on return type has no effect");
         }
 
         if (type_qualifier_is_restrict(quals))
         {
-            diagnostic_warning_at(sc->dm, location,
+            diagnostic_warning_at(sc->dm, location, Wignored_qualifiers,
                     "'restrict' type qualifier on return type has no effect");
         }
 
@@ -1364,9 +1365,9 @@ QualifiedType semantic_checker_process_type(SemanticChecker* sc,
     // Warn if we get a knr function
     if (qualified_type_is(&type, TYPE_FUNCTION) && type_function_get_knr(&type))
     {
-        diagnostic_warning_at(sc->dm, declarator_location, "a function "
-                "declaration without a prototype is deprecated in all versions "
-                "of C");
+        diagnostic_warning_at(sc->dm, declarator_location, Wdeprecated,
+                "a function declaration without a prototype is deprecated in "
+                "all versions of C");
     }
 
     // If we had something that makes this invalid we need to set the declarator
@@ -1425,7 +1426,7 @@ Declaration* semantic_checker_process_specifiers(SemanticChecker* sc,
             if (tst != TYPE_SPECIFIER_ENUM
                     && declaration_struct_is_anonymous(to_return))
             {
-                diagnostic_warning_at(sc->dm, location,
+                diagnostic_warning_at(sc->dm, location, Wmissing_decls,
                         "declaration does not declare anything");
             }
             break;
@@ -1450,7 +1451,7 @@ Declaration* semantic_checker_process_specifiers(SemanticChecker* sc,
         case STORAGE_NONE:
             if (to_return == NULL)
             {
-                diagnostic_warning_at(sc->dm, location, 
+                diagnostic_warning_at(sc->dm, location, Wmissing_decls,
                         "declaration does not declare anything");
                 return NULL;
             }
@@ -1466,14 +1467,14 @@ Declaration* semantic_checker_process_specifiers(SemanticChecker* sc,
         {
             if (to_return != NULL)
             {
-                diagnostic_warning_at(sc->dm, location,
+                diagnostic_warning_at(sc->dm, location, Wmissing_decls,
                         "'%s' ignored on this declaration",
                         storage_specifier_to_name(storage));
                 break;
             }
             else
             {
-                diagnostic_warning_at(sc->dm, location, 
+                diagnostic_warning_at(sc->dm, location, Wmissing_decls,
                         "declaration does not declare anything");
                 return to_return;
             }
@@ -1481,7 +1482,8 @@ Declaration* semantic_checker_process_specifiers(SemanticChecker* sc,
 
         // The guarantee above does not apply here...
         case STORAGE_TYPEDEF:
-            diagnostic_warning_at(sc->dm, location, "typedef requires a name");
+            diagnostic_warning_at(sc->dm, location, Wmissing_decls, 
+                    "typedef requires a name");
             break;
 
         default:
@@ -1492,13 +1494,13 @@ Declaration* semantic_checker_process_specifiers(SemanticChecker* sc,
     // Finally warn about unneeded qualifiers if present.
     if (type_qualifier_is_const(quals))
     {
-        diagnostic_warning_at(sc->dm, location,
+        diagnostic_warning_at(sc->dm, location, Wmissing_decls,
                 "'const' ignored on this declaration");
     }
 
     if (type_qualifier_is_volatile(quals))
     {
-        diagnostic_warning_at(sc->dm, location,
+        diagnostic_warning_at(sc->dm, location, Wmissing_decls,
                 "'volatile' ignored on this declaration");
     }
 
@@ -1717,8 +1719,8 @@ static void semantic_checker_check_main_function(SemanticChecker* sc,
     Location loc = declaration_get_location(decl);
     if (declaration_function_get_linkage(decl) == DECLARATION_LINKAGE_INTERNAL)
     {
-        diagnostic_warning_at(sc->dm, loc, "'main' should not be declared "
-                "static");
+        diagnostic_warning_at(sc->dm, loc, Wmain, "'main' should not be "
+                "declared static");
     }
 
     if (declaration_function_is_inline(decl))
@@ -1735,14 +1737,14 @@ static void semantic_checker_check_main_function(SemanticChecker* sc,
     QualifiedType real_return = qualified_type_get_canonical(&return_type);
     if (!qualified_type_is(&real_return, TYPE_S_INT))
     {
-        diagnostic_warning_at(sc->dm, loc, "return type of 'main' is not "
-                "'int'");
+        diagnostic_warning_at(sc->dm, loc, Wmain, "return type of 'main' is "
+                "not 'int'");
     }
 
     // Check if the function is variadic and warn if it is
     if (type_function_is_variadic(&type))
     {
-        diagnostic_warning_at(sc->dm, loc, "'main' is not allowed to be "
+        diagnostic_warning_at(sc->dm, loc, Wmain, "'main' is not allowed to be "
                 "declared variadic");
     }
     
@@ -1815,8 +1817,9 @@ static void semantic_checker_check_main_variable(SemanticChecker* sc,
     assert(declaration_variable_get_linkage(decl) 
             == DECLARATION_LINKAGE_EXTERNAL);
 
-    diagnostic_warning_at(sc->dm, declaration_get_location(decl), "variable "
-            "named 'main' with external linkage has undefined behaviour");
+    diagnostic_warning_at(sc->dm, declaration_get_location(decl), Wmain,
+            "variable named 'main' with external linkage has undefined "
+            "behaviour");
 }
 
 static void semantic_checker_check_main(SemanticChecker* sc, Declaration* decl)
@@ -1880,7 +1883,7 @@ static void semantic_checker_check_function_redeclaration(SemanticChecker* sc,
     QualifiedType old_type = declaration_get_type(previous);
     if (type_function_get_knr(&new_type) || type_function_get_knr(&old_type))
     {
-        diagnostic_warning_at(sc->dm, location,
+        diagnostic_warning_at(sc->dm, location, Wexperimental,
                 "cannnot compare knr functions yet!");
     }
     else if (!qualified_type_is_compatible(&new_type, &old_type))
@@ -2316,9 +2319,9 @@ Declaration* semantic_checker_process_variable(SemanticChecker* sc,
             && (declaration_function_get_linkage(
             semantic_checker_get_function(sc)) == DECLARATION_LINKAGE_EXTERNAL))
     {
-        diagnostic_warning_at(sc->dm, identifer_loc, "non-constant static "
-                "local variable in inline function may be different in "
-                "different files");
+        diagnostic_warning_at(sc->dm, identifer_loc, Wstatic_local_in_inline,
+                "non-constant static local variable in inline function may be "
+                "different in different files");
     }
 
     // Now determine the type of linkage that this variable has.
@@ -2755,7 +2758,7 @@ void semantic_checker_add_function_parameters(SemanticChecker* sc,
         }
         else if (!lang_opts_c23(sc->lang))
         {
-            diagnostic_warning_at(sc->dm, decl->base.location,
+            diagnostic_warning_at(sc->dm, decl->base.location, Wc23_extensions,
                     "omiting the parameter name in a function definition is "
                     "a C23 extension");
         }
@@ -2889,7 +2892,7 @@ void semantic_checker_declaration_add_initializer(SemanticChecker* sc,
         assert(context == DECL_CTX_FILE);
 
         diagnostic_warning_at(sc->dm, declaration_get_location(declaration),
-                "'extern' variable has an initializer");
+                Wextern_initializer, "'extern' variable has an initializer");
     }
 
     // Finally, we will need to check that our initializer is a constant init
@@ -2960,8 +2963,8 @@ void semantic_checker_declaration_finish(SemanticChecker* sc,
                 && !qualified_type_is_complete(&real_type))
         {
             diagnostic_warning_at(sc->dm, declaration_get_location(declaration),
-                    "tentative definition of variable '%s' with internal "
-                    "linkage has incomplete non-array type",
+                    Wtentative, "tentative definition of variable '%s' with "
+                    "internal linkage has incomplete non-array type",
                     identifier_cstr(declaration_get_identifier(declaration)));
         }
     }
@@ -3009,7 +3012,8 @@ static void semantic_checker_finish_external(SemanticChecker* sc,
     {
         // TODO: go and actually set the type to be the correct type
         diagnostic_warning_at(sc->dm, declaration_get_location(declaration),
-                "tentative array definition assumed to have one element");
+                Wtentative, "tentative array definition assumed to have one "
+                "element");
     }
     else if (!qualified_type_is_complete(&type))
     {
@@ -3105,8 +3109,8 @@ static void semantic_checker_check_struct_fields(SemanticChecker* sc,
             {
                 Identifier* name = declaration_get_identifier(member);
                 diagnostic_warning_at(sc->dm, declaration_get_location(member),
-                        "'%s' may not be nested in a %s due to flexible "
-                        "array member", identifier_cstr(name),
+                        Wflexible_array_exts, "'%s' may not be nested in a %s "
+                        "due to flexible array member", identifier_cstr(name),
                         is_union ? "union" : "struct");
             }
         }
@@ -3120,8 +3124,8 @@ static void semantic_checker_check_struct_fields(SemanticChecker* sc,
     if (fields != 0 && named_fields == 0)
     {
         diagnostic_warning_at(sc->dm, declaration_get_location(declaration),
-                "%s without named members is a GNU extension",
-                is_union ? "union" : "struct");
+                Wgnu_empty_struct, "%s without named members is a GNU "
+                "extension", is_union ? "union" : "struct");
     }
 }
 
@@ -3212,7 +3216,7 @@ Declaration* semantic_checker_handle_enum_constant(SemanticChecker* sc,
         // Manually do 2's complement overflow if needed
         if (value == INT_MAX)
         {
-            diagnostic_warning_at(sc->dm, location,
+            diagnostic_warning_at(sc->dm, location, Woverflow,
                     "overflow in enumeration value '%s'",
                     identifier_cstr(identifier));
             value = INT_MIN;
@@ -3359,7 +3363,7 @@ Declaration* semantic_checker_handle_tag(SemanticChecker* sc,
                 identifier, identifier_location);
         if (type == DECLARATION_ENUM && identifier != NULL)
         {
-            diagnostic_warning_at(sc->dm, declaration->base.location,
+            diagnostic_warning_at(sc->dm, declaration->base.location, Wpedantic,
                     "ISO C forbids forward references to 'enum' types");
         }
     }
@@ -4202,17 +4206,20 @@ static bool semantic_checker_diagnose_assign_error(SemanticChecker* sc,
 
         case ASSIGNMENT_POINTER_DISCARDS_QUALS:
             diagnostic_warning_at(sc->dm, location,
+                    Wincompatible_pointer_types_discards_qualifiers,
                     "implicit pointer conversion discards qualifiers");
             return true;
 
         case ASSIGNMENT_POINTER_INCOMPATIBLE:
-            diagnostic_warning_at(sc->dm, location,
+            diagnostic_warning_at(sc->dm, location, Wincompatible_pointer_types,
                     "incompatible pointer types");
             return true;
 
         case ASSIGNMENT_POINTER_INCOMPATIBLE_SIGN:
-            diagnostic_warning_at(sc->dm, location, "conversion between "
-                    "pointers to integer types with different sign");
+            // TODO: fix this warning option
+            diagnostic_warning_at(sc->dm, location, Wincompatible_pointer_types,
+                    "conversion between pointers to integer types with "
+                    "different sign");
             return true;
 
         case ASSIGNMENT_INT_POINTER:
@@ -4221,7 +4228,7 @@ static bool semantic_checker_diagnose_assign_error(SemanticChecker* sc,
             const char* msg = type == ASSIGNMENT_INT_POINTER
                     ? "pointer to integer"
                     : "integer to pointer";
-            diagnostic_warning_at(sc->dm, location,
+            diagnostic_warning_at(sc->dm, location, Wint_conversion,
                     "incompatible %s conversion", msg);
             return true;
         }
@@ -4345,8 +4352,9 @@ Expression* semantic_checker_handle_reference_expression(SemanticChecker* sc,
                     ? "function"
                     : "variable";
             diagnostic_warning_at(sc->dm, identifier_location,
-                    "static %s '%s' is used in an inline function with "
-                    "external linkage", static_type, identifier_cstr(identifier));
+                    Wstatic_local_in_inline, "static %s '%s' is used in an "
+                    "inline function with external linkage", static_type,
+                    identifier_cstr(identifier));
         }
     }
 
@@ -6644,7 +6652,7 @@ static bool semantic_checker_check_scalar_initialization(SemanticChecker* sc,
     if (nested)
     {
         diagnostic_warning_at(sc->dm, initializer_list_lcurly(init),
-                "too many braces around scalar initializer");
+                Wmany_braces, "too many braces around scalar initializer");
     }
     
     // If it does have a designator that can't be right since we are trying to
@@ -6713,7 +6721,7 @@ static bool semantic_checker_check_scalar_initialization(SemanticChecker* sc,
             loc = initializer_expression_location(init);
         }
 
-        diagnostic_warning_at(sc->dm, loc,
+        diagnostic_warning_at(sc->dm, loc, Wexcess_initializers,
                 "excess elements in scalar initializer");
     }
     

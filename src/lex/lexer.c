@@ -10,6 +10,7 @@
 
 #include "driver/diagnostic.h"
 #include "driver/lang.h"
+#include "driver/warning.h"
 #include "files/file_manager.h"
 #include "files/source_manager.h"
 #include "util/arena.h"
@@ -45,6 +46,7 @@ void lexer_create(Lexer* lexer, DiagnosticManager* dm, LangOptions* opts,
         .buffer_end = file_buffer_get_end(fb),
         .current_ptr = (char*) file_buffer_get_start(fb),
         .start_loc = source_file_get_start_location(source),
+        .err_line_comment = false,
         .start_of_line = true,
         .lexing_directive = false,
         .can_lex_header = false
@@ -284,7 +286,7 @@ static void skip_line_comment(Lexer* lexer)
         if (current == '\0' && at_eof(lexer))
         {
             diagnostic_warning_at(lexer->dm, get_curr_location(lexer),
-                    "no newline at end of file");
+                    Wnewline_eof, "no newline at end of file");
             break;
         }
 
@@ -308,7 +310,7 @@ static void skip_block_comment(Lexer* lexer, Location start_loc)
         if (current == '/' && peek_char(lexer) == '*')
         {
             diagnostic_warning_at(lexer->dm, get_curr_location(lexer),
-                    "'/*' within block comment");
+                    Wcomment, "'/*' within block comment");
         }
 
         // Check for end of comment
@@ -364,7 +366,8 @@ static bool try_lex_ucn(Lexer* lexer, Location slash_loc, Buffer* buffer,
         // TODO: this diagnostic can trigger twice in C90 mode for some reason
         if (buffer == NULL)
         {
-            diagnostic_warning_at(lexer->dm, slash_loc, "universal "
+            // TODO: right warning opt?
+            diagnostic_warning_at(lexer->dm, slash_loc, Wunicode, "universal "
                     "character names are only valid in C99; treating as '\\' "
                     "followed by identifier");
         }
@@ -389,9 +392,9 @@ static bool try_lex_ucn(Lexer* lexer, Location slash_loc, Buffer* buffer,
             // identifier since it will do it twice
             if (buffer == NULL)
             {
-                diagnostic_warning_at(lexer->dm, slash_loc, "incomplete "
-                        "universal character name; treating as '\\' followed "
-                        "by identifier");
+                diagnostic_warning_at(lexer->dm, slash_loc, Wunicode,
+                        "incomplete universal character name; treating as '\\' "
+                        "followed by identifier");
             }
             return false;
         }
@@ -678,7 +681,7 @@ static bool lex_string_like_literal(Lexer* lexer, Token* token, TokenType type)
         {
             token->type = TOK_UNKNOWN;
 
-            diagnostic_warning_at(lexer->dm, token->loc,
+            diagnostic_warning_at(lexer->dm, token->loc, Winvalid_pp_token,
                     "missing terminating '%c' character", ending_delim);
             goto finish_string;
         } 
@@ -701,7 +704,7 @@ finish_string:
             && ((is_wide(type) && buffer_get_len(&string) == 3) 
             || (buffer_get_len(&string) == 2)))
     {
-        diagnostic_warning_at(lexer->dm, token->loc,
+        diagnostic_warning_at(lexer->dm, token->loc,Winvalid_pp_token,
                 "empty character constant");
         token->type = TOK_UNKNOWN;
     }
@@ -790,7 +793,7 @@ retry_lexing:;
                 if (!(token->flags & TOKEN_FLAG_BOL))
                 {
                     // TODO: fix this, will crash if unterminated token at eof
-                    diagnostic_warning_at(lexer->dm, token->loc,
+                    diagnostic_warning_at(lexer->dm, token->loc, Wnewline_eof,
                             "no newline at end of file");
                 }
 
@@ -932,10 +935,11 @@ retry_lexing:;
 
                 // TODO: add mechanism to not report this multiple time, might
                 // TODO: have to wait until proper warning classes though
-                if (!lang_opts_c99(lexer->lang))
+                if (!lang_opts_c99(lexer->lang) && !lexer->err_line_comment)
                 {
-                    diagnostic_warning_at(lexer->dm, token->loc, "// comments "
-                            "are not allowed in ISO C90");
+                    lexer->err_line_comment = true;
+                    diagnostic_warning_at(lexer->dm, token->loc, Wcomment,
+                            "// comments are not allowed in ISO C90");
                 }
 
                 skip_line_comment(lexer);

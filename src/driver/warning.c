@@ -15,12 +15,15 @@ typedef struct DiagnosticOption {
 // Make this constant since this should never need to change
 static const DiagnosticOption warnings[WARNING_COUNT] =
 {
-    [Wother] = (DiagnosticOption)
-        {
-            .type = Wother,
-            .state = DIAG_STATE_ON, 
-            .name = "other",
-        },
+    #define WARNING(wtype, start_state, wname) \
+        [wtype] = (DiagnosticOption) \
+            { \
+                .type = wtype, \
+                .state = start_state, \
+                .name = wname \
+            },
+    #include "xwarning.h"
+    #undef WARNING
 };
 
 // Also keep a count of the warnings
@@ -76,10 +79,16 @@ const char* diagnostic_warning_to_string(DiagnosticWarning warning)
 {
     // If it's between the range of the warnings that all have different option
     // names than return that name otherwise just return NULL.
-    if (warning >= Wother && warning < WARNING_COUNT)
+    if (warning >= 0 && warning < WARNING_COUNT)
     {
         return warnings[warning].name;
     }
 
     return NULL;
+}
+
+DiagnosticState diagnostic_warning_default(DiagnosticWarning warning)
+{
+    assert(warning >= 0 && warning < WARNING_COUNT);
+    return warnings[warning].state;
 }

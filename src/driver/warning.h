@@ -6,12 +6,12 @@
 // An enum containing all of the diagnostics that we have.
 typedef enum DiagnosticWarning {
     Wnone = -1, // Represents and generic warning: -1 so it won't
-                            // be counted by the 'count'
+                // be counted by the 'count'
     
     // Our specific warning options start here
-    WARNING_START,
-    Wother = WARNING_START, // legit any unknown warning!
-    Wexprimental,
+    #define WARNING(type, state, name) type,
+    #include "xwarning.h"
+    #undef WARNING
     WARNING_COUNT, // To represent the cound of all warnings
     // End of specific warning options
 
@@ -36,6 +36,7 @@ typedef enum DiagnosticState {
 
 DiagnosticWarning diagnostic_string_to_warning(const char* string);
 const char* diagnostic_warning_to_string(DiagnosticWarning warning);
+DiagnosticState diagnostic_warning_default(DiagnosticWarning warning);
 
 bool diagnostic_state_off(DiagnosticState state);
 bool diagnostic_state_on(DiagnosticState state);

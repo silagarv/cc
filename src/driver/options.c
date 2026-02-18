@@ -8,6 +8,7 @@
 
 #include "driver/diagnostic.h"
 #include "driver/lang.h"
+#include "driver/warning.h"
 
 typedef struct CommandLineState {
     const int argc;
@@ -234,8 +235,8 @@ static bool handle_standard(CompilerOptions* opts, DiagnosticManager* dm,
             opts->standard = standards[i].standard;
             if (standards[i].standard != LANG_STANDARD_C99)
             {
-                diagnostic_warning(dm, "support of language standards other "
-                        "than C99 is experimental");
+                diagnostic_warning(dm, Wexperimental, "support of language "
+                        "standards other than C99 is experimental");
             }
             return true;
         }
@@ -455,6 +456,9 @@ static bool handle_w(CompilerOptions* opts, DiagnosticManager* dm,
 static bool handle_warning(CompilerOptions* opts, DiagnosticManager* dm,
         CommandLineState* state, char* argument)
 {
+    // TODO: for now this just handles warning options as they come but in the
+    // TODO: future we might want to save all of the handling for later?
+
     // Must start with -W but don't get any or the miscelanious options for
     // adding arguments to assembler, preprocessor, or linker
     if (!argument_starts_with("-W", argument)
@@ -492,28 +496,17 @@ static bool handle_warning(CompilerOptions* opts, DiagnosticManager* dm,
 
     // Now attempt to get the name of the warning option
     DiagnosticWarning warning = diagnostic_string_to_warning(argument);
-
-    // Special case of diagnostic error
-    if (warning == Werror)
-    {
-        if (error == true)
-        {
-            warning = Wunknown;
-        }
-        else
-        {
-            opts->werror = !no;
-        }
-    }
-
+    
     // For now just print a warning about not knowing about the warning option
-    // if it wasn't known and do nothing about any of the other warnings
+    // if it wasn't known and do nothing about any of the other warnings.
     if (warning == Wunknown)
     {
-        diagnostic_warning(dm, "unknown warning option '-W%s%s'",
-                error ? "error=" : "", argument);
+        diagnostic_warning(dm, Wunknown_warning_opt, "unknown warning option "
+                "'-W%s%s'", error ? "error=" : "", argument);
+        return true;
     }
-
+    
+    diagnostic_manager_handle_warning_option(dm, warning, no, error);
     return true;
 }
 
