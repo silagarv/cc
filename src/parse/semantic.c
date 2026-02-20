@@ -7100,11 +7100,41 @@ Statement* semantic_checker_handle_default_statement(SemanticChecker* sc,
     return default_label;
 }
 
+void semantic_checker_check_dangling_else(SemanticChecker* sc,
+        Statement* if_body, Statement* else_body)
+{
+    // Can only have a dangle else if the if has no else
+    if (else_body != NULL)
+    {
+        return;
+    }
+    
+    // Can only have a dangling else if an if statement is the if body
+    if (!statement_is(if_body, STATEMENT_IF))
+    {
+        return;
+    }
+
+    // Can only have a dangle else if there was an else to begin with
+    if (statement_if_get_false_part(if_body) == NULL)
+    {
+        return;
+    }
+
+    // We found a dangling else, report it and get location of the else
+    Location dangling_else = statement_if_get_else_loc(if_body);
+    diagnostic_warning_at(sc->dm, dangling_else, Wdangling_else, "add explicit "
+            "braces to avoid dangling else");
+}
+
 Statement* semantic_checker_handle_if_statement(SemanticChecker* sc,
         Location if_locatoin, Location lparen_location, Expression* expression,
         Location rparen_location, Statement* if_body, Location else_location,
         Statement* else_body)
 {
+    // Here let's check for a dangling else.
+    semantic_checker_check_dangling_else(sc, if_body, else_body);
+
     // I believe that is the only thing that needs to be checked.
     return statement_create_if(&sc->ast->ast_allocator, if_locatoin,
             lparen_location, rparen_location, else_location, expression,

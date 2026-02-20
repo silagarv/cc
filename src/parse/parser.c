@@ -361,8 +361,6 @@ static bool is_expression_start(Parser* parser, const Token* tok);
 static bool is_statement_start(Parser* parser, const Token* tok);
 static bool is_initializer_start(Parser* parser, const Token* tok);
 
-static void parse_attributes(Parser* parser);
-
 // Functions for parsing our constants which include integer, floating point
 // enumeration and character constants
 static Expression* parse_primary_expression(Parser* parser);
@@ -534,10 +532,16 @@ static bool is_expression_token(TokenType type)
     switch (type)
     {
         case TOK_NUMBER:
-        case TOK_WIDE_CHARACTER:
-        case TOK_WIDE_STRING:
         case TOK_CHARACTER:
+        case TOK_WIDE_CHARACTER:
+        case TOK_UTF8_CHARACTER:
+        case TOK_UTF16_CHARACTER:
+        case TOK_UTF32_CHARACTER:
         case TOK_STRING:
+        case TOK_WIDE_STRING:
+        case TOK_UTF8_STRING:
+        case TOK_UTF16_STRING:
+        case TOK_UTF32_STRING:
         case TOK_LPAREN:
         case TOK_PLUS_PLUS:
         case TOK_MINUS_MINUS:
@@ -646,81 +650,6 @@ static bool is_initializer_start(Parser* parser, const Token* tok)
 //     }
 // }
 
-// static void parse_gnu_attribute(Parser* parser)
-// {
-//     assert(is_match(parser, TOK___attribute__));
-
-//     Location attribute = consume(parser);
-
-//     Location lparen_loc_1;
-//     if (!try_match(parser, TOK_LPAREN, &lparen_loc_1))
-//     {
-//         diagnostic_error_at(parser->dm, lparen_loc_1,
-//                 "expected '(' after attribute");
-//         recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI | RECOVER_EAT_TOKEN);
-//         return;
-//     }
-    
-//     Location lparen_loc_2;
-//     if (!try_match(parser, TOK_LPAREN, &lparen_loc_2))
-//     {
-//         diagnostic_error_at(parser->dm, lparen_loc_2, "expected '(' after '('");
-//         recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI | RECOVER_EAT_TOKEN);
-//         return;
-//     }
-
-//     // Here we actually parse the attribute body itself
-//     while (true)
-//     {
-//         // Match any identifier like thing
-//         if (parser_is_gnu_any_word(parser))
-//         {
-//             consume(parser);
-//             Location lparen_loc_attr = LOCATION_INVALID;
-//             Location rparen_loc_attr = LOCATION_INVALID;
-//             if (is_match(parser, TOK_LPAREN))
-//             {
-//                 lparen_loc_attr = consume(parser);
-//             }
-//         }
-
-//         // Match the possible empty attribute
-//         if (is_match(parser, TOK_COMMA))
-//         {
-//             consume(parser);
-//             continue;
-//         }
-
-//         break;
-//     }
-
-//     Location rparen_loc_1;
-//     if (!try_match(parser, TOK_RPAREN, &rparen_loc_1))
-//     {
-//         diagnostic_error_at(parser->dm, rparen_loc_1, "expected ')'");
-//         recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI | RECOVER_EAT_TOKEN);
-//         return;
-//     }
-
-//     Location rparen_loc_2;
-//     if (!try_match(parser, TOK_RPAREN, &rparen_loc_2))
-//     {
-//         diagnostic_error_at(parser->dm, rparen_loc_2, "expected ')'");
-//         recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI | RECOVER_EAT_TOKEN);
-//         return;
-//     }
-// }
-
-// static void parse_gnu_attributes(Parser* parser)
-// {
-//     assert(is_match(parser, TOK___attribute__));
-
-//     while (is_match(parser, TOK___attribute__))
-//     {
-//         parse_gnu_attribute(parser);
-//     }
-// }
-
 static bool is_string_token(Parser* parser, const Token* tok)
 {
     (void) parser;
@@ -807,6 +736,9 @@ static bool is_string_like_token(Parser* parser)
     {
         case TOK_STRING:
         case TOK_WIDE_STRING:
+        case TOK_UTF8_STRING:
+        case TOK_UTF16_STRING:
+        case TOK_UTF32_STRING:
             return true;
 
         default:
@@ -1024,10 +956,16 @@ static Expression* parse_primary_expression(Parser* parser)
 
         case TOK_CHARACTER:
         case TOK_WIDE_CHARACTER:
+        case TOK_UTF8_CHARACTER:
+        case TOK_UTF16_CHARACTER:
+        case TOK_UTF32_CHARACTER:
             return parse_character_expression(parser);
 
         case TOK_STRING:
         case TOK_WIDE_STRING:
+        case TOK_UTF8_STRING:
+        case TOK_UTF16_STRING:
+        case TOK_UTF32_STRING:
             return parse_string_expression(parser);
 
         case TOK___func__:
@@ -1883,61 +1821,90 @@ static Statement* parse_default_statement(Parser* parser)
             colon_loc, stmt);
 }
 
+static void parser_check_c90_mixed_code(Parser* parser, Statement* stmt,
+        bool* had_non_decl, bool* warned_non_decl)
+{
+    assert(!lang_opts_c99(parser->lang));
+
+    // Skip the check empty statments
+    if (stmt == NULL)
+    {
+        return;
+    }
+
+    // Also skip the check if we've already warned about this.
+    if (*warned_non_decl)
+    {
+        return;
+    }
+
+    bool decl = statement_is(stmt, STATEMENT_DECLARATION);
+    if (!decl)
+    {
+        *had_non_decl = true;
+    }
+    else if (decl && *had_non_decl)
+    {
+        Location loc = statement_declaration_get_location(stmt);
+        diagnostic_warning_at(parser->dm, loc, Wdeclaration_after_statement,
+                "mixing declarations and code is a C99 extension");
+        *warned_non_decl = true;
+    }
+}
+
 static Statement* parse_compound_statement_internal(Parser* parser)
 {
     assert(is_match(parser, TOK_LCURLY));
 
-    // TODO: C90 compatibility, don't allow for mixing declarations and code
     Location l_curly = consume(parser);
 
-    // bool c90_mode = !lang_opts_c99(parser->lang);
-    // bool c90_decl_allowed = true;
+    // Parse our local labels and issue a diagnostic that they are being ignored
+    if (is_match(parser, TOK___label__))
+    {
+        Location label = consume(parser);
 
-    Statement* first = NULL;
-    Statement* current = NULL;
+        // TODO: transform this to be more like attributes so that we can 
+        // TODO: diagnose a missing comma between our label names?
+        do
+        {
+            if (!is_match(parser, TOK_IDENTIFIER))
+            {
+                diagnostic_error_at(parser->dm, current_token_location(parser),
+                        "expected identifier");
+                recover(parser, TOK_SEMI, RECOVER_NONE);
+                break;
+            }
+
+            Identifier* name = token_get_identifier(current_token(parser));
+            Location loc = consume(parser);
+        }
+        while (try_match(parser, TOK_COMMA, NULL));
+
+        Location semi = LOCATION_INVALID;
+        if (!try_match(parser, TOK_SEMI, &semi))
+        {
+            diagnostic_error_at(parser->dm, semi, "expected ';'");
+        }
+
+        diagnostic_warning_at(parser->dm, label, Wunimplemented,
+                "GNU local label extension is parsed but ignored");
+    }
+
+    bool c90 = !lang_opts_c99(parser->lang);
+    bool had_non_decl = false; // C90 warning support
+    bool warned_non_decl = false;
+    StatementList list = statement_list_create();
     while (!is_match_two(parser, TOK_RCURLY, TOK_EOF))
     {
-        // Attempt to parse a statement
+        // Parse a statement and push it to the list
         Statement* next = parse_statement(parser, true);
+        statement_list_push(&list, next);
 
-        // only in c90 mode do we try anything here
-        // if (c90_mode)
-        // {
-        //     bool is_decl_stmt = statement_is(next, STATEMENT_DECLARATION);
-            
-        //     if (is_decl_stmt && !c90_decl_allowed)
-        //     {
-        //         Declaration* decl = statement_declaration_get(next);
-        //         diagnostic_warning_at(parser->dm,
-        //                 declaration_get_location(decl), "mixing declarations "
-        //                 "and code is a C99 extension");
-        //     }
-
-        //     // Then if it's not a declaration statement disallow further 
-        //     // declarations.
-        //     if (!is_decl_stmt)
-        //     {
-        //         c90_decl_allowed = false;
-        //     }
-        // }
-
-        // Check if we got a statement at all, if not just don't do the next
-        // part
-        if (next == NULL)
+        // In C90 mode check for the extension of mixed declarations and code.
+        if (c90)
         {
-            continue;
-        }
-
-        // Update the current statement and the first statement.
-        if (first == NULL)
-        {
-            first = next;
-            current = first;
-        }
-        else
-        {
-            statement_set_next(current, next);
-            current = next;
+            parser_check_c90_mixed_code(parser, next, &had_non_decl,
+                    &warned_non_decl);
         }
     }
 
@@ -1950,7 +1917,7 @@ static Statement* parse_compound_statement_internal(Parser* parser)
 
     // Finally create the compound statement.
     return semantic_checker_handle_compound_statement(&parser->sc, l_curly,
-            first, r_curly);
+            statement_list_first(&list), r_curly);
 }
 
 static Statement* parse_compound_statement(Parser* parser)
@@ -2425,8 +2392,328 @@ static Statement* parse_error_statement(Parser* parser)
     return semantic_checker_handle_error_statement(&parser->sc);
 }
 
+static void parse_gnu_attribute_list(Parser* parser)
+{
+    assert(is_match(parser, TOK_LPAREN));
+
+    Location lparen = consume(parser);
+    recover(parser, TOK_RPAREN, RECOVER_EAT_TOKEN | RECOVER_STOP_AT_SEMI);
+
+    diagnostic_warning_at(parser->dm, lparen, Wunimplemented, "attribute "
+            "argument lists are not implemented");
+}
+
+static void parse_gnu_attribute(Parser* parser)
+{
+    assert(is_match(parser, TOK___attribute__));
+
+    Location attribute = consume(parser);
+
+    Location lparen_loc_1;
+    if (!try_match(parser, TOK_LPAREN, &lparen_loc_1))
+    {
+        diagnostic_error_at(parser->dm, lparen_loc_1,
+                "expected '(' after attribute");
+        recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI | RECOVER_EAT_TOKEN);
+        return;
+    }
+    
+    Location lparen_loc_2;
+    if (!try_match(parser, TOK_LPAREN, &lparen_loc_2))
+    {
+        diagnostic_error_at(parser->dm, lparen_loc_2, "expected '(' after '('");
+        recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI | RECOVER_EAT_TOKEN);
+        return;
+    }
+
+    // Here we actually parse the attribute body itself
+    while (!is_match(parser, TOK_RPAREN))
+    {
+        // Just keep going if we get a comma with no attributes
+        if (try_match(parser, TOK_COMMA, NULL))
+        {
+            continue;
+        }
+
+        if (!token_is_identifier_like(current_token(parser)))
+        {
+            diagnostic_error_at(parser->dm, current_token_location(parser), 
+                    "expected identifier");
+            recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI);
+            break;
+        }
+
+        // Here parse the actual attribute itself
+        Identifier* attr = token_get_identifier(current_token(parser));
+        Location attr_loc = consume(parser);
+
+        if (is_match(parser, TOK_LPAREN))
+        {
+            parse_gnu_attribute_list(parser);
+        }
+
+        // Check if we are at the end or not. If we aren't then we need a comma
+        // in between our attributes. Otherwise continue below to possible
+        // issue an error
+        if (try_match(parser, TOK_COMMA, NULL))
+        {
+            continue;
+        }
+
+        // Test for an identifier like token here so get a bit better error
+        // recovery if it occurs and try to keep parsing this as an attributes
+        if (token_is_identifier_like(current_token(parser)))
+        {
+            diagnostic_error_at(parser->dm, current_token_location(parser), 
+                    "expected ',' between attributes");
+            continue;
+        }
+
+        if (!is_match(parser, TOK_RPAREN))
+        {
+            diagnostic_error_at(parser->dm, current_token_location(parser),
+                    "expected ')' after attribute");
+            recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI);
+            break;
+        }
+    }
+
+    // If we had some parsing error and recovered on a semi, now is a good time
+    // to just bail here
+    if (is_match(parser, TOK_SEMI))
+    {
+        return;
+    }
+
+    Location rparen_loc_1;
+    if (!try_match(parser, TOK_RPAREN, &rparen_loc_1))
+    {
+        diagnostic_error_at(parser->dm, rparen_loc_1, "expected ')'");
+        recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI | RECOVER_EAT_TOKEN);
+        return;
+    }
+
+    Location rparen_loc_2;
+    if (!try_match(parser, TOK_RPAREN, &rparen_loc_2))
+    {
+        diagnostic_error_at(parser->dm, rparen_loc_2, "expected ')'");
+        recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI | RECOVER_EAT_TOKEN);
+        return;
+    }
+}
+
+static void parse_gnu_attributes(Parser* parser)
+{
+    assert(is_match(parser, TOK___attribute__));
+
+    while (is_match(parser, TOK___attribute__))
+    {
+        parse_gnu_attribute(parser);
+    }
+}
+
+static bool maybe_parse_gnu_attributes(Parser* parser)
+{
+    if (!is_match(parser, TOK___attribute__))
+    {
+        return false;
+    }
+
+    parse_gnu_attributes(parser);
+    return true;
+}
+
+static void parse_c23_attribute_arguments(Parser* parser)
+{
+    assert(is_match(parser, TOK_LPAREN));
+
+    Location lparen = consume(parser);
+    recover(parser, TOK_RPAREN, RECOVER_EAT_TOKEN | RECOVER_STOP_AT_SEMI);
+
+    diagnostic_warning_at(parser->dm, lparen, Wunimplemented, "attribute "
+            "argument lists are not implemented");
+}
+
+static void parse_c23_attribute(Parser* parser)
+{
+    assert(is_match(parser, TOK_LBRACKET)
+            && is_next_match(parser, TOK_LBRACKET));
+
+    Location lbracket1 = consume(parser);
+    Location lbracket2 = consume(parser);
+
+    // Here is the part where we parse the actual attribute
+    while (!is_match_two(parser, TOK_RBRACKET, TOK_EOF))
+    {
+        // If we match a comma just eat that up and move on.
+        if (try_match(parser, TOK_COMMA, NULL))
+        {
+            continue;
+        }
+
+        // If we get an identifier like token (i.e. the token will have an
+        // Identifier* in it's data) then we can use that as our possible 
+        // attribute. If not try to recover.
+        if (!token_is_identifier_like(current_token(parser)))
+        {
+            diagnostic_error_at(parser->dm, current_token_location(parser),
+                    "expected identifier");
+            recover(parser, TOK_RBRACKET, RECOVER_STOP_AT_SEMI);
+            break;
+        }
+
+        // Information for our scope location `identifier::`
+        Identifier* scope = NULL;
+        Location scope_loc = LOCATION_INVALID;
+        Location colon_colon = LOCATION_INVALID;
+        
+        // Information for our actual attribute.
+        Identifier* attr = token_get_identifier(current_token(parser));
+        Location attr_loc = consume(parser);
+
+        // Look for the scope specifier in the attributes and parse it if we get
+        // it. Also note, we allow for recovery on a ':' token in the event that
+        // a user mistypes that.
+        if (is_match_two(parser, TOK_COLON_COLON, TOK_COLON))
+        {
+            if (is_match(parser, TOK_COLON))
+            {
+                diagnostic_error_at(parser->dm, current_token_location(parser),
+                        "expected '::' after attribute prefix but got ':'");
+            }
+
+            colon_colon = consume(parser);
+
+            scope = attr;
+            scope_loc = attr_loc;
+
+            if (!token_is_identifier_like(current_token(parser)))
+            {
+                diagnostic_error_at(parser->dm, current_token_location(parser),
+                        "expected identifier");
+                recover(parser, TOK_RBRACKET, RECOVER_STOP_AT_SEMI);
+                break;
+            }
+
+            attr = token_get_identifier(current_token(parser));
+            attr_loc = consume(parser);
+        }
+
+        // TODO: parse attribute argument lists...
+        if (is_match(parser, TOK_LPAREN))
+        {
+            parse_c23_attribute_arguments(parser);
+        }
+
+        // We have just finished up an attribute. We now either should have a
+        // comma, or we should be at the end of the attribute list. If we have
+        // a comma, eat it and go try to parse more
+        if (try_match(parser, TOK_COMMA, NULL))
+        {
+            continue;
+        }
+
+        // Check for a possible missing comma between attributes and recover
+        // nicely when this happens.
+        if (token_is_identifier_like(current_token(parser)))
+        {
+            diagnostic_error_at(parser->dm, current_token_location(parser),
+                    "expected ',' between attributes");
+            continue;
+        }
+
+        // Otherwise, if we're here, we give up.
+        if (!is_match(parser, TOK_RBRACKET))
+        {
+            diagnostic_error_at(parser->dm, current_token_location(parser),
+                    "expected ']' after attribute");
+            recover(parser, TOK_RBRACKET, RECOVER_STOP_AT_SEMI);
+            break;
+        }
+    }
+
+    // We recovoered by going to a semi and have already errored, no need to
+    // keep issuing parse errors
+    if (try_match(parser, TOK_SEMI, NULL))
+    {
+        return;
+    }
+
+    Location rbracket2 = LOCATION_INVALID;
+    if (!try_match(parser, TOK_RBRACKET, &rbracket2))
+    {
+        diagnostic_error_at(parser->dm, rbracket2, "expected ']'");
+        recover(parser, TOK_RBRACKET, RECOVER_STOP_AT_SEMI | RECOVER_EAT_TOKEN);
+        return;
+    }
+
+    Location rbracket1 = LOCATION_INVALID;
+    if (!try_match(parser, TOK_RBRACKET, &rbracket1))
+    {
+        diagnostic_error_at(parser->dm, rbracket1, "expected ']'");
+        recover(parser, TOK_RBRACKET, RECOVER_STOP_AT_SEMI | RECOVER_EAT_TOKEN);
+        return;
+    }
+}
+
+static void parse_c23_attributes(Parser* parser)
+{
+    assert(is_match(parser, TOK_LBRACKET)
+            && is_next_match(parser, TOK_LBRACKET));
+
+    if (!lang_opts_c23(parser->lang))
+    {
+        diagnostic_warning_at(parser->dm, current_token_location(parser),
+                Wc23_extensions, "[[]] attributes are a C23 extension");
+    }
+
+    while (is_match(parser, TOK_LBRACKET)
+            && is_next_match(parser, TOK_LBRACKET))
+    {
+        parse_c23_attribute(parser);
+    }
+}
+
+static bool maybe_parse_c23_attributes(Parser* parser)
+{
+    if (!(is_match(parser, TOK_LBRACKET) 
+            && is_next_match(parser, TOK_LBRACKET)))
+    {
+        return false;
+    }
+
+    parse_c23_attributes(parser);
+    return true;
+}
+
+static void maybe_parse_attributes(Parser* parser)
+{
+    while (true)
+    {
+        if (is_match(parser, TOK___attribute__))
+        {
+            parse_gnu_attributes(parser);
+            continue;
+        }
+
+        if (is_match(parser, TOK_LBRACKET) && is_next_match(parser, TOK_LBRACKET))
+        {
+            parse_c23_attributes(parser);
+            continue;
+        }
+
+        // No attributes found, we are done.
+        break;
+    }    
+}
+
 static Statement* parse_statement(Parser* parser, bool declaration_allowed)
 {
+    // TODO: find the other places in the grammar that allow a standard 
+    // TODO: attributes and include the parsing of these in the parser
+    maybe_parse_c23_attributes(parser);
+    maybe_parse_gnu_attributes(parser);
+
     switch(current_token_type(parser))
     {
         case TOK_LCURLY:
@@ -2477,11 +2764,9 @@ static Statement* parse_statement(Parser* parser, bool declaration_allowed)
             /* FALLTHROUGH */
 
         default:
-            if (is_typename_start(parser, current_token(parser))
-                    && declaration_allowed)
+            if (declaration_allowed
+                    && is_typename_start(parser, current_token(parser)))
             {
-                // Note: declarations are not considered statements all of the
-                // time in C. e.g. they are not allowed after labels.
                 return parse_declaration_statement(parser);
             }
             return parse_expression_statement(parser);
@@ -2621,7 +2906,7 @@ static Initializer* parse_initializer_list(Parser* parser)
     // empty list returning from the function early.
     if (try_match(parser, TOK_RCURLY, &rcurly))
     {
-        if (lang_opts_c23(parser->lang))
+        if (!lang_opts_c23(parser->lang))
         {
             diagnostic_warning_at(parser->dm, lcurly, Wc23_extensions,
                 "use of an empty initializer is a C23 extension");
@@ -3632,14 +3917,16 @@ static void parse_struct_or_union_specifier(Parser* parser,
 
     Declaration* declaration = NULL;
 
+    // TODO: implement attribute parsing here...
+    // Parse any leading attributes on struct of unions
+    // maybe_parse_attributes(parser);
+
     if (!is_match_two(parser, TOK_IDENTIFIER, TOK_LCURLY))
     {
         const char* const tag_name = is_struct ? "struct" : "union";
         diagnostic_error_at(parser->dm, tag_loc, "declaration of anonymous %s "
                 "must be a definition", tag_kind_to_name(type));
         recover(parser, TOK_SEMI, RECOVER_NONE);
-
-        // Add the error type and exit as there is nothing else to parse.
         declaration_specifiers_add_type(parser, specifiers,
                 TYPE_SPECIFIER_ERROR, NULL, tag_loc);
         return;

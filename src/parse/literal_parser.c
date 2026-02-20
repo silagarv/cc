@@ -29,7 +29,9 @@
 
 typedef enum CharType {
     CHAR_TYPE_CHAR,
-    CHAR_TYPE_WIDE
+    CHAR_TYPE_WIDE,
+    CHAR_TYPE_UTF16,
+    CHAR_TYPE_UTF32
 } CharType;
 
 typedef enum EscapeSequenceResult {
@@ -44,11 +46,21 @@ CharType get_char_type(const Token* token)
     {
         case TOK_STRING:
         case TOK_CHARACTER:
+        case TOK_UTF8_STRING:
+        case TOK_UTF8_CHARACTER:
             return CHAR_TYPE_CHAR;
 
         case TOK_WIDE_STRING:
         case TOK_WIDE_CHARACTER:
             return CHAR_TYPE_WIDE;
+
+        case TOK_UTF16_STRING:
+        case TOK_UTF16_CHARACTER:
+            return CHAR_TYPE_UTF16;
+
+        case TOK_UTF32_STRING:
+        case TOK_UTF32_CHARACTER:
+            return CHAR_TYPE_UTF32;
 
         default:
             panic("bad token type");
@@ -1414,10 +1426,20 @@ bool parse_single_string_literal(const String* string, DiagnosticManager* dm,
 
     // Skip the leading spaces at the start of the literal.
     char* current_ptr = string_get_ptr(string);
-    if (*current_ptr == 'L')
+    if (*current_ptr == 'L' || *current_ptr == 'U')
     {
         assert(*(current_ptr + 1) == '"');
         current_ptr += 2;
+    }
+    else if (*current_ptr == 'u')
+    {
+        current_ptr += 1;
+        if (*current_ptr == '8')
+        {
+            current_ptr += 1;
+        }
+        assert(*current_ptr == '"');
+        current_ptr += 1;
     }
     else
     {
@@ -1489,6 +1511,7 @@ bool parse_string_literal(AstAllocator* allocator, StringLiteral* value,
     CharType type = CHAR_TYPE_CHAR;
     size_t upper_bound = 0; // upper bound of final string literal length
     size_t num_strings = 0;
+    bool concat_error = false; // Have we got a concat error.
 
     TokenListEntry* start = token_list_iter(tokens);
     for (TokenListEntry* current = start;
@@ -1510,7 +1533,7 @@ bool parse_string_literal(AstAllocator* allocator, StringLiteral* value,
         {
             ; // Do nothing, got the same type
         }
-        if (unevaluated && t_type != CHAR_TYPE_CHAR)
+        else if (unevaluated && t_type != CHAR_TYPE_CHAR)
         {
             diagnostic_warning_at(dm, token_get_location(&t), Wother,
                     "encoding prefix '%s' has no effect",
@@ -1521,13 +1544,26 @@ bool parse_string_literal(AstAllocator* allocator, StringLiteral* value,
             // Support conversions with mixed wide and non-wide strings
             type = CHAR_TYPE_WIDE;
         }
+        else if (num_strings == 1 && t_type != CHAR_TYPE_CHAR)
+        {
+            // Another special case of the type of the first token...
+            type = t_type;
+        }
         else
         {
-            // TODO: in C11 mode more string literals exist so error about 
-            // TODO: unsupported conversions here if those are ever implemented
+            // TODO: we currently 'support' u8"" L"" concatenation... This 
+            // TODO: should be fixed to disallow that...
+            diagnostic_error_at(dm, token_get_location(&t), "unsupported "
+                    "non-standard concatenation of string literals");
+            concat_error = true;
         }
     }
     
+    if (concat_error)
+    {
+        return false;
+    }
+
     // Make sure we are okay to null terminate the string.
     upper_bound++;
 

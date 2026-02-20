@@ -161,12 +161,22 @@ bool preprocessor_advance_token(Preprocessor* pp, Token* token)
 
     // return true;
 
-    return lexer_get_next(&pp->lexer, token);
+    bool ret = lexer_get_next(&pp->lexer, token);
+    if (token_is_type(token, TOK_IDENTIFIER))
+    {
+        token_classify_identifier(token);
+    }
+    return ret;
 }
 
 bool preprocessor_peek_token(Preprocessor* pp, Token* token)
 {
-    return lexer_peek(&pp->lexer, token);
+    bool ret = lexer_peek(&pp->lexer, token);
+    if (token_is_type(token, TOK_IDENTIFIER))
+    {
+        token_classify_identifier(token);
+    }
+    return ret;
 }
 
 TokenType preprocessor_peek_next_token_type(Preprocessor* pp)

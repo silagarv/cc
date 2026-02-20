@@ -75,8 +75,14 @@ typedef enum TokenType {
     TOK_NUMBER,
     TOK_CHARACTER,
     TOK_WIDE_CHARACTER,
+    TOK_UTF8_CHARACTER,
+    TOK_UTF16_CHARACTER,
+    TOK_UTF32_CHARACTER,
     TOK_STRING,
     TOK_WIDE_STRING,
+    TOK_UTF8_STRING,
+    TOK_UTF16_STRING,
+    TOK_UTF32_STRING,
 
     // Keyword tokens
     TOK_alignas, // C23 Keyword
@@ -149,6 +155,9 @@ typedef enum TokenType {
     // Some nice builtins we want to support
     TOK___builtin_va_arg,
     TOK___builtin_offsetof,
+
+    // Support for gnu local label extension (unimplemented)
+    TOK___label__,
 
     // Special preprocessing token names
     TOK_PP_define,
@@ -229,33 +238,23 @@ vector_of_decl(Token, Token, token);
 void token_set_flag(Token* token, TokenFlags flag);
 void token_unset_flag(Token* token, TokenFlags flag);
 bool token_has_flag(const Token* token, TokenFlags flag);
-
 TokenType token_get_type(const Token* token);
 Location token_get_location(const Token* token);
 bool token_is_type(const Token* token, TokenType type);
-bool token_is_identifier(const Token* token);
 bool token_is_literal(const Token* token);
 bool token_is_string(const Token* token);
-
 void token_set_type(Token* token, TokenType type);
+struct Identifier* token_get_identifier(const Token* token);
+void token_classify_identifier(Token* token);
+void token_classify_pp_identifier(Token* token);
+bool token_is_identifier_like(const Token* token);
 
-TokenData token_create_identifier_node(String string);
-TokenData token_create_literal_node(String string);
 String token_get_literal_node(const Token* token);
-
-void token_free_data(Token* tok);
-void token_free(Token* tok);
-
 size_t token_get_length(Token* tok);
 
 const char* token_type_get_name(TokenType type);
 
-bool token_has_data(Token* tok);
-const char* token_get_name(Token* tok);
-const char* token_get_string(Token* tok);
-
-bool token_equal_string(Token* tok, const char* str);
-
+// Token list stuff
 TokenListEntry* token_list_entry_next(const TokenListEntry* entry);
 Token token_list_entry_token(const TokenListEntry* entry);
 

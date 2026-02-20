@@ -84,6 +84,11 @@ bool identifier_is_keyword(const Identifier* identifier)
     return identifier->type != TOK_IDENTIFIER;
 }
 
+bool identifier_is_pp_keyword(const Identifier* identifier)
+{
+    return identifier->pp_type != TOK_IDENTIFIER;
+}
+
 bool identifier_is_reserved(const Identifier* identifier)
 {
     if (identifier_is_keyword(identifier))
@@ -120,12 +125,12 @@ bool identifier_is_equal(const Identifier* ident1, const Identifier* ident2)
 TokenType identifier_get_keyword(const Identifier* identifier)
 {
     assert(identifier_is_keyword(identifier));
-
     return identifier->type;
 }
 
 TokenType identifier_get_pp_keyword(const Identifier* identifier)
 {
+    assert(identifier_is_pp_keyword(identifier));
     return identifier->pp_type;
 }
 
@@ -386,6 +391,10 @@ IdentifierTable identifier_table_create(LangOptions* opts)
             TOK___builtin_va_arg, TOK_IDENTIFIER);
     identifier_table_insert_keyword(&table, "__builtin_offsetof",
             TOK___builtin_offsetof, TOK_IDENTIFIER);
+
+    // Local label extension
+    identifier_table_insert_keyword(&table, "__label__", TOK___label__,
+            TOK_IDENTIFIER);
 
     // all of our pp tokens that haven't already been covered.
     identifier_table_insert_keyword(&table, "define", TOK_IDENTIFIER,

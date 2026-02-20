@@ -510,20 +510,6 @@ static bool lex_number(Lexer* lexer, Token* token, char* start)
     return true;
 }
 
-// TODO: I would like to make this more modular to better support older / newer
-// language standards eventually...
-static void classify_identifier(Token* token)
-{
-    assert(token_is_identifier(token));
-
-    if (!identifier_is_keyword(token->data.identifier))
-    {
-        return;
-    }
-
-    token->type = identifier_get_keyword(token->data.identifier);
-}
-
 static bool lex_identifier(Lexer* lexer, Token* token, char* start)
 {
     token->type = TOK_IDENTIFIER;
@@ -577,8 +563,6 @@ static bool lex_identifier(Lexer* lexer, Token* token, char* start)
             &string);
     string_free(&string);
 
-    classify_identifier(token);
-
     return true;
 }
 
@@ -586,12 +570,18 @@ static char get_starting_delimiter(TokenType type)
 {
     switch (type)
     {
-        case TOK_WIDE_STRING:
         case TOK_STRING:
+        case TOK_WIDE_STRING:
+        case TOK_UTF8_STRING:
+        case TOK_UTF16_STRING:
+        case TOK_UTF32_STRING:
             return '"';
 
-        case TOK_WIDE_CHARACTER:
         case TOK_CHARACTER:
+        case TOK_WIDE_CHARACTER:
+        case TOK_UTF8_CHARACTER:
+        case TOK_UTF16_CHARACTER:
+        case TOK_UTF32_CHARACTER:
             return '\'';
 
         case TOK_PP_HEADER_NAME:
@@ -607,12 +597,18 @@ static char get_ending_delimiter(TokenType type)
 {
     switch (type)
     {
-        case TOK_WIDE_STRING:
         case TOK_STRING:
+        case TOK_WIDE_STRING:
+        case TOK_UTF8_STRING:
+        case TOK_UTF16_STRING:
+        case TOK_UTF32_STRING:
             return '"';
 
-        case TOK_WIDE_CHARACTER:
         case TOK_CHARACTER:
+        case TOK_WIDE_CHARACTER:
+        case TOK_UTF8_CHARACTER:
+        case TOK_UTF16_CHARACTER:
+        case TOK_UTF32_CHARACTER:
             return '\'';
 
         case TOK_PP_HEADER_NAME:
@@ -630,6 +626,9 @@ static bool is_character_like(TokenType type)
     {
         case TOK_CHARACTER:
         case TOK_WIDE_CHARACTER:
+        case TOK_UTF8_CHARACTER:
+        case TOK_UTF16_CHARACTER:
+        case TOK_UTF32_CHARACTER:
             return true;
 
         default:
@@ -641,12 +640,51 @@ static bool is_wide(TokenType type)
 {
     switch (type)
     {
-        case TOK_WIDE_CHARACTER:
+        // String types
         case TOK_WIDE_STRING:
+        case TOK_UTF8_STRING:
+        case TOK_UTF16_STRING:
+        case TOK_UTF32_STRING:
+
+        // Character types
+        case TOK_WIDE_CHARACTER:
+        case TOK_UTF8_CHARACTER:
+        case TOK_UTF16_CHARACTER:
+        case TOK_UTF32_CHARACTER:
             return true;
 
         default:
             return false;
+    }
+}
+
+static char* get_string_literal_prefix(TokenType type)
+{
+    switch (type)
+    {
+        case TOK_STRING:
+        case TOK_CHARACTER:
+            return "";
+
+        case TOK_WIDE_STRING:
+        case TOK_WIDE_CHARACTER:
+            return "L";
+
+        case TOK_UTF8_STRING:
+        case TOK_UTF8_CHARACTER:
+            return "u8";
+
+        case TOK_UTF16_STRING:
+        case TOK_UTF16_CHARACTER:
+            return "u";
+
+        case TOK_UTF32_STRING:
+        case TOK_UTF32_CHARACTER:
+            return "U";
+
+        default:
+            panic("unknown string literal type");
+            return NULL;
     }
 }
 
@@ -656,13 +694,10 @@ static bool lex_string_like_literal(Lexer* lexer, Token* token, TokenType type)
 
     const char ending_delim = get_ending_delimiter(type);
 
-    Buffer string = buffer_new_size(STRING_START_SIZE);
-    if (is_wide(type))
-    {
-        buffer_add_char(&string, 'L');
-    }
+    Buffer string = buffer_from_format("%s", get_string_literal_prefix(type));
     buffer_add_char(&string, get_starting_delimiter(type));
 
+    bool had_char = false;
     char current = get_next_char(lexer);
     while (current != ending_delim)
     {
@@ -680,16 +715,16 @@ static bool lex_string_like_literal(Lexer* lexer, Token* token, TokenType type)
                 || (current == '\0' && at_eof(lexer)))
         {
             token->type = TOK_UNKNOWN;
-
             diagnostic_warning_at(lexer->dm, token->loc, Winvalid_pp_token,
                     "missing terminating '%c' character", ending_delim);
             goto finish_string;
-        } 
+        }
 
         // Finally add the char and get the next one
         buffer_add_char(&string, current);
-
         current = get_next_char(lexer);
+
+        had_char = true;
     }
 
     // This should only be added when we get a well formed string literal
@@ -700,11 +735,9 @@ finish_string:
     buffer_make_cstr(&string);
 
     // Invalid character constants since they have nothing in them...
-    if (is_character_like(type) 
-            && ((is_wide(type) && buffer_get_len(&string) == 3) 
-            || (buffer_get_len(&string) == 2)))
+    if (is_character_like(type) && !had_char)
     {
-        diagnostic_warning_at(lexer->dm, token->loc,Winvalid_pp_token,
+        diagnostic_warning_at(lexer->dm, token->loc, Winvalid_pp_token,
                 "empty character constant");
         token->type = TOK_UNKNOWN;
     }
@@ -865,45 +898,113 @@ retry_lexing:;
         case '5': case '6': case '7': case '8': case '9':
             lex_number(lexer, token, token_start);
             break;
-
+        
+        // Look for the 'L' prefix for string and character literals
         case 'L':
             curr = get_curr_char(lexer);
             if (curr == '"')
             {
                 consume_char(lexer);
 
-                lex_wide_string_literal(lexer, token);
+                lex_string_like_literal(lexer, token, TOK_WIDE_STRING);
                 break;
             }
             else if (curr == '\'')
             {
                 consume_char(lexer);
 
-                lex_wide_character_literal(lexer, token);
+                lex_string_like_literal(lexer, token, TOK_WIDE_CHARACTER);
                 break;
             }
+            goto identifier;
 
-            /* FALLTHROUGH */
+        // Look for the 'U' prefix but only if we are in the correct language
+        // modes.
+        case 'U':
+            if (!lang_opts_c11(lexer->lang))
+            {
+                goto identifier;
+            }
+
+            curr = get_curr_char(lexer);
+            if (curr == '"')
+            {
+                consume_char(lexer);
+
+                lex_string_like_literal(lexer, token, TOK_UTF32_STRING);
+                break;
+            }
+            else if (curr == '\'')
+            {
+                consume_char(lexer);
+
+                lex_string_like_literal(lexer, token, TOK_UTF32_CHARACTER);
+                break;
+            }
+            goto identifier;
+            
+        // Look for the 'u' or 'u8' encoding prefix but only if we are in the
+        // correct language modes that allow for this.
+        case 'u':
+        {
+            if (!lang_opts_c11(lexer->lang))
+            {
+                goto identifier;
+            }
+
+            bool u8 = false;
+            curr = get_curr_char(lexer);
+
+            // First check for the possibility of having a u8
+            if (curr == '8')
+            {
+                u8 = true;
+
+                consume_char(lexer);
+                
+                curr = get_curr_char(lexer);
+            }
+
+            if (curr == '"')
+            {
+                consume_char(lexer);
+
+                lex_string_like_literal(lexer, token, 
+                        u8 ? TOK_UTF8_STRING : TOK_UTF16_STRING);
+                break;
+            }
+            else if (curr == '\'')
+            {
+                consume_char(lexer);
+
+                lex_string_like_literal(lexer, token, 
+                        u8 ? TOK_UTF8_CHARACTER : TOK_UTF16_CHARACTER);
+                break;
+            }
+        }
+
+        /* FALLTHROUGH */
         
         case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G':
         case 'H': case 'I': case 'J': case 'K':    /*'L'*/case 'M': case 'N':
-        case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': case 'U':
+        case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T':    /*'U'*/
         case 'V': case 'W': case 'X': case 'Y': case 'Z':
         case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
         case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
-        case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u':
+        case 'o': case 'p': case 'q': case 'r': case 's': case 't':    /*'u'*/
         case 'v': case 'w': case 'x': case 'y': case 'z':
         case '_':
+        identifier:
             lex_identifier(lexer, token, token_start);
             break;
 
         // String and character literals
         case '"':
-            lex_string_literal(lexer, token);
+            lex_string_like_literal(lexer, token, TOK_STRING);
             break;
 
         case '\'':
-            lex_character_literal(lexer, token);
+            lex_string_like_literal(lexer, token, TOK_CHARACTER);
             break;
         
         case '.':
@@ -1254,8 +1355,8 @@ retry_lexing:;
 
         case ':': 
             curr = get_curr_char(lexer);
-            // Only accept the '::' punctuator in c23 mode
-            if (curr == ':' && lang_opts_c23(lexer->lang))
+
+            if (curr == ':')
             {
                 token->type = TOK_COLON_COLON;
 

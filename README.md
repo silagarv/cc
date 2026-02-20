@@ -35,6 +35,9 @@ To building, run 'make' in the cc directory and it wll output an executable name
         - also make the calculation of what is tentative and what is not tentative more clear so that we can do the above better
     - Finish proper switch statement building
 
+- Diagnostic
+    - Clean up file diagnostic.c and consolidate how diagnostics are emitted to be a much cleaner interface.
+
 ## Later TODO
 - Fully featured command-line driver
 - Preprocessor support

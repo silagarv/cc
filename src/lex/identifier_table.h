@@ -39,6 +39,7 @@ void identifier_delete(Identifier* identifier);
 // Some helpful methods for identifiers that we might need to use when lexing
 // or parsing.
 bool identifier_is_keyword(const Identifier* identifier);
+bool identifier_is_pp_keyword(const Identifier* identifier);
 bool identifier_is_reserved(const Identifier* identifier);
 bool identifier_is_equal(const Identifier* ident1, const Identifier* ident2);
 

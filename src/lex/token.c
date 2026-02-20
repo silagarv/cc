@@ -137,7 +137,10 @@ bool token_is_literal(const Token* token)
 
 bool token_is_string(const Token* token)
 {
-    return (token->type == TOK_STRING || token->type == TOK_WIDE_STRING);
+    TokenType type = token_get_type(token);
+    return type == TOK_STRING || type == TOK_WIDE_STRING
+            || type == TOK_UTF8_STRING || type == TOK_UTF16_STRING
+            || type == TOK_UTF32_STRING;
 }
 
 void token_set_type(Token* token, TokenType type)
@@ -145,57 +148,116 @@ void token_set_type(Token* token, TokenType type)
     token->type = type;
 }
 
-TokenData token_create_literal_node(String string)
+struct Identifier* token_get_identifier(const Token* token)
 {
-    LiteralNode* node = xmalloc(sizeof(LiteralNode));
-    *node = (LiteralNode)
-    {
-        .value = string,
-    };
-
-    TokenData data = { .literal = node };
-
-    return data;   
+    assert(token_is_identifier_like(token));
+    return token->data.identifier;
 }
 
-String token_get_literal_node(const Token* token)
+void token_classify_identifier(Token* token)
 {
-    return token->data.literal->value;
+    assert(token_is_type(token, TOK_IDENTIFIER));
+
+    Identifier* id = token_get_identifier(token);
+    if (identifier_is_keyword(id))
+    {
+        token_set_type(token, identifier_get_keyword(id));
+    }
 }
 
-bool token_has_opt_value(Token* tok)
+void token_classify_pp_identifier(Token* token)
 {
-    switch (tok->type)
+    assert(token_is_type(token, TOK_IDENTIFIER));
+
+    Identifier* id = token_get_identifier(token);
+    if (identifier_is_pp_keyword(id))
     {
-        /* intentional fallthrough all below here */
-        case TOK_UNKNOWN:
+        token_set_type(token, identifier_get_pp_keyword(id));
+    }
+}
+
+bool token_is_identifier_like(const Token* token)
+{
+    switch (token_get_type(token))
+    {
         case TOK_IDENTIFIER:
-        case TOK_NUMBER:
-        case TOK_CHARACTER:
-        case TOK_WIDE_CHARACTER:
-        case TOK_STRING:
-        case TOK_WIDE_STRING:
-        case TOK_PP_HEADER_NAME:
+        case TOK_alignas:
+        case TOK_alignof:
+        case TOK_auto:
+        case TOK_break:
+        case TOK_bool:
+        case TOK_case:
+        case TOK_char:
+        case TOK_const:
+        case TOK_constexpr:
+        case TOK_continue:
+        case TOK_default:
+        case TOK_do:
+        case TOK_double:
+        case TOK_else:
+        case TOK_enum:
+        case TOK_extern:
+        case TOK_false:
+        case TOK_float:
+        case TOK_for:
+        case TOK_goto:
+        case TOK_if:
+        case TOK_inline:
+        case TOK_int:
+        case TOK_long:
+        case TOK_nullptr:
+        case TOK_register:
+        case TOK_restrict:
+        case TOK_return:
+        case TOK_short:
+        case TOK_signed:
+        case TOK_sizeof:
+        case TOK_static:
+        case TOK_static_assert:
+        case TOK_struct:
+        case TOK_switch:
+        case TOK_thread_local:
+        case TOK_true:
+        case TOK_typedef:
+        case TOK_typeof_unqual:
+        case TOK_union:
+        case TOK_unsigned:
+        case TOK_void:
+        case TOK_volatile:
+        case TOK_while:
+        case TOK__Alignas:
+        case TOK__Alignof:
+        case TOK__Atomic:
+        case TOK__Bitint:
+        case TOK__Bool:
+        case TOK__Complex:
+        case TOK__Decimal128:
+        case TOK__Decimal32:
+        case TOK__Decimal64:
+        case TOK__Generic:
+        case TOK__Imaginary:
+        case TOK__Noreturn:
+        case TOK__Static_assert:
+        case TOK__Thread_local:
+        case TOK___func__:
+        case TOK___attribute__:
+        case TOK___extension__:
+        case TOK_asm:
+        case TOK___builtin_va_arg:
+        case TOK___builtin_offsetof:
+        case TOK___label__:
             return true;
 
         default:
             return false;
     }
+
+    return false;
 }
 
-void token_free_data(Token* token)
+String token_get_literal_node(const Token* token)
 {
-    if (token_is_literal(token))
-    {
-        LiteralNode* node = token->data.literal;
-
-        string_free(&node->value);
-        free(node);
-    }
-}
-
-void token_free(Token* tok)
-{
+    return token->data.literal->value;
 }
 
 const char* token_type_get_name(TokenType type)
@@ -328,41 +390,6 @@ const char* token_get_name(Token* tok)
     return token_type_get_name(tok->type);
 }
 
-const char* token_get_string(Token* tok)
-{   
-    if (tok->type == TOK_PP_EOD)
-    {
-        return "\n"; /* special case here */
-    }
-
-    if (tok->type == TOK_EOF)
-    {
-        return ""; /* second special case*/
-    }
-
-    if (!token_has_opt_value(tok))
-    {
-        return token_get_name(tok);
-    }
-
-    String* string;
-    if (token_is_identifier(tok))
-    {
-        Identifier* node = tok->data.identifier;
-
-        string = identifier_get_string(node);
-    }
-    else 
-    {
-        assert(token_is_literal(tok));
-
-        LiteralNode* node = tok->data.literal;
-
-        string = &node->value;
-    }
-    return string_get_ptr(string);
-}
-
 // Get the length of the token as represented within the source
 size_t token_get_length(Token* tok)
 {
@@ -391,64 +418,7 @@ static size_t token_get_real_length(const Token* token)
     return string_get_len(string);
 }
 
-bool token_equal_string(Token* tok, const char* str)
-{
-    assert(token_is_identifier(tok));
-
-    const size_t str_length = strlen(str);
-    const size_t token_len = token_get_real_length(tok);
-
-    if (str_length != token_len)
-    {
-        return false;
-    }
-
-    const char* token_string = token_get_string(tok);
-
-    return (strncmp(str, token_string, str_length) == 0);
-}
-
-bool token_equal_token(Token* tok1, Token* tok2)
-{
-    const bool same_type = (tok1->type == tok2->type);
-    if (same_type && !token_has_opt_value(tok1))
-    {
-        return true;
-    }
-    else if (same_type /*&& token_has_opt_value(tok1)*/)
-    {
-        const size_t tok1_length = token_get_length(tok1);
-        const size_t tok2_length = token_get_length(tok2);
-
-        // check token lengths equal
-        if (tok1_length != tok2_length)
-        {
-            return false;
-        }
-
-        const char* tok1_str = token_get_string(tok1);
-        const char* tok2_str = token_get_string(tok2);
-
-        if (!strncmp(tok1_str, tok2_str, tok1_length))
-        {
-            return true;
-        }
-        else
-        {
-            return false;
-        }
-    }
-
-    return false;
-}
-
-static bool can_tokens_concatenate(Token* tok1, Token* tok2);
-
-bool token_concatenate(Token* tok1, Token* tok2, Token* dest);
-
-bool token_stringize(Token* src, Token* dest);
-
-bool token_string_cat(Token* tok1, Token* tok2, Token* dest);
+// Tokenlist stuff
 
 TokenListEntry* token_list_entry_next(const TokenListEntry* entry)
 {

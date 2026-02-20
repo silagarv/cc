@@ -248,6 +248,13 @@ union Statement {
     StatementDeclaration declaration_stmt;
 };
 
+// A temporary structure to hold a list of statements that we are attempting
+// to chain together
+typedef struct StatementList {
+    Statement* first;
+    Statement* recent;
+} StatementList;
+
 vector_of_decl(Statement*, Statement, statement);
 
 // TODO: some of below needs to be redone since some of these statements need
@@ -289,6 +296,7 @@ Expression* statement_expression_get(const Statement* stmt);
 Statement* statement_create_if(AstAllocator* allocator, Location if_location,
         Location left_paren, Location right_paren, Location else_location,
         Expression* condition, Statement* true_part, Statement* false_part);
+Location statement_if_get_else_loc(const Statement* stmt);
 Expression* statement_if_get_condition(const Statement* stmt);
 Statement* statement_if_get_true_part(const Statement* stmt);
 Statement* statement_if_get_false_part(const Statement* stmt);
@@ -351,10 +359,16 @@ Statement* statement_create_declaration(AstAllocator* allocator,
 bool statement_declaration_is_single(const Statement* stmt);
 Declaration* statement_declaration_get_signle(const Statement* stmt);
 DeclarationListEntry* statement_declaration_get_multiple(const Statement* stmt);
+Location statement_declaration_get_location(const Statement* stmt);
 
 bool statement_is(const Statement* stmt, StatementType type);
 
 // This function checks if the statement is trivially empty. e.g '{}' or ';'
 bool statement_is_empty(const Statement* stmt);
+
+// Functions for our statement list
+StatementList statement_list_create(void);
+void statement_list_push(StatementList* list, Statement* stmt);
+Statement* statement_list_first(const StatementList* list);
 
 #endif /* STATEMENT_H */

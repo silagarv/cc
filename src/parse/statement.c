@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <string.h>
 
+#include "files/location.h"
 #include "parse/declaration.h"
 #include "util/panic.h"
 #include "util/vec.h"
@@ -198,6 +199,13 @@ Statement* statement_create_if(AstAllocator* allocator, Location if_location,
     stmt->if_stmt.false_part = false_part;
 
     return stmt;
+}
+
+Location statement_if_get_else_loc(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_IF));
+
+    return stmt->if_stmt.else_location;
 }
 
 Expression* statement_if_get_condition(const Statement* stmt)
@@ -497,6 +505,23 @@ DeclarationListEntry* statement_declaration_get_multiple(const Statement* stmt)
     return decl_group_get_multiple(&stmt->declaration_stmt.decls);
 }
 
+Location statement_declaration_get_location(const Statement* stmt)
+{
+    assert(statement_is(stmt, STATEMENT_DECLARATION));
+
+    if (statement_declaration_is_single(stmt))
+    {
+        Declaration* decl = statement_declaration_get_signle(stmt);
+        return declaration_get_location(decl);
+    }
+    else
+    {
+        DeclarationListEntry* group = statement_declaration_get_multiple(stmt);
+        Declaration* decl = declaration_list_entry_get(group);
+        return declaration_get_location(decl);
+    }
+}
+
 bool statement_is(const Statement* stmt, StatementType type)
 {
     assert(stmt);
@@ -528,3 +553,31 @@ bool statement_is_empty(const Statement* stmt)
     return false;
 }
 
+StatementList statement_list_create(void)
+{
+    return (StatementList) { NULL, NULL };
+}
+
+void statement_list_push(StatementList* list, Statement* stmt)
+{
+    if (stmt == NULL)
+    {
+        return;
+    }
+
+    if (list->first == NULL)
+    {
+        list->first = stmt;
+        list->recent = stmt;
+    }
+    else
+    {
+        statement_set_next(list->recent, stmt);
+        list->recent = stmt;
+    }
+}
+
+Statement* statement_list_first(const StatementList* list)
+{
+    return list->first;
+}
