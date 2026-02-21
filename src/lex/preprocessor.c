@@ -6,18 +6,18 @@
 #include <assert.h>
 #include <string.h>
 
-#include "driver/diagnostic.h"
-#include "driver/lang.h"
-#include "files/file_manager.h"
-#include "files/filepath.h"
-#include "files/source_manager.h"
-#include "lex/identifier_table.h"
-#include "lex/lexer.h"
 #include "util/arena.h"
 #include "util/buffer.h"
-#include "util/str.h"
 
+#include "driver/diagnostic.h"
+#include "driver/lang.h"
+
+#include "files/filepath.h"
+#include "files/source_manager.h"
+
+#include "lex/identifier_table.h"
 #include "lex/token.h"
+#include "lex/lexer.h"
 
 struct LexerStack {
     LexerStack* prev;
@@ -115,6 +115,10 @@ bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
         return false;
     }
 
+    // Since we have got a main file we can now set the source managers main
+    // file.
+    source_manager_set_main_file(sm, starting_file);
+
     pp->dm = dm;
     pp->lang = opts;    
     pp->sm = sm;
@@ -126,57 +130,60 @@ bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
     pp->lexers = NULL;
     lexer_create(&pp->lexer, dm, opts, &pp->literal_arena, pp->identifiers,
             starting_file);
+    pp->cache = token_list(arena_new_default());
 
     return true;
 }
 
 void preprocessor_delete(Preprocessor* pp)
 {
+    token_list_free(&pp->cache); // Free first since some tokens use other arena
     arena_delete(&pp->literal_arena);
     arena_delete(&pp->pp_allocator);
 }
 
-bool preprocessor_advance_token(Preprocessor* pp, Token* token)
+static bool preprocessor_get_next(Preprocessor* pp, Token* token, bool cache)
 {
-    // if (!lexer_get_next(&pp->lexer, token))
-    // {
-    //     return false;
-    // }
-
-    // if (token_is_type(token, TOK_HASH) && token_has_flag(token, TOKEN_FLAG_BOL))
-    // {
-    //     pp->lexer.lexing_directive = true;
-
-    //     printf("hash at srart of line\n");
-    //     while (!token_is_type(token, TOK_PP_EOD))
-    //     {
-    //         if (!lexer_get_next(&pp->lexer, token))
-    //         {
-    //             return false;
-    //         }
-    //     }
-
-    //     return preprocessor_advance_token(pp, token);
-    // }
-
-    // return true;
-
     bool ret = lexer_get_next(&pp->lexer, token);
     if (token_is_type(token, TOK_IDENTIFIER))
     {
         token_classify_identifier(token);
     }
+
+    if (cache)
+    {
+        token_list_push_back(&pp->cache, *token);
+    }
+
     return ret;
+}
+
+bool preprocessor_advance_token(Preprocessor* pp, Token* token)
+{
+    // If we have cached tokens, pop them from the front of the list and thats
+    // how we get the next token.
+    if (!token_list_empty(&pp->cache))
+    {
+        *token = token_list_pop_front(&pp->cache);
+        return true;
+    }
+
+    // Otherwise get but don't cache the next token.
+    return preprocessor_get_next(pp, token, false);
 }
 
 bool preprocessor_peek_token(Preprocessor* pp, Token* token)
 {
-    bool ret = lexer_peek(&pp->lexer, token);
-    if (token_is_type(token, TOK_IDENTIFIER))
+    // If we have cached tokens, simply peek the front token of the list and
+    // return that token to us. As there is no work to do here.
+    if (!token_list_empty(&pp->cache))
     {
-        token_classify_identifier(token);
+        *token = token_list_peek_front(&pp->cache);
+        return true;
     }
-    return ret;
+
+    // Otherwise get and cache the next token for us.
+    return preprocessor_get_next(pp, token, true);
 }
 
 TokenType preprocessor_peek_next_token_type(Preprocessor* pp)

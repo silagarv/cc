@@ -68,17 +68,20 @@ Location source_file_get_start_location(const SourceFile* sf)
 
 bool source_file_is_include(const SourceFile* sf)
 {
-    panic("TODO: figure out how we will represent includes");
-
-    return false;
+    return sf->included_location != LOCATION_INVALID;
 }
 
 // Get the include location of a source file
 Location source_file_get_include_location(const SourceFile* sf)
 {
     assert(source_file_is_include(sf));
-
     return sf->included_location;
+}
+
+bool source_file_contains(const SourceFile* sf, Location location)
+{
+    LocationRange range = { sf->start_location, sf->end_location };
+    return location_range_contains(&range, location);
 }
 
 /* SourceManager */
@@ -157,6 +160,16 @@ SourceFile* source_manager_create_anonomous_buffer(SourceManager* sm,
 {
     FileBuffer* fb = file_manager_add_anonymous(&sm->fm, buffer);
     return source_manager_assign_file(sm, fb, include);
+}
+
+void source_manager_set_main_file(SourceManager* sm, SourceFile* sf)
+{
+    sm->main_file = sf;
+}
+
+SourceFile* source_manager_get_main_file(SourceManager* sm)
+{
+    return sm->main_file;
 }
 
 SourceFile* source_manager_from_id(SourceManager* sm, SourceFileId id)

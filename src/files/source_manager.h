@@ -85,6 +85,9 @@ typedef struct SourceManager {
     // this is not currently yet complete / supported...
     Location next_macro_location;
     MacroEntryVector macro_entries;
+
+    // The main file that we are using for this translation unit
+    SourceFile* main_file;
 } SourceManager;
 
 // This is the location that we believe a location to fully and completely 
@@ -103,8 +106,8 @@ typedef struct VirtualLocation {
 // This will be used to create a user made buffer either through commmand line
 // defines and includes (or builtin defines and that kind of thing) or through
 // token concatenation and pasting.
-SourceFile* source_file_create(SourceFileId id, Location start, Location include,
-        FileBuffer* buffer);
+SourceFile* source_file_create(SourceFileId id, Location start,
+        Location include, FileBuffer* buffer);
 
 // Free a source file structure not including the filebuffer
 void source_file_free(SourceFile* file);
@@ -128,6 +131,9 @@ bool source_file_is_include(const SourceFile* sf);
 // for this function to return a valid value.
 Location source_file_get_include_location(const SourceFile* sf);
 
+// True if the source file contains the specified location
+bool source_file_contains(const SourceFile* sf, Location location);
+
 /* SourceManager */
 
 // Create a source manager 
@@ -148,6 +154,9 @@ SourceFile* source_manager_create_command_line_buffer(SourceManager* sm,
         Buffer buffer);
 SourceFile* source_manager_create_anonomous_buffer(SourceManager* sm,
         Buffer buffer, Location include);
+
+void source_manager_set_main_file(SourceManager* sm, SourceFile* sf);
+SourceFile* source_manager_get_main_file(SourceManager* sm);
 
 // Look up a source file from a given id
 SourceFile* source_manager_from_id(SourceManager* sm, SourceFileId id);

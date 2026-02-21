@@ -16,7 +16,10 @@
 
 #include "lex/identifier_table.h"
 
-vector_of_impl(Token, Token, token)
+struct TokenListEntry {
+    Token tok;
+    struct TokenListEntry* next;
+};
 
 void token_set_flag(Token* token, TokenFlags flag)
 {
@@ -473,7 +476,7 @@ bool token_list_empty(const TokenList* list)
     return list->head == NULL;
 }
 
-void token_list_push(TokenList* list, Token tok)
+void token_list_push_back(TokenList* list, Token tok)
 {
     TokenListEntry* entry = token_list_entry_create(list, tok);
     if (list->head == NULL)
@@ -487,6 +490,32 @@ void token_list_push(TokenList* list, Token tok)
     }
     list->tail = entry;
 
+}
+
+void token_list_push_front(TokenList* list, Token tok)
+{
+    TokenListEntry* entry = token_list_entry_create(list, tok);
+    if (list->head == NULL)
+    {
+        list->head = entry;
+        list->tail = entry;
+    }
+    else 
+    {
+        // This should work even if `head == tail` since the tail will remain
+        // the same but the head will be the entry and the next entry will be
+        // the `tail`
+        entry->next = list->head;
+        list->head = entry;
+    }
+}
+
+Token token_list_peek_front(const TokenList* list)
+{
+    assert(!token_list_empty(list));
+
+    TokenListEntry* entry = list->head;
+    return entry->tok;
 }
 
 Token token_list_pop_front(TokenList* list)

@@ -222,18 +222,13 @@ typedef struct Token {
     TokenData data; // data the token needs
 } Token;
 
-typedef struct TokenListEntry {
-    Token tok;
-    struct TokenListEntry* next;
-} TokenListEntry;
+typedef struct TokenListEntry TokenListEntry;
 
 typedef struct TokenList {
     Arena allocator;
     TokenListEntry* head;
     TokenListEntry* tail;
 } TokenList;
-
-vector_of_decl(Token, Token, token);
 
 void token_set_flag(Token* token, TokenFlags flag);
 void token_unset_flag(Token* token, TokenFlags flag);
@@ -262,9 +257,10 @@ Token token_list_entry_token(const TokenListEntry* entry);
 TokenList token_list(Arena arena);
 void token_list_free(TokenList* list);
 bool token_list_empty(const TokenList* list);
-void token_list_push(TokenList* list, Token tok);
+void token_list_push_back(TokenList* list, Token tok);
+void token_list_push_front(TokenList* list, Token tok);
+Token token_list_peek_front(const TokenList* list);
 Token token_list_pop_front(TokenList* list);
 TokenListEntry* token_list_iter(const TokenList* list);
-
 
 #endif /* TOKEN_H */

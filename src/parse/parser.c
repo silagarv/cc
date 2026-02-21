@@ -77,18 +77,12 @@ static Token* current_token(Parser* parser)
 static Token* next_token(Parser* parser)
 {
     preprocessor_peek_token(&parser->pp, &parser->peek_token);
-
     return &parser->peek_token;
 }
 
 static TokenType current_token_type(Parser* parser)
 {
     return parser->token.type;
-}
-
-static TokenType next_token_type(Parser* parser)
-{
-    return preprocessor_peek_next_token_type(&parser->pp);
 }
 
 static Location current_token_location(Parser* parser)
@@ -161,7 +155,6 @@ static Location consume(Parser* parser)
 
     // Advance the token to the next one
     preprocessor_advance_token(&parser->pp, &parser->token);
-
     return location;
 }
 
@@ -209,7 +202,7 @@ static bool has_match(Parser* parser, const TokenType* types, size_t count)
 
 static bool is_next_match(Parser* parser, TokenType type)
 {
-    return preprocessor_peek_next_token_type(&parser->pp) == type;
+    return token_is_type(next_token(parser), type);
 }
 
 static void recover_many(Parser* parser, TokenType* types, size_t num_types,
@@ -756,7 +749,7 @@ static Expression* parse_string_expression(Parser* parser, bool unevaluated)
     do
     {
         Token string = *current_token(parser);
-        token_list_push(&strings, string);
+        token_list_push_back(&strings, string);
         consume(parser);
     }
     while (is_string_like_token(parser));

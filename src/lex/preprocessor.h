@@ -1,6 +1,8 @@
 #ifndef PREPROCESSOR_H
 #define PREPROCESSOR_H
 
+#include <stddef.h>
+
 #include "util/arena.h"
 
 #include "driver/diagnostic.h"
@@ -49,6 +51,10 @@ typedef struct Preprocessor {
     // information onto particularaly for our macro tables and those kinds of
     // things.
     Arena pp_allocator;
+
+    // The token cache that we are going to use for macro tokens and the like.
+    // Also used to inject tokens into the token stream when needed.
+    TokenList cache;
 } Preprocessor;
 
 bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
@@ -58,10 +64,11 @@ void preprocessor_delete(Preprocessor* pp);
 
 bool preprocessor_advance_token(Preprocessor* pp, Token* token);
 bool preprocessor_peek_token(Preprocessor* pp, Token* token);
+// bool preprocessor_peek_n_token(Preprocessor* pp, Token* token, size_t n);
 
-TokenType preprocessor_peek_next_token_type(Preprocessor* pp);
-
-// TODO: to help error recovery
+// Insert a token directly into the lexers token stream. Should only be used to
+// help error recovery within the parser and not to just push tokens in whenever
+// we feel like it.
 void preprocessor_insert_token(Preprocessor* pp, Token token);
 
 #endif /* PREPROCESSOR_H */
