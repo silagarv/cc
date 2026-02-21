@@ -143,6 +143,14 @@ bool token_is_string(const Token* token)
             || type == TOK_UTF32_STRING;
 }
 
+bool token_is_character(const Token* token)
+{
+    TokenType type = token_get_type(token);
+    return type == TOK_CHARACTER || type == TOK_WIDE_CHARACTER
+            || type == TOK_UTF8_CHARACTER || type == TOK_UTF16_CHARACTER
+            || type == TOK_UTF32_CHARACTER;
+}
+
 void token_set_type(Token* token, TokenType type)
 {
     token->type = type;
@@ -460,6 +468,11 @@ void token_list_free(TokenList* list)
     arena_delete(&list->allocator);
 }
 
+bool token_list_empty(const TokenList* list)
+{
+    return list->head == NULL;
+}
+
 void token_list_push(TokenList* list, Token tok)
 {
     TokenListEntry* entry = token_list_entry_create(list, tok);
@@ -474,6 +487,28 @@ void token_list_push(TokenList* list, Token tok)
     }
     list->tail = entry;
 
+}
+
+Token token_list_pop_front(TokenList* list)
+{
+    assert(!token_list_empty(list));
+
+    TokenListEntry* entry = list->head;
+    TokenListEntry* next = token_list_entry_next(entry);
+
+    // 2 Cases, this could be the only token in the list or there might be more
+    if (next == NULL) // Only token
+    {
+        list->head = NULL;
+        list->tail = NULL; // Have no end of the list to push too...
+    }
+    else // More tokens...
+    {
+        list->head = next;
+    }
+
+    // Finally return the token that we have
+    return token_list_entry_token(entry);
 }
 
 TokenListEntry* token_list_iter(const TokenList* list)

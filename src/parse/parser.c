@@ -715,7 +715,7 @@ static Expression* parse_numeric_expression(Parser* parser)
 
 static Expression* parse_character_expression(Parser* parser)
 {
-    assert(is_match_two(parser, TOK_CHARACTER, TOK_WIDE_CHARACTER));
+    assert(token_is_character(current_token(parser)));
 
     bool wide = is_match(parser, TOK_WIDE_CHARACTER);
             
@@ -723,11 +723,10 @@ static Expression* parse_character_expression(Parser* parser)
     Location loc = consume(parser);
 
     CharValue value = {0};
-    bool success = parse_char_literal(&value, parser->dm, &char_token,
-            wide);
-
-    return semantic_checker_handle_char_expression(&parser->sc, loc,
-            value, success);
+    bool success = parse_char_literal(&value, parser->dm, char_token);
+    
+    return semantic_checker_handle_char_expression(&parser->sc,
+            token_get_location(&char_token), value, success);
 }
 
 static bool is_string_like_token(Parser* parser)
@@ -746,7 +745,7 @@ static bool is_string_like_token(Parser* parser)
     }
 }
 
-static Expression* parse_string_expression(Parser* parser)
+static Expression* parse_string_expression(Parser* parser, bool unevaluated)
 {
     assert(is_string_like_token(parser));
 
@@ -765,7 +764,7 @@ static Expression* parse_string_expression(Parser* parser)
     // Attempt the conversion using the information we have here
     StringLiteral string;
     bool conversion = parse_string_literal(ast_get_allocator(parser->ast),
-            &string, parser->dm, parser->lang, &strings, false);
+            &string, parser->dm, parser->lang, &strings, unevaluated);
 
     // Make sure to free our token list since we are done with it
     token_list_free(&strings);
@@ -966,7 +965,7 @@ static Expression* parse_primary_expression(Parser* parser)
         case TOK_UTF8_STRING:
         case TOK_UTF16_STRING:
         case TOK_UTF32_STRING:
-            return parse_string_expression(parser);
+            return parse_string_expression(parser, false);
 
         case TOK___func__:
             return parse_builtin_identifier(parser);
@@ -1133,7 +1132,6 @@ static Expression* parse_postfix_expression(Parser* parser)
     // should end up here. But since we that is hard we just pass in the 
     // compound literal expression and DON'T parse a primary expression. 
     Expression* expr = parse_primary_expression(parser);
-
     return parse_postfix_ending(parser, expr);
 }
 
@@ -4633,7 +4631,7 @@ static Declaration* parse_static_assert_declaration(Parser* parser,
             recover(parser, TOK_SEMI, RECOVER_EAT_TOKEN);
             return NULL;    
         }
-        string = parse_string_expression(parser);
+        string = parse_string_expression(parser, true);
     }
 
     bool should_parse_semi = true;
@@ -4738,21 +4736,19 @@ static void parse_top_level(Parser* parser)
 
 static void parse_translation_unit_internal(Parser* parser)
 {
-    // Parse declarations until we hit end of file tracking if we got a 
-    // declaration in the translation unit or not.
-    bool had_decl = false;
-    while (!is_match(parser, TOK_EOF))
-    {
-        parse_top_level(parser);
-        had_decl = true;
-    }
-
-    // Warn if we did not recieve any declarations at all.
-    if (!had_decl)
+    // Check for an empty translation unit.
+    if (is_match(parser, TOK_EOF))
     {
         diagnostic_warning_at(parser->dm, current_token_location(parser),
                 Wempty_translation_unit, "ISO C requires a translation unit to "
                 "contain at least one declaration");
+    }
+
+    // Parse declarations until we hit end of file tracking if we got a 
+    // declaration in the translation unit or not.
+    while (!is_match(parser, TOK_EOF))
+    {
+        parse_top_level(parser);
     }
 }
 

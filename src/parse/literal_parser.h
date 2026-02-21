@@ -109,7 +109,7 @@ size_t string_literal_char_size(const StringLiteral* string);
 bool parse_preprocessing_number(LiteralValue* value, DiagnosticManager* dm,
         const Token* token);
 bool parse_char_literal(CharValue* value, DiagnosticManager* dm,
-        const Token* token, bool wide);
+        const Token token);
 // bool parse_string_literal(AstAllocator* allocator, StringLiteral* value,
 //         DiagnosticManager* dm, TokenVector tokens, LocationVector locs,
 //         bool wide);

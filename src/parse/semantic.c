@@ -7369,7 +7369,7 @@ Statement* semantic_checker_handle_return_statement(SemanticChecker* sc,
             expression = semantic_checker_handle_error_expression(sc,
                     semi_location);
         }
-        else
+        else if (expression_is_valid(expression))
         {
             AssignmentType assign = semantic_checker_get_assignment_type(sc,
                     &real_type, expression);

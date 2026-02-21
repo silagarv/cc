@@ -944,7 +944,8 @@ retry_lexing:;
             goto identifier;
             
         // Look for the 'u' or 'u8' encoding prefix but only if we are in the
-        // correct language modes that allow for this.
+        // correct language modes that allow for this. Note that u8 characters
+        // were only introduced in C23 so we will need to check for this.
         case 'u':
         {
             if (!lang_opts_c11(lexer->lang))
@@ -973,7 +974,8 @@ retry_lexing:;
                         u8 ? TOK_UTF8_STRING : TOK_UTF16_STRING);
                 break;
             }
-            else if (curr == '\'')
+            else if (curr == '\''
+                    && (!u8 || (u8 && lang_opts_c23(lexer->lang))))
             {
                 consume_char(lexer);
 

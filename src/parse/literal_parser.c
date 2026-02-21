@@ -40,9 +40,9 @@ typedef enum EscapeSequenceResult {
     ESCAPE_SEQUENCE_RESULT_FATAL
 } EscapeSequenceResult;
 
-CharType get_char_type(const Token* token)
+CharType get_char_type(TokenType type)
 {
-    switch (token_get_type(token))
+    switch (type)
     {
         case TOK_STRING:
         case TOK_CHARACTER:
@@ -72,9 +72,18 @@ size_t get_char_type_size(CharType type)
 {
     switch (type)
     {
-        case CHAR_TYPE_CHAR: return 1;
-        case CHAR_TYPE_WIDE: return 4;
-        default: panic("bad CharType"); return 0;
+        case CHAR_TYPE_CHAR:
+            return 1;
+
+        case CHAR_TYPE_UTF16:
+            return 2;
+
+        case CHAR_TYPE_WIDE:
+        case CHAR_TYPE_UTF32:
+            return 4;
+
+        default: panic("bad CharType");
+            return 0;
     }
 }
 
@@ -1256,17 +1265,18 @@ static uint64_t decode_escape_sequence(const char* raw, size_t len, size_t* pos,
 }
 
 bool parse_char_literal(CharValue* value, DiagnosticManager* dm,
-        const Token* token, bool wide)
+        const Token token)
 {
-    assert(token->type == TOK_CHARACTER ||
-            token->type == TOK_WIDE_CHARACTER);
+    assert(token_is_character(&token));
+
+    bool wide = token_is_type(&token, TOK_WIDE_CHARACTER);
 
     // Get the location and raw literal data for conversion
-    const Location loc = token->loc;
+    const Location loc = token.loc;
 
-    const String literal = token->data.literal->value;
-    const char* raw = literal.ptr;
-    const size_t len = literal.len;
+    String literal = token_get_literal_node(&token);
+    char* raw = literal.ptr;
+    size_t len = literal.len;
 
     size_t pos = 0;
 
@@ -1334,8 +1344,8 @@ bool parse_char_literal(CharValue* value, DiagnosticManager* dm,
     
     if (!wide && val > INT_MAX)
     {
-        diagnostic_warning_at(dm, loc, Wother,
-                "character constant too long for its type");
+        diagnostic_warning_at(dm, loc, Wother, "character constant too long "
+                "for its type");
     }
 
     // Okay if we had a normal character constant do a cast to char and then to
@@ -1363,6 +1373,9 @@ const char* string_literal_prefix(TokenType type)
     {
         case TOK_STRING: return "";
         case TOK_WIDE_STRING: return "L";
+        case TOK_UTF8_STRING: return "u8";
+        case TOK_UTF16_STRING: return "u";
+        case TOK_UTF32_STRING: return "U";
         default: panic("bad token type"); return NULL;
     }
 }
@@ -1392,6 +1405,12 @@ void buffer_add_character(char* buffer, size_t* buffer_pos, size_t buffer_size,
                     buffer[(*buffer_pos)++] = (char) utf8_buffer[i];
                 }                
             }                        
+            break;
+        }
+
+        case 2:
+        {
+            panic("unimplemented for UTF-16 literals (and short wide chars)");
             break;
         }
 
@@ -1487,6 +1506,8 @@ bool parse_single_string_literal(const String* string, DiagnosticManager* dm,
             return false;
         }
 
+        // TODO: element size can not be 2.
+
         // If we are just chars then truncate the given escape sequence.
         if (element_size == 1 && !ucn)
         {
@@ -1508,10 +1529,12 @@ bool parse_string_literal(AstAllocator* allocator, StringLiteral* value,
         DiagnosticManager* dm, LangOptions* lang, const TokenList* tokens,
         bool unevaluated)
 {
-    CharType type = CHAR_TYPE_CHAR;
+    // CharType type = CHAR_TYPE_CHAR;
     size_t upper_bound = 0; // upper bound of final string literal length
     size_t num_strings = 0;
     bool concat_error = false; // Have we got a concat error.
+
+    TokenType type = TOK_STRING;
 
     TokenListEntry* start = token_list_iter(tokens);
     for (TokenListEntry* current = start;
@@ -1519,43 +1542,35 @@ bool parse_string_literal(AstAllocator* allocator, StringLiteral* value,
             current = token_list_entry_next(current))
     {
         // Get basic info about the token
-        Token t = token_list_entry_token(current);
+        Token curr_tok = token_list_entry_token(current);
+        TokenType curr_type = token_get_type(&curr_tok);
         num_strings++;
         
         // Do the size calculation for the tokens length.
-        size_t t_len = token_get_length(&t);
+        size_t t_len = token_get_length(&curr_tok);
         assert(t_len >= 2);
         upper_bound += t_len - 2;
         
         // Check what kind of conversions we are doing with each string token.
-        CharType t_type = get_char_type(&t);
-        if (type == t_type)
+        if (unevaluated && curr_type != TOK_STRING)
         {
-            ; // Do nothing, got the same type
+            diagnostic_warning_at(dm, token_get_location(&curr_tok),
+                    Wignored_encoding_prefix, "encoding prefix '%s' has no "
+                    "effect", string_literal_prefix(curr_type));
         }
-        else if (unevaluated && t_type != CHAR_TYPE_CHAR)
+        else if (curr_type != type && curr_type != TOK_STRING)
         {
-            diagnostic_warning_at(dm, token_get_location(&t), Wother,
-                    "encoding prefix '%s' has no effect",
-                    string_literal_prefix(token_get_type(&t)));
-        }
-        else if (t_type == CHAR_TYPE_WIDE && type == CHAR_TYPE_CHAR)
-        {
-            // Support conversions with mixed wide and non-wide strings
-            type = CHAR_TYPE_WIDE;
-        }
-        else if (num_strings == 1 && t_type != CHAR_TYPE_CHAR)
-        {
-            // Another special case of the type of the first token...
-            type = t_type;
-        }
-        else
-        {
-            // TODO: we currently 'support' u8"" L"" concatenation... This 
-            // TODO: should be fixed to disallow that...
-            diagnostic_error_at(dm, token_get_location(&t), "unsupported "
-                    "non-standard concatenation of string literals");
-            concat_error = true;
+            if (type == TOK_STRING)
+            {
+                type = curr_type;
+            }
+            else
+            {
+                diagnostic_error_at(dm, token_get_location(&curr_tok),
+                        "unsupported non-standard concatenation of string "
+                        "literals");
+                concat_error = true;
+            }
         }
     }
     
@@ -1564,13 +1579,15 @@ bool parse_string_literal(AstAllocator* allocator, StringLiteral* value,
         return false;
     }
 
+    CharType char_type = get_char_type(type);
+
     // Make sure we are okay to null terminate the string.
     upper_bound++;
 
     // Okay we now have most of what we need from all of our string literals in
     // order to start building up our string literal. We just need to do some
     // things in order to set up or literal evaluation.
-    size_t element_size = get_char_type_size(type);
+    size_t element_size = get_char_type_size(char_type);
     size_t alloc_size = upper_bound * element_size;
 
     // Allocate all of the space that we could possibly need in the buffer
@@ -1585,7 +1602,7 @@ bool parse_string_literal(AstAllocator* allocator, StringLiteral* value,
         Token t = token_list_entry_token(current);
         String literal = token_get_literal_node(&t);
         if (!parse_single_string_literal(&literal, dm, token_get_location(&t),
-                lang, type, buffer, &buffer_pos, alloc_size, element_size,
+                lang, char_type, buffer, &buffer_pos, alloc_size, element_size,
                 unevaluated))
         {
             return false;

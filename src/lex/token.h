@@ -243,6 +243,7 @@ Location token_get_location(const Token* token);
 bool token_is_type(const Token* token, TokenType type);
 bool token_is_literal(const Token* token);
 bool token_is_string(const Token* token);
+bool token_is_character(const Token* token);
 void token_set_type(Token* token, TokenType type);
 struct Identifier* token_get_identifier(const Token* token);
 void token_classify_identifier(Token* token);
@@ -260,7 +261,9 @@ Token token_list_entry_token(const TokenListEntry* entry);
 
 TokenList token_list(Arena arena);
 void token_list_free(TokenList* list);
+bool token_list_empty(const TokenList* list);
 void token_list_push(TokenList* list, Token tok);
+Token token_list_pop_front(TokenList* list);
 TokenListEntry* token_list_iter(const TokenList* list);
 
 
