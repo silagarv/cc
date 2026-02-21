@@ -2,6 +2,7 @@
 #define STATEMENT_H
 
 #include "parse/expression_eval.h"
+#include "parse/literal_parser.h"
 #include "util/vec.h"
 
 #include "files/location.h"
@@ -36,7 +37,9 @@ enum StatementType {
 
     STATEMENT_EMPTY,
 
-    STATEMENT_DECLARATION
+    STATEMENT_DECLARATION,
+
+    STATEMENT_ASM
 };
 typedef enum StatementType StatementType;
 
@@ -58,6 +61,7 @@ typedef struct StatementBreak StatementBreak;
 typedef struct StatementReturn StatementReturn;
 typedef struct StatementEmpty StatementEmpty;
 typedef struct StatementDeclaration StatementDeclaration;
+typedef struct StatementAsm StatementAsm;
 
 typedef union Statement Statement;
 
@@ -200,12 +204,24 @@ struct StatementEmpty {
     Location semi_location;
 };
 
-
-
 struct StatementDeclaration {
     StatementBase base;
     Location semi_location;
     DeclarationGroup decls;
+};
+
+struct StatementAsm {
+    StatementBase base;
+    Location asm_loc;
+    Location volatile_loc;
+    Location inline_loc;
+    Location goto_loc;
+    Location lparen_loc;
+    Location rparen_loc;
+    Location semi_loc;
+    ExpressionStringLiteral* asm_string;
+    // TODO: properly do extended asm
+    // TODO: will need to make a struct for constraints.
 };
 
 union Statement {

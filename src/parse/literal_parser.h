@@ -84,6 +84,14 @@ typedef struct CharValue {
     bool error; // Did we get an error
 } CharValue;
 
+typedef enum CharType {
+    CHAR_TYPE_CHAR,
+    CHAR_TYPE_WIDE,
+    CHAR_TYPE_UTF8,
+    CHAR_TYPE_UTF16,
+    CHAR_TYPE_UTF32
+} CharType;
+
 // Structures to represent string and wide string literal values
 typedef struct StringLiteral {
     char* string; // the buffer that holds the string data itself
@@ -92,6 +100,7 @@ typedef struct StringLiteral {
     size_t char_size; // the size of one 'character' of the string in bytes
                       // e.g in a normal string it would be '1', but in a wide
                       // string it is '4'
+    CharType type; // The type of character that this string literal is
 } StringLiteral;
 
 uint64_t integer_value_get_value(const IntegerValue* val);
@@ -105,6 +114,7 @@ ValueType literal_value_get_type(const LiteralValue* value);
 char* string_literal_buffer(const StringLiteral* string);
 size_t string_literal_length(const StringLiteral* string);
 size_t string_literal_char_size(const StringLiteral* string);
+CharType string_literal_char_type(const StringLiteral* string);
 
 bool parse_preprocessing_number(LiteralValue* value, DiagnosticManager* dm,
         const Token* token);

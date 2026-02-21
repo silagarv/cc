@@ -27,13 +27,6 @@
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
-typedef enum CharType {
-    CHAR_TYPE_CHAR,
-    CHAR_TYPE_WIDE,
-    CHAR_TYPE_UTF16,
-    CHAR_TYPE_UTF32
-} CharType;
-
 typedef enum EscapeSequenceResult {
     ESCAPE_SEQUENCE_RESULT_OK,
     ESCAPE_SEQUENCE_RESULT_ERROR,
@@ -46,13 +39,15 @@ CharType get_char_type(TokenType type)
     {
         case TOK_STRING:
         case TOK_CHARACTER:
-        case TOK_UTF8_STRING:
-        case TOK_UTF8_CHARACTER:
             return CHAR_TYPE_CHAR;
 
         case TOK_WIDE_STRING:
         case TOK_WIDE_CHARACTER:
             return CHAR_TYPE_WIDE;
+
+        case TOK_UTF8_STRING:
+        case TOK_UTF8_CHARACTER:
+            return CHAR_TYPE_UTF8;
 
         case TOK_UTF16_STRING:
         case TOK_UTF16_CHARACTER:
@@ -73,6 +68,7 @@ size_t get_char_type_size(CharType type)
     switch (type)
     {
         case CHAR_TYPE_CHAR:
+        case CHAR_TYPE_UTF8:
             return 1;
 
         case CHAR_TYPE_UTF16:
@@ -122,6 +118,10 @@ size_t string_literal_char_size(const StringLiteral* string)
     return string->char_size;
 }
 
+CharType string_literal_char_type(const StringLiteral* string)
+{
+    return string->type;
+}
 
 static int parse_integer_prefix(const char* string, size_t len, size_t* pos)
 {
@@ -1555,8 +1555,8 @@ bool parse_string_literal(AstAllocator* allocator, StringLiteral* value,
         if (unevaluated && curr_type != TOK_STRING)
         {
             diagnostic_warning_at(dm, token_get_location(&curr_tok),
-                    Wignored_encoding_prefix, "encoding prefix '%s' has no "
-                    "effect", string_literal_prefix(curr_type));
+                    Wignored_encoding, "encoding prefix '%s' has no effect",
+                    string_literal_prefix(curr_type));
         }
         else if (curr_type != type && curr_type != TOK_STRING)
         {
@@ -1618,6 +1618,7 @@ bool parse_string_literal(AstAllocator* allocator, StringLiteral* value,
     value->string = buffer;
     value->length = buffer_pos / element_size;
     value->char_size = element_size;
+    value->type = char_type;
 
     return true;
 }

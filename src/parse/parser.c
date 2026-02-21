@@ -53,6 +53,8 @@ static Token* current_token(Parser* parser);
 // TODO: reimplement the method below
 static Token* next_token(Parser* parser);
 
+static void set_token(Parser* parser, Token token);
+
 static TokenType current_token_type(Parser* parser);
 static TokenType next_token_type(Parser* parser);
 
@@ -78,6 +80,11 @@ static Token* next_token(Parser* parser)
 {
     preprocessor_peek_token(&parser->pp, &parser->peek_token);
     return &parser->peek_token;
+}
+
+static void set_token(Parser* parser, Token token)
+{
+    parser->token = token;
 }
 
 static TokenType current_token_type(Parser* parser)
@@ -166,6 +173,12 @@ static bool is_match(Parser* parser, TokenType type)
 static bool is_match_two(Parser* parser, TokenType type1, TokenType type2)
 {
     return has_match(parser, (TokenType[]) {type1, type2}, 2);
+}
+
+static bool is_match_three(Parser* parser, TokenType type1, TokenType type2,
+        TokenType type3)
+{
+    return has_match(parser, (TokenType[]) {type1, type2, type3}, 3);
 }
 
 static bool try_match(Parser* parser, TokenType type, Location* location)
@@ -385,6 +398,7 @@ static Statement* parse_compound_statement(Parser* parser);
 static Statement* parse_expression_statement(Parser* parser);
 static Statement* parse_declaration_statement(Parser* parser);
 static Statement* parse_empty_statement(Parser* parser);
+static Statement* parse_asm_statement(Parser* parser);
 static Statement* parse_statement(Parser* parser, bool declaration_allowed);
 
 // All of our functions for parsing declarations / definitions
@@ -1982,7 +1996,8 @@ static Statement* parse_expression_statement(Parser* parser)
     Expression* expr = parse_expression(parser);
 
     // Another clang special case error message which we support.
-    if (is_match(parser, TOK_RPAREN) && is_next_match(parser, TOK_SEMI))
+    if (expression_is(expr, EXPRESSION_PARENTHESISED)
+            && is_match(parser, TOK_RPAREN) && is_next_match(parser, TOK_SEMI))
     {
         Location rparen = consume(parser);
         diagnostic_error_at(parser->dm, rparen, "extraneous ')' before ';'");
@@ -2378,6 +2393,410 @@ static Statement* parse_empty_statement(Parser* parser)
     return semantic_checker_handle_empty_statement(&parser->sc, semi_loc);
 }
 
+// ASM statement parsing functions.
+static Expression* parse_asm_string(Parser* parser)
+{
+    assert(is_string_like_token(parser));
+
+    Expression* string = parse_string_expression(parser, false);
+    if (expression_is_invalid(string))
+    {
+        return string;
+    }
+
+    // Check to make sure that we didn't have a unicode type string.
+    StringLiteral literal = expression_string_get_value(string);
+    if (string_literal_char_type(&literal) != CHAR_TYPE_CHAR)
+    {
+        const char* diag = string_literal_char_type(&literal) == CHAR_TYPE_WIDE
+                ? "wide" : "unicode";
+        diagnostic_error_at(parser->dm, expression_get_location(string),
+                "cannot use %s string literal in asm", diag);
+        return semantic_checker_handle_error_expression(&parser->sc,
+                expression_get_location(string));
+    }
+
+    return string;
+}
+
+static bool parse_asm_operands(Parser* parser)
+{
+    // Check for empty operands and just return if unneeded.
+    if (is_match_three(parser, TOK_COLON, TOK_COLON_COLON, TOK_RPAREN))
+    {
+        return true;
+    }
+
+    do
+    {
+        Location lbracket = LOCATION_INVALID;
+        Identifier* id = NULL;
+        Location id_loc = LOCATION_INVALID;
+        Location rbracket = LOCATION_INVALID;
+
+        // Parse the possible [id] part before the asm string.
+        if (is_match(parser, TOK_LBRACKET))
+        {
+            lbracket = consume(parser);
+
+            if (!is_match(parser, TOK_IDENTIFIER))
+            {
+                diagnostic_error_at(parser->dm, current_token_location(parser),
+                        "expected identifier");
+                recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI);
+                return false;
+            }
+
+            id = token_get_identifier(current_token(parser));
+            id_loc = consume(parser);
+
+            rbracket = LOCATION_INVALID;
+            if (!try_match(parser, TOK_RBRACKET, &rbracket))
+            {
+                diagnostic_error_at(parser->dm, rbracket, "expected ']'");
+                recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI);
+                return false;
+            }
+        }
+
+        // Now try to parse the stirng literal part
+        if (!is_string_like_token(parser))
+        {
+            diagnostic_error_at(parser->dm, current_token_location(parser),
+                    "expected string literal in 'asm'");
+            recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI);
+            return false;
+        }
+
+        Expression* string = parse_asm_string(parser);
+
+        Location lparen = LOCATION_INVALID;
+        if (!try_match(parser, TOK_LPAREN, &lparen))
+        {
+            diagnostic_error_at(parser->dm, lparen, "expected '(' after 'asm "
+                    "operand'");
+            recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI);
+            return false;
+        }
+
+        Expression* expr = parse_expression(parser);
+
+        Location rparen = LOCATION_INVALID;
+        if (!try_match(parser, TOK_RPAREN, &rparen))
+        {
+            diagnostic_error_at(parser->dm, rparen, "expected ')'");
+            recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI);
+            return false;
+        }
+    }
+    while (try_match(parser, TOK_COMMA, NULL));
+
+    return true;
+}
+
+static bool parse_asm_clobbers(Parser* parser)
+{
+    // Check for empty clobber string.
+    if (is_match_three(parser, TOK_COLON, TOK_COLON_COLON, TOK_RPAREN))
+    {
+        return true;
+    }
+
+    do
+    {
+        // Now try to parse the stirng literal part
+        if (!is_string_like_token(parser))
+        {
+            diagnostic_error_at(parser->dm, current_token_location(parser),
+                    "expected string literal in 'asm'");
+            recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI);
+            return false;
+        }
+
+        Expression* string = parse_asm_string(parser);
+    }
+    while (try_match(parser, TOK_COMMA, NULL));
+
+    return true;
+}
+
+static void parse_asm_labels(Parser* parser)
+{
+    do
+    {
+        if (!is_match(parser, TOK_IDENTIFIER))
+        {
+            diagnostic_error_at(parser->dm, current_token_location(parser),
+                    "expected identifier");
+            recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI);
+            return;
+        }
+
+        Identifier* id = token_get_identifier(current_token(parser));
+        Location loc = consume(parser);
+
+        // TODO: use label lookup stuff.
+    }
+    while (try_match(parser, TOK_COMMA, NULL));
+}
+
+// TODO: I would like to implement the colon splitting to make this function 
+// TODO: make a bit more sense, and especially more readable. Right now this
+// TODO: function feel quite fragile. But it would require implementing some
+// TODO: advanced lexer functios that just don't feel right to implment right
+// TODO: now.
+static void parse_extended_asm_arguments(Parser* parser, bool is_goto)
+{
+    assert(is_match_two(parser, TOK_COLON, TOK_COLON_COLON));
+
+    // Was the previous section skipped by the parser.
+    bool skip_section = false;
+
+    // Okay first we will want to parse the output operands to the asm 
+    // expression. Recall that we should be checking for a `::` token throughout
+    // to ensure that we skip the right sections.
+    if (is_match(parser, TOK_COLON_COLON))
+    {
+        consume(parser);
+        skip_section = true;
+    }
+    else // is_match(parser, TOK_COLON);
+    {
+        assert(is_match(parser, TOK_COLON));
+        consume(parser);
+        if (!parse_asm_operands(parser))
+        {
+            return;
+        }
+    }
+
+    // Check for end of asm statement.
+    if (is_match(parser, TOK_RPAREN))
+    {
+        return;
+    }
+
+    // Now we are looking for the input operands. Handle the section skip 
+    // gracefully if present
+    if (skip_section)
+    {
+        skip_section = false;
+        if (!parse_asm_operands(parser))
+        {
+            return;
+        }
+    }
+    else if (is_match(parser, TOK_COLON))
+    {
+        consume(parser);
+        if (!parse_asm_operands(parser))
+        {
+            return;
+        }
+    }
+    else if (is_match(parser, TOK_COLON_COLON))
+    {
+        consume(parser);
+        skip_section = true;
+    }
+    else
+    {
+        diagnostic_error_at(parser->dm, current_token_location(parser),
+                "expected ':'");
+        recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI);
+        return;
+    }
+
+    // Check for end of asm statement.
+    if (is_match(parser, TOK_RPAREN))
+    {
+        return;
+    }
+
+    // Now we have the clobbers to parse. We have to be careful here since if
+    // we are not a 'goto' asm then we actually cannot skip this section. So we
+    // need to be careful if we have a colon colon.
+    if (skip_section)
+    {
+        skip_section = false;
+        if (!parse_asm_clobbers(parser))
+        {
+            return;
+        }
+    }
+    else if (is_match(parser, TOK_COLON))
+    {
+        consume(parser);
+        if (!parse_asm_clobbers(parser))
+        {
+            return;
+        }
+    }
+    else if (is_match(parser, TOK_COLON_COLON) && is_goto)
+    {
+        consume(parser);
+        skip_section = true;
+    }
+    else if (is_match(parser, TOK_COLON_COLON) && !is_goto)
+    {
+        // This is invalid since we would be trying to skip the clobber section
+        // as well and get to the goto when a ')' would be required after a 
+        // single colon. So we need to produce a sensible error here...
+        diagnostic_error_at(parser->dm, current_token_location(parser),
+                "use of '::' is invalid here (use ':')");
+        recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI);
+        return;
+    }
+    else
+    {
+        diagnostic_error_at(parser->dm, current_token_location(parser),
+                "expected ':'");
+        recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI);
+        return;
+    }
+
+    // Check for end of asm statement.
+    if (is_match(parser, TOK_RPAREN))
+    {
+        return;
+    }
+
+    // Finally we have the labels, this is a bit more complicated here since
+    // since if we aren't goto and we have a skip we need to diagnose something.
+    // But we must make sure that we detect it.
+    if (!is_goto)
+    {
+        return;
+    }
+    else if (skip_section)
+    {
+        parse_asm_labels(parser);
+    }
+    else if (is_match(parser, TOK_COLON))
+    {
+        consume(parser);
+        parse_asm_labels(parser);
+    }
+    else
+    {
+        diagnostic_error_at(parser->dm, current_token_location(parser),
+                "expected ':'");
+        recover(parser, TOK_RPAREN, RECOVER_STOP_AT_SEMI);
+        return;
+    }
+}
+
+static Statement* parse_asm_statement(Parser* parser)
+{
+    assert(is_match(parser, TOK_asm));
+
+    Location asm_loc = consume(parser);
+    Location volatile_loc = LOCATION_INVALID;
+    Location inline_loc = LOCATION_INVALID;
+    Location goto_loc = LOCATION_INVALID;
+
+    // Parse the possible assembly qualifiers
+    while (!is_match(parser, TOK_LPAREN))
+    {
+        if (is_match(parser, TOK_volatile))
+        {
+            Location loc = consume(parser);
+            if (volatile_loc == LOCATION_INVALID)
+            {
+                volatile_loc = loc;
+            }
+            else
+            {
+                diagnostic_error_at(parser->dm, loc, "duplicate 'volatile' "
+                        "asm qualifier");
+            }
+            continue;
+        }
+
+        if (is_match(parser, TOK_inline))
+        {
+            Location loc = consume(parser);
+            if (inline_loc == LOCATION_INVALID)
+            {
+                inline_loc = loc;
+            }
+            else
+            {
+                diagnostic_error_at(parser->dm, loc, "duplicate 'inline' "
+                        "asm qualifier");
+            }
+            continue;
+        }
+
+        if (is_match(parser, TOK_goto))
+        {
+            Location loc = consume(parser);
+            if (goto_loc == LOCATION_INVALID)
+            {
+                goto_loc = loc;
+            }
+            else
+            {
+                diagnostic_error_at(parser->dm, loc, "duplicate 'goto' "
+                        "asm qualifier");
+            }
+            continue;
+        }
+
+        diagnostic_error_at(parser->dm, current_token_location(parser),
+                "expected 'volatile', 'inline', 'goto', or '('");
+        recover(parser, TOK_SEMI, RECOVER_EAT_TOKEN);
+        return semantic_checker_handle_error_statement(&parser->sc);
+    }
+
+    assert(is_match(parser, TOK_LPAREN));
+    Location lparen_loc = consume(parser);
+    
+    // Now we can actually parse the assembly string.
+    if (!is_string_like_token(parser))
+    {
+        diagnostic_error_at(parser->dm, current_token_location(parser),
+                "expected string literal in 'asm");
+        recover(parser, TOK_SEMI, RECOVER_EAT_TOKEN);
+        return semantic_checker_handle_error_statement(&parser->sc);
+    }
+
+    Expression* asm_string = parse_asm_string(parser);
+
+    if (expression_is_invalid(asm_string))
+    {
+        // Since we ate a '(' we recover a tiny bit different here.
+        recover(parser, TOK_RPAREN, RECOVER_EAT_TOKEN | RECOVER_STOP_AT_SEMI);
+        return semantic_checker_handle_error_statement(&parser->sc);
+    }
+
+    // TODO: I think it would be more elagent if we split up `::` tokens if we
+    // TODO: see them whilst parsing our things. But will need a bit more lexer
+    // TODO: support here. This would be like splitting `>>` in C++ templates
+    // Now we will want to parse any of our constraints, expressions, and or
+    // clobbers if we have any.
+    if (is_match_two(parser, TOK_COLON, TOK_COLON_COLON))
+    {
+        parse_extended_asm_arguments(parser, goto_loc != LOCATION_INVALID);        
+    }
+
+    // Finally we can parse the end of the inline assembly statement.
+    Location rparen_loc = LOCATION_INVALID;
+    if (!try_match(parser, TOK_RPAREN, &rparen_loc))
+    {
+        diagnostic_error_at(parser->dm, rparen_loc, "expected ')'");
+        recover(parser, TOK_RPAREN, RECOVER_EAT_TOKEN | RECOVER_STOP_AT_SEMI);
+        return semantic_checker_handle_error_statement(&parser->sc);
+    }
+
+    Location semi = parse_trailing_semi(parser, "asm statement");
+
+    diagnostic_error_at(parser->dm, asm_loc, "GCC inline assembly is not "
+            "implemented; this is parsed with no analysis");
+
+    return semantic_checker_handle_error_statement(&parser->sc);
+}
+
 static Statement* parse_error_statement(Parser* parser)
 {
     recover_two(parser, TOK_RCURLY, TOK_SEMI, RECOVER_NONE);
@@ -2762,6 +3181,10 @@ static Statement* parse_statement(Parser* parser, bool declaration_allowed)
                 return parse_declaration_statement(parser);
             }
             return parse_expression_statement(parser);
+
+        // GCC extension -> inline assembly statement.
+        case TOK_asm:
+            return parse_asm_statement(parser);
     }
 }
 
@@ -3888,7 +4311,7 @@ static void parser_handle_end_of_tag_defn(Parser* parser, const char* context)
     Token fake_semi;
     token_set_type(&fake_semi, TOK_SEMI);
     token_set_location(&fake_semi, LOCATION_INVALID);
-    parser->token = fake_semi;
+    set_token(parser, fake_semi);
 }
 
 static void parse_struct_declaration(Parser* parser, Declaration* decl)
