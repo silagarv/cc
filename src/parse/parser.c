@@ -473,12 +473,17 @@ static bool is_typename_start(Parser* parser, const Token* tok)
         case TOK__Decimal128:
         case TOK__Decimal32:
         case TOK__Decimal64:
+        case TOK__Bitint:
+
+        // Typeof something
+        case TOK_typeof:
+        case TOK_typeof_unqual:
 
         // Type qualifiers
         case TOK_const:
         case TOK_volatile:
         case TOK_restrict:
-        case TOK__Atomic:
+        case TOK__Atomic: // Also allows for _Atomic(...)
 
         // Function specifiers
         case TOK_inline:
@@ -497,10 +502,6 @@ static bool is_typename_start(Parser* parser, const Token* tok)
         // Alignment speicfiers
         case TOK__Alignas:
         case TOK_alignas:
-
-        // Typeof something
-        case TOK_typeof:
-        case TOK_typeof_unqual:
             return true;
 
         case TOK_IDENTIFIER:
@@ -3534,8 +3535,8 @@ static void parse_function_declarator(Parser* parser, Declarator* declarator)
     // this should be the only specia case
     if (is_typename_start(parser, next_token(parser))
             || is_next_match(parser, TOK_ELIPSIS)
-            || lang_opts_c23(parser->lang)
-            || is_next_match(parser, TOK_STAR))
+            || is_next_match(parser, TOK_STAR)
+            || lang_opts_c23(parser->lang))
     {
         parse_paramater_type_list(parser, declarator);
     }
@@ -3778,6 +3779,118 @@ static DeclarationSpecifiers parse_specifier_qualifier_list(Parser* parser)
     return parse_declaration_specifiers(parser, true);
 }
 
+// Simple check to determine if the next two tokens are okay after a tag defn.
+// This may not be 100% accurate but is helpful enough that it should catch
+// most missing ;'s after a tag defn. This function recursed if the current 
+// token is a type specifier AND we have a next token.
+static bool tokens_okay_after_tag_defn(const Token* current, const Token* next)
+{
+    switch (token_get_type(current))
+    {
+        // All of our basic type specifiers. These 100% cannot follow a tag
+        // definition as they would try to combine with the previous but fail.
+        case TOK_void:
+        case TOK_char:
+        case TOK_short:
+        case TOK_int:
+        case TOK_long:
+        case TOK_float:
+        case TOK_double:
+        case TOK_signed:
+        case TOK_unsigned:
+        case TOK__Bool:
+        case TOK__Complex:
+        case TOK__Imaginary:
+        case TOK_struct:
+        case TOK_union:
+        case TOK_enum:
+        case TOK_bool:
+        case TOK__Decimal128:
+        case TOK__Decimal32:
+        case TOK__Decimal64:
+        case TOK__Bitint:
+        case TOK_typeof:
+        case TOK_typeof_unqual:
+            return false;
+
+        // Special case of _Atomic which if followed by a '(' is a type 
+        // specifier. But we can only check this if we have a next token. If we
+        // don't have a next token, then we just have to say that it is okay
+        // since we cannot know
+        case TOK__Atomic:
+            if (next != NULL && token_is_type(next, TOK_LPAREN))
+            {
+                return false;
+            }
+
+        /* FALLTHROUGH */
+
+        // Type qualifiers
+        case TOK_const:
+        case TOK_volatile:
+        case TOK_restrict:
+
+        // Function specifiers
+        case TOK_inline:
+        case TOK__Noreturn:
+
+        // Storage classes
+        case TOK_typedef:
+        case TOK_extern:
+        case TOK_static:
+        case TOK_register:
+        case TOK_auto:
+        case TOK__Thread_local:
+        case TOK_thread_local:
+        case TOK_constexpr:
+
+        // Alignment speicfiers
+        case TOK__Alignas:
+        case TOK_alignas:
+            // If we have a next token then this is the token right after the 
+            // tag defn that we checked. Let's now go and check the next token.
+            if (next != NULL)
+            {
+                return tokens_okay_after_tag_defn(next, NULL);
+            }
+
+        // By default assume that we can have whatever else follow a tag def.
+        default:
+            return true;
+    }
+
+    return true;
+}
+
+// Liberally check if two tokens are okay after a tag definition. We know that
+// they are okay if they are simply not our basic type specifiers. Note that
+// we don't check if an identifier is a typedef or not since if it is and it's
+// defined in this scope, then the semantic analyser will pick up on it.
+static void parser_handle_end_of_tag_defn(Parser* parser, const char* context)
+{
+    if (tokens_okay_after_tag_defn(current_token(parser), next_token(parser)))
+    {
+        return;
+    }
+
+    // Okay we know that the next token really doesn't make sense after a
+    // tag definition. So we should error about it. Then we need to repush
+    // the current token into the stream and then push a fake semi to be
+    // after that.
+    diagnostic_error_at(parser->dm, previous_token_end_location(parser) + 1,
+            "expected ';' after %s", context);
+
+    // First push our current token back into the preprocessor
+    preprocessor_insert_token(&parser->pp, *current_token(parser));
+
+    // Create our fake semi colon and then set the parser's token as this
+    // current token.
+    Token fake_semi;
+    token_set_type(&fake_semi, TOK_SEMI);
+    token_set_location(&fake_semi, LOCATION_INVALID);
+    parser->token = fake_semi;
+}
+
 static void parse_struct_declaration(Parser* parser, Declaration* decl)
 {
     assert(declaration_is(decl, DECLARATION_STRUCT) ||
@@ -3949,6 +4062,10 @@ static void parse_struct_or_union_specifier(Parser* parser,
     if (is_definition)
     {
         parse_struct_declaration_list(parser, declaration, is_struct);
+        
+        // Now we want to handle the end of a struct or union specifcier and 
+        // error if we think that a semi colon should be included.
+        parser_handle_end_of_tag_defn(parser, is_struct ? "struct" : "union");
     }
 
     // Finally, we will need to add the struct / union specifiers and 
@@ -4137,6 +4254,10 @@ static void parse_enum_specificier(Parser* parser,
     if (is_definition)
     {
         parse_enumerator_list(parser, declaration);
+        
+        // Now we want to handle the end of a struct or union specifcier and 
+        // error if we think that a semi colon should be included.
+        parser_handle_end_of_tag_defn(parser, "enum");
     }
 
     // Finally, we will need to add the struct / union specifiers and 

@@ -1127,6 +1127,14 @@ static QualifiedType process_array_type(SemanticChecker* sc, Declarator* d,
         is_vla = true;
     }
 
+    // Finally now we know if we have a fully VLA array or not we can warn about
+    // it.
+    if (is_vla)
+    {
+        diagnostic_warning_at(sc->dm, array->lbracket, Wvla, "variable length "
+                "array used");
+    }
+
     // Finally create and return the new type
     return semantic_checker_create_array(sc, current, expression, length,
             is_static, is_star, is_vla);

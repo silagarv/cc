@@ -41,6 +41,12 @@ TokenType token_get_type(const Token* token)
     return token->type;
 }
 
+void token_set_location(Token* token, Location location)
+{
+    token->loc = location;
+    token->end = location;
+}
+
 Location token_get_location(const Token* token)
 {
     return token->loc;

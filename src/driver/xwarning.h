@@ -82,6 +82,7 @@ WARNING(Wunknown_warning_opt, DIAG_STATE_ON, "unknown-warning-option")
 WARNING(Wunknown_escape_sequence, DIAG_STATE_ON, "unknown-escape-sequence")
 WARNING(Wunimplemented, DIAG_STATE_ON | DIAG_STATE_ERROR, "unimplemented")
 WARNING(Wvisibility, DIAG_STATE_ON, "visibility")
+WARNING(Wvla, DIAG_STATE_OFF, "vla")
 WARNING(Wvla_extension, DIAG_STATE_ON, "vla-extension")
 WARNING(Wzero_as_null_ptr, DIAG_STATE_ON, "zero-as-null-pointer-constant")
 WARNING(Wzero_length_array, DIAG_STATE_ON | DIAG_STATE_ERROR,
