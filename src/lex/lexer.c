@@ -53,6 +53,11 @@ void lexer_create(Lexer* lexer, DiagnosticManager* dm, LangOptions* opts,
     };
 }
 
+void lexer_set_directive(Lexer* lexer)
+{
+    lexer->lexing_directive = true;
+}
+
 // Modify the lexer's position
 static void seek(Lexer* lexer, size_t pos)
 {
@@ -735,7 +740,8 @@ finish_string:
     buffer_make_cstr(&string);
 
     // Invalid character constants since they have nothing in them...
-    if (is_character_like(type) && !had_char)
+    if (is_character_like(type) && !had_char
+            && !token_is_type(token, TOK_UNKNOWN))
     {
         diagnostic_warning_at(lexer->dm, token->loc, Winvalid_pp_token,
                 "empty character constant");
@@ -772,6 +778,38 @@ static bool lex_header_name(Lexer* lexer, Token* token)
     return lex_string_like_literal(lexer, token, TOK_PP_HEADER_NAME);
 }
 
+static bool lex_end_of_file(Lexer* lexer, Token* token, char* tok_start)
+{
+    // Check if we are in directive lexing mode and adjust accordingly. If we
+    // are then we should return an EOD token and then revert the lexers 
+    // position so that we can relex the end of file
+    if (lexer->lexing_directive)    
+    {
+        // Reset our lexing flags and set the token type
+        lexer->lexing_directive = false;
+        lexer->start_of_line = false;
+
+        token_set_type(token, TOK_PP_EOD);
+
+        set_position(lexer, tok_start);
+        return true;
+    }
+
+    // Warn about no newline at eof since we know we have definitely hit the
+    // end of file. Also issue a warning on a completely empty translation unit
+    if (lexer->buffer_start == lexer->buffer_end 
+            || (*(lexer->buffer_end - 1) != '\n' 
+            && *(lexer->buffer_end - 1) != '\r'))
+    {
+        diagnostic_warning_at(lexer->dm, token->loc, Wnewline_eof,
+                "no newline at end of file");
+    }
+
+    // Set the token type to be the EOF token.
+    token->type = TOK_EOF;
+    return false;
+}
+
 static bool lex_internal(Lexer* lexer, Token* token)
 {
     bool whitespace = false;
@@ -799,10 +837,10 @@ retry_lexing:;
     token->type = TOK_UNKNOWN;
 
     // Make sure our token flags are correctly set up
-    token_set_flag(token, whitespace ? TOKEN_FLAG_WHITESPACE : TOKEN_FLAG_NONE);
+    token_set_flag(token, whitespace ? TOK_FLAG_WHITESPACE : TOK_FLAG_NONE);
     token_set_flag(token,
-            lexer->start_of_line ? TOKEN_FLAG_BOL : TOKEN_FLAG_NONE);
-    token_unset_flag(token, TOKEN_FLAG_DISABLE_EXPAND);
+            lexer->start_of_line ? TOK_FLAG_BOL : TOK_FLAG_NONE);
+    token_unset_flag(token, TOK_FLAG_DISABLE_EXPAND);
 
     token->data = (TokenData) {0};
 
@@ -822,18 +860,10 @@ retry_lexing:;
         case '\0':
             if (at_eof(lexer))
             {
-                // Warn about no newline at eof
-                if (!(token->flags & TOKEN_FLAG_BOL))
-                {
-                    // TODO: fix this, will crash if unterminated token at eof
-                    diagnostic_warning_at(lexer->dm, token->loc, Wnewline_eof,
-                            "no newline at end of file");
-                }
-
-                token->type = TOK_EOF;
-                return false;
+                return lex_end_of_file(lexer, token, token_start);
             }
-            
+
+            // TODO: warn on null characters?
             whitespace = true;
             goto retry_lexing;
 
@@ -848,7 +878,6 @@ retry_lexing:;
                 consume_curr_char_raw(lexer);
             }
             whitespace = true;
-
             goto retry_lexing;
         
         case '\r':
@@ -863,25 +892,24 @@ retry_lexing:;
             /* FALLTHROUGH */
 
         case '\n':
-            // Test to see if we are at the end of the file. If here don't warn
-            // about no newlines at eof since we abviously have them.
-            if (get_curr_char(lexer) == '\0' && at_eof(lexer))
-            {
-                token->type = TOK_EOF;
-
-                return false;
-            }
-
-            // If we are in a PP directive finish it up
+            // If we are in a PP directive finish it up. This should take 
+            // priority over being in the end of the file. Otherwise it is 
+            // possible for an EOF token to be sent before and EOD token.
             if (lexer->lexing_directive)
             {
                 // Reset our lexing flags and set the token type
                 lexer->lexing_directive = false;
                 lexer->start_of_line = true;
-
                 token->type = TOK_PP_EOD;
-
                 break;
+            }
+
+            // Test to see if we are at the end of the file. If here don't warn
+            // about no newlines at eof since we abviously have them.
+            if (get_curr_char(lexer) == '\0' && at_eof(lexer))
+            {
+                token->type = TOK_EOF;
+                return false;
             }
 
             // Reset the start of line flag
@@ -1036,8 +1064,6 @@ retry_lexing:;
             {
                 consume_char(lexer);
 
-                // TODO: add mechanism to not report this multiple time, might
-                // TODO: have to wait until proper warning classes though
                 if (!lang_opts_c99(lexer->lang) && !lexer->err_line_comment)
                 {
                     lexer->err_line_comment = true;
@@ -1100,7 +1126,7 @@ retry_lexing:;
             {
                 token->type = TOK_RCURLY;
 
-                token_set_flag(token, TOKEN_FLAG_DIGRAPH);
+                token_set_flag(token, TOK_FLAG_DIGRAPH);
 
                 consume_char(lexer);
             }
@@ -1114,7 +1140,7 @@ retry_lexing:;
                 {
                     token->type = TOK_HASH_HASH;
 
-                    token_set_flag(token, TOKEN_FLAG_DIGRAPH);
+                    token_set_flag(token, TOK_FLAG_DIGRAPH);
 
                     consume_char(lexer);
                     consume_char(lexer);
@@ -1123,7 +1149,7 @@ retry_lexing:;
                 {
                     token->type = TOK_HASH;
 
-                    token_set_flag(token, TOKEN_FLAG_DIGRAPH);
+                    token_set_flag(token, TOK_FLAG_DIGRAPH);
                 }
             }
             else
@@ -1307,7 +1333,7 @@ retry_lexing:;
             {
                 token->type = TOK_LBRACKET;
 
-                token_set_flag(token, TOKEN_FLAG_DIGRAPH);
+                token_set_flag(token, TOK_FLAG_DIGRAPH);
 
                 consume_char(lexer);
             }
@@ -1315,7 +1341,7 @@ retry_lexing:;
             {
                 token->type = TOK_LCURLY;
 
-                token_set_flag(token, TOKEN_FLAG_DIGRAPH);
+                token_set_flag(token, TOK_FLAG_DIGRAPH);
 
                 consume_char(lexer);
             }
@@ -1368,7 +1394,7 @@ retry_lexing:;
             {
                 token->type = TOK_RBRACKET;
 
-                token_set_flag(token, TOKEN_FLAG_DIGRAPH);
+                token_set_flag(token, TOK_FLAG_DIGRAPH);
 
                 consume_char(lexer);
             } 
@@ -1441,34 +1467,6 @@ retry_lexing:;
 bool lexer_get_next(Lexer* lexer, Token* token)
 {
     reset_token(token);
-
     return lex_internal(lexer, token);
 }
 
-bool lexer_peek(Lexer* lexer, Token* token)
-{
-    char* position = get_position(lexer);
-
-    reset_token(token);
-
-    bool status = lex_internal(lexer, token);
-
-    set_position(lexer, position);
-
-    return status;
-}
-
-TokenType lexer_get_next_next_type(Lexer* lexer)
-{
-    // TODO: save flags???
-    char* original_position = get_position(lexer);
-
-    // No need to free and data since any literal is stored in the pp's literal
-    // arena!
-    Token next;
-    lexer_get_next(lexer, &next);
-
-    set_position(lexer, original_position);
-
-    return next.type;
-}

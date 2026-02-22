@@ -866,6 +866,12 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
                         break;
 
                     case WIDTH_SPECIFIER_LONG_LONG:
+                        if (!lang_opts_c99(sc->lang))
+                        {
+                            diagnostic_warning_at(sc->dm, location, Wlong_long,
+                                    "'long long' is an extension when C99 "
+                                    "mode is not enabled");
+                        }
                         type = builtins->t_long_long;
                         break;
                 }
@@ -887,6 +893,12 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
                         break;
 
                     case WIDTH_SPECIFIER_LONG_LONG:
+                        if (!lang_opts_c99(sc->lang))
+                        {
+                            diagnostic_warning_at(sc->dm, location, Wlong_long,
+                                    "'long long' is an extension when C99 "
+                                    "mode is not enabled");
+                        }
                         type = builtins->t_unsigned_long_long;
                         break;
                 }
@@ -916,9 +928,8 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
         {
             Declaration* enum_decl = specifiers->declaration;
             assert(declaration_is(enum_decl, DECLARATION_ENUM));
-
-            // NOTE: qualifiers should be none here anyways
-            type = enum_decl->base.qualified_type.type;
+            QualifiedType qual_type = declaration_get_type(enum_decl);
+            type = qualified_type_get_raw(&qual_type);
             break;
         }
 
@@ -926,8 +937,8 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
         {
             Declaration* struct_decl = specifiers->declaration;
             assert(declaration_is(struct_decl, DECLARATION_STRUCT));
-
-            type = struct_decl->base.qualified_type.type;
+            QualifiedType qual_type = declaration_get_type(struct_decl);
+            type = qualified_type_get_raw(&qual_type);
             break;
         }
 
@@ -935,8 +946,8 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
         {
             Declaration* union_decl = specifiers->declaration;
             assert(declaration_is(union_decl, DECLARATION_UNION));
-
-            type = union_decl->base.qualified_type.type;
+            QualifiedType qual_type = declaration_get_type(union_decl);
+            type = qualified_type_get_raw(&qual_type);
             break;
         }
 
@@ -948,10 +959,7 @@ QualifiedType qualified_type_from_declaration_specifiers(SemanticChecker* sc,
         }
     }
 
-    assert(type != NULL);
-
-    // TODO: support complex and imaginary types...
-    
+    assert(type != NULL);    
     return add_type_qualifiers(sc, specifiers, type);
 }
 

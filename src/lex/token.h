@@ -203,11 +203,11 @@ typedef union TokenData {
 
 // Different flags for our token to store
 typedef enum TokenFlags {
-    TOKEN_FLAG_NONE = 0, // Represents no flag
-    TOKEN_FLAG_BOL = 1 << 0, // Beginning of line
-    TOKEN_FLAG_WHITESPACE = 1 << 1, // leading space
-    TOKEN_FLAG_DISABLE_EXPAND = 1 << 2, // disable expand
-    TOKEN_FLAG_DIGRAPH = 1 << 3, // Are we a digraph // TODO: should I get rid of this
+    TOK_FLAG_NONE = 0, // Represents no flag
+    TOK_FLAG_BOL = 1 << 0, // Beginning of line
+    TOK_FLAG_WHITESPACE = 1 << 1, // leading space
+    TOK_FLAG_DISABLE_EXPAND = 1 << 2, // disable expand
+    TOK_FLAG_DIGRAPH = 1 << 3, // Are we a digraph
 } TokenFlags;
 
 // The structure of a token in order to capture all of the relavent information

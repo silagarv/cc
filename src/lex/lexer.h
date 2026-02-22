@@ -34,18 +34,20 @@ typedef struct Lexer {
     bool can_lex_header;
 } Lexer;
 
-// Create a lexer on the stack, no heap allocations needed for it at all
+// Create a lexer on the stack, no heap allocations needed for it at all.
 void lexer_create(Lexer* lexer, DiagnosticManager* dm, LangOptions* opts,
         Arena* literal_arena, IdentifierTable* identifiers, SourceFile* source);
+void lexer_set_directive(Lexer* lexer);
 
-// Get the next token from the lexer advancing it's position
+// Get the next token from the lexer advancing it's position. Note that this
+// cannot be undone. However, this should never be necessary as the token 
+// should always be saved be the preprocessor.
 bool lexer_get_next(Lexer* lexer, Token* tok);
 
-// Get the next token from the lexer, but do not advance it's position
-bool lexer_peek(Lexer* lexer, Token* tok);
-
-// Get the token type of the next token in the stream without advancing the
-// lexers position.
-TokenType lexer_get_next_next_type(Lexer* lexer);
+// Other lexer functions to help us with preprocessing primarily. These allow
+// for us to get the spelling for tokens which is particularly useful for things
+// like preprocessing.
+// TODO: will need to create a lexer from a sourcefile and give it an offset to
+// TODO: start at...
 
 #endif /* LEXER_H */

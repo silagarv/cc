@@ -4,10 +4,10 @@
 #include <stdbool.h>
 
 #include "util/buffer.h"
+#include "util/vec.h"
 #include "util/hash_map.h"
 
 #include "files/filepath.h"
-#include "util/vec.h"
 
 // The type of file buffer we are. File's represent normal files on disk,
 // builtin represents the builtin buffer for definitions given before any file

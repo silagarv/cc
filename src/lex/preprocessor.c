@@ -6,6 +6,9 @@
 #include <assert.h>
 #include <string.h>
 
+#include "driver/warning.h"
+#include "files/location.h"
+#include "lex/pp_conditional.h"
 #include "util/arena.h"
 #include "util/buffer.h"
 
@@ -19,25 +22,65 @@
 #include "lex/token.h"
 #include "lex/lexer.h"
 
-struct LexerStack {
-    LexerStack* prev;
-    Lexer lexer;
+// An input stack represents the inputs that we are using during preprocessing.
+// Each level on the input stack constails information about the current 
+// processing of conditionals and the lexer for them
+struct InputStack {
+    InputStack* prev; // the previous input on the stack
+    unsigned int depth; // the current input depth (starts at 0)
+    Lexer lexer; // The lexer for this input
+    ConditionalStack conidtionals; // The current conditionals for the input
 };
 
-static bool lexer_stack_has_below(const LexerStack* lexers)
+InputStack* input_stack_prev(const InputStack* current)
 {
-    assert(lexers != NULL);
-    return lexers->prev != NULL;
+    assert(current != NULL);
+    return current->prev;
 }
 
-// static void lexer_stack_push(LexerStack* lexers, Lexer lexer)
-// {
+unsigned int input_stack_depth(const InputStack* current)
+{
+    assert(current != NULL);
+    return current->depth;
+}
 
-// }
+ConditionalStack* input_stack_conditionals(const InputStack* current)
+{
+    assert(current != NULL);
+    // This is okay sice it will never refer to properly const memory anyways
+    return (ConditionalStack*) &current->conidtionals;
+}
 
-// static void lexer_stack_pop(LexerStack* lexers);
+InputStack* input_stack_push(Arena* pp_allocator, InputStack* current,
+        unsigned int depth, DiagnosticManager* dm, LangOptions* lang,
+        Arena* literals, IdentifierTable* ids, SourceFile* source)
+{
+    InputStack* new_entry = arena_allocate_size(pp_allocator,
+            sizeof(InputStack));
+    *new_entry = (InputStack)
+    {
+        .prev = current,
+        .depth = depth,
+        .lexer = (Lexer) {0}, // Cannot create here due to lexer API
+        .conidtionals = conditional_stack_create(pp_allocator)
+    };
 
+    // Also, don't forget to create our lexer. Note, that this cannot fail since
+    // we already have all everything we need.
+    lexer_create(&new_entry->lexer, dm, lang, literals, ids, source);
 
+    return new_entry;
+}
+
+InputStack* input_stack_pop(const InputStack* current)
+{
+    return input_stack_prev(current);
+}
+
+bool input_stack_has_below(const InputStack* current)
+{
+    return input_stack_prev(current) != NULL;
+}
 
 // Print a quoted include filename into a buffer
 static void buffer_add_quote_include(Buffer* buffer, const char* filename)
@@ -104,6 +147,49 @@ static void preprocessor_add_defines(Preprocessor* pp)
     buffer_free(&predefs);
 }
 
+static bool preprocessor_push_input(Preprocessor* pp, SourceFile* file)
+{
+    unsigned int depth;
+    if (pp->inputs == NULL)
+    {
+        depth = 0;
+    }
+    else
+    {
+        depth = input_stack_depth(pp->inputs) + 1;
+    }
+
+    if (depth >= pp->max_depth)
+    {
+        return false;
+    }
+
+    pp->inputs = input_stack_push(&pp->pp_allocator, pp->inputs, depth, pp->dm,
+            pp->lang, &pp->literal_arena, pp->identifiers, file);
+    return true;
+}
+
+// Pop the current input from the from all of the inputs in the preprocessor.
+// This also handles things like checking the conditional stack is empty before
+// we continue on.
+static void preprocessor_pop_input(Preprocessor* pp)
+{
+    // Get the current input from the input stack
+    InputStack* current = pp->inputs;
+
+    // Check for unterminated conditionals in this input
+    while (!conditional_stack_empty(&current->conidtionals))
+    {
+        Location location = conditional_stack_location(&current->conidtionals);
+        diagnostic_error_at(pp->dm, location, "unterminated conditional "
+                "directive");
+        conditional_stack_pop(&current->conidtionals);
+    }
+
+    // Finally, get the previous input and set that to our current
+    pp->inputs = input_stack_prev(current);
+}
+
 bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
         LangOptions* opts, SourceManager* sm, Filepath main_file,
         IdentifierTable* ids)
@@ -127,11 +213,16 @@ bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
             ARENA_DEFAULT_ALIGNMENT);
     pp->pp_allocator = arena_new(ARENA_DEFAULT_CHUNK_SIZE,
             ARENA_DEFAULT_ALIGNMENT);
-    pp->lexers = NULL;
-    lexer_create(&pp->lexer, dm, opts, &pp->literal_arena, pp->identifiers,
-            starting_file);
+    pp->max_depth = 200;
+    pp->inputs = NULL;
     pp->cache = token_list(arena_new_default());
 
+    // Finally, put our input onto the stack so that we are ready to start 
+    // lexing our tokens. Don't check the return value as this should never
+    // fail.
+    preprocessor_push_input(pp, starting_file);
+
+    assert(pp->inputs && "Should have an input");
     return true;
 }
 
@@ -142,18 +233,112 @@ void preprocessor_delete(Preprocessor* pp)
     arena_delete(&pp->pp_allocator);
 }
 
+// Lex the next token from the preprocessor's stack of lexer and handle popping
+// all of the lexers off the stack as needed. Note that this does no handling
+// of macros or any expansion work and simply just uses the lexer information
+// for the next lexer.
+bool preprocessor_lex_next_token(Preprocessor* pp, Token* token)
+{
+    assert(pp->inputs && "Can only lex tokens when we have a lexer");
+
+    bool ret;
+    do
+    {
+        InputStack* current = pp->inputs;
+        ret = lexer_get_next(&current->lexer, token);
+
+        // If we get EOF on this file with an input below we should pop this
+        // input and then try again. Otherwise we will send and premature eof
+        // token that will stop the parser.
+        if (token_is_type(token, TOK_EOF))
+        {
+            bool has_below = input_stack_has_below(current);
+            preprocessor_pop_input(pp);
+            
+            if(has_below)
+            {
+                continue;
+            }
+        }
+
+        // Otherwise, no issues getting the token just return it down below.
+        break;
+    }
+    while (true);
+
+    return ret;
+}
+
+void preprocessor_set_directive(Preprocessor* pp)
+{
+    InputStack* current = pp->inputs;
+    lexer_set_directive(&current->lexer);
+}
+
+static void preprocessor_parse_directive(Preprocessor* pp, Token* token)
+{
+    assert(token_is_type(token, TOK_HASH));
+    assert(token_has_flag(token, TOK_FLAG_BOL));
+
+    // Get the location of the token's hash to preserve if for later.
+    Location hash_loc = token_get_location(token);
+    
+    // Enter directive mode in the lexer. So that we can sucessfully parse it.
+    // Without this we would not get the needed EOD token.
+    preprocessor_set_directive(pp);
+    do
+    {
+        preprocessor_lex_next_token(pp, token);
+        assert(!token_is_type(token, TOK_EOF) && "Can't have eof in directive");
+    }
+    while (!token_is_type(token, TOK_PP_EOD));
+
+    // Also produce a warning abouut preprocessing directives being ignored.
+    diagnostic_warning_at(pp->dm, hash_loc, Wunimplemented,
+            "preprocessing directives are not implemented; ignoring");
+}
+
 static bool preprocessor_get_next(Preprocessor* pp, Token* token, bool cache)
 {
-    bool ret = lexer_get_next(&pp->lexer, token);
-    if (token_is_type(token, TOK_IDENTIFIER))
+    // TODO: will also have to handle skipping of conditionals and such.
+    bool ret = false;
+    do
     {
-        token_classify_identifier(token);
-    }
+        // First lex the token from the current lexer as the next actions we do
+        // will be determined by the token we get.
+        // ret = lexer_get_next(&pp->lexer, token);
+        ret = preprocessor_lex_next_token(pp, token);
 
-    if (cache)
-    {
-        token_list_push_back(&pp->cache, *token);
+        // Check if we have got a preprocessing directive here. Preprocessing
+        // directives can only occur when there is a hash as the first token
+        // on that line. If we have one, parse it and then try again to get the
+        // next token.
+        if (token_is_type(token, TOK_HASH) 
+                && token_has_flag(token, TOK_FLAG_BOL))
+        {
+            preprocessor_parse_directive(pp, token);
+            continue;
+        }
+
+        // TODO: will need to handle situations like macro expansion also with
+        // TODO: the possibility of function like macros as well... This may be
+        // TODO: a bit tricky to do all at once.
+
+        // Otherwise handle the situation as normal.
+        if (token_is_type(token, TOK_IDENTIFIER))
+        {
+            token_classify_identifier(token);
+        }
+
+        if (cache)
+        {
+            token_list_push_back(&pp->cache, *token);
+        }
+
+        // We got our token with nothing significant to note. We are done here.
+        break;
     }
+    while (true);
 
     return ret;
 }

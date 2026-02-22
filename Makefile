@@ -67,6 +67,7 @@ LEX = src/lex/identifier_table.c \
 	src/lex/unicode.c \
 	src/lex/lexer.c \
 	src/lex/macro.c \
+	src/lex/pp_conditional.c \
 	src/lex/preprocessor.c
 
 PARSE = src/parse/ast_allocator.c \

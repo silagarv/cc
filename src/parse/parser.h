@@ -57,7 +57,8 @@ typedef struct Parser {
     Ast* ast;
 
     // The semantic checker taking care of all of our declarations and needed
-    // things for that.
+    // things for that. Also is called to after most parsing actions to ensure
+    // that things are valid.
     SemanticChecker sc;
 } Parser;
 

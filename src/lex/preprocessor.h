@@ -17,7 +17,7 @@
 #include "lex/header_finder.h"
 
 // Implement at a typedef so when changes are made we don't have to recompile
-typedef struct LexerStack LexerStack;
+typedef struct InputStack InputStack;
 
 typedef struct Preprocessor {
     DiagnosticManager* dm;
@@ -41,11 +41,11 @@ typedef struct Preprocessor {
     // strings, characters, and numbers etc...
     Arena literal_arena;
 
-    // The lexer -> but todo, create a lexer stack or something
-    Lexer lexer;
-
+    // The max depth of inputs that we are allowed to do. set to 200
+    unsigned int max_depth;
+    
     // The stack of lexers we are using for this preprocessor
-    LexerStack* lexers;
+    InputStack* inputs;
 
     // The Arena that we are going to use for allocating all of our preprocessor
     // information onto particularaly for our macro tables and those kinds of
@@ -64,6 +64,7 @@ void preprocessor_delete(Preprocessor* pp);
 
 bool preprocessor_advance_token(Preprocessor* pp, Token* token);
 bool preprocessor_peek_token(Preprocessor* pp, Token* token);
+// TODO: would it be beneficial to be able to peek arbitrarily far ahead?
 // bool preprocessor_peek_n_token(Preprocessor* pp, Token* token, size_t n);
 
 // Insert a token directly into the lexers token stream. Should only be used to
