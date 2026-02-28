@@ -67,6 +67,8 @@ LEX = src/lex/identifier_table.c \
 	src/lex/unicode.c \
 	src/lex/lexer.c \
 	src/lex/macro.c \
+	src/lex/macro_map.c \
+	src/lex/directives.c \
 	src/lex/pp_conditional.c \
 	src/lex/preprocessor.c
 

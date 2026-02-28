@@ -22,5 +22,5 @@ void ast_allocator_delete(AstAllocator* allocator)
 
 void* ast_allocator_alloc(AstAllocator* allocator, size_t size)
 {
-    return arena_allocate_size(&allocator->memory, size);
+    return arena_malloc(&allocator->memory, size);
 }

@@ -26,15 +26,23 @@ typedef struct s_name ## Vector { \
     size_t cap; \
 } s_name ## Vector; \
  \
+s_name ## Vector f_name ## _vector(void); \
 s_name ## Vector f_name ## _vector_create(size_t cap); \
 void f_name ## _vector_free(s_name ## Vector* vec, void (*free_func)(T)); \
 size_t f_name ## _vector_size(const s_name ## Vector* vec); \
 size_t f_name ## _vector_capacity(const s_name ## Vector* vec); \
 void f_name ## _vector_push(s_name ## Vector* vec, T elem); \
 T f_name ## _vector_pop(s_name ## Vector* vec); \
-T f_name ## _vector_get(s_name ## Vector* vec, size_t index)
+T f_name ## _vector_get(s_name ## Vector* vec, size_t index); \
+T* f_name ## _vector_data(s_name ## Vector* vec); \
+T* f_name ## _vector_data_end(s_name ## Vector* vec)
 
 #define vector_of_impl(T, s_name, f_name) \
+s_name ## Vector f_name ## _vector(void) \
+{ \
+ return f_name ## _vector_create(8); \
+} \
+ \
 s_name ## Vector f_name ## _vector_create(size_t cap) \
 { \
     s_name ## Vector vector = (s_name ## Vector) \
@@ -99,6 +107,16 @@ T f_name ## _vector_get(s_name ## Vector* vec, size_t index) \
     } \
     \
     return vec->data[index]; \
+} \
+ \
+T* f_name ## _vector_data(s_name ## Vector* vec) \
+{ \
+    return vec->data; \
+} \
+ \
+T* f_name ## _vector_data_end(s_name ## Vector* vec) \
+{ \
+    return vec->data + vec->count; \
 }
 
 #endif /* VEC_H */

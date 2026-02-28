@@ -44,8 +44,7 @@ static CodegenLLVM* create_codegen_context_llvm(CodegenContext* context)
     // Get our filepath as our module name
     const char* name = filepath_get_cstr(context->input_file);
 
-    CodegenLLVM* llvm = arena_allocate_size(&context->arena,
-            sizeof(CodegenLLVM));
+    CodegenLLVM* llvm = arena_malloc(&context->arena, sizeof(CodegenLLVM));
     *llvm = (CodegenLLVM)
     {
         .context = c,
@@ -107,7 +106,7 @@ static CodegenResult* llvm_finish_codegen(CodegenContext* context)
 
     // Otherwise allocate or codegen result and add all of our fields into it
     // so that we can delete them later once we are completely done with them!
-    CodegenResultLLVM* r = arena_allocate_size(&context->arena,
+    CodegenResultLLVM* r = arena_malloc(&context->arena,
             sizeof(CodegenResultLLVM));
     r->arena = context->arena;
     r->context = c->context;
@@ -185,8 +184,7 @@ void llvm_codegen_push_break_continue(CodegenContext* context,
 {
     CodegenLLVM* llvm = context->backend_specific;
     
-    JumpTarget* new_target = arena_allocate_size(&context->arena,
-            sizeof(JumpTarget));
+    JumpTarget* new_target = arena_malloc(&context->arena, sizeof(JumpTarget));
     new_target->previous = llvm->jump_target;
     new_target->continue_target = cont;
     new_target->break_target = br;
@@ -204,8 +202,7 @@ void llvm_codegen_push_break(CodegenContext* context, LLVMBasicBlockRef bb,
     JumpTarget* prev = llvm->jump_target;
     LLVMBasicBlockRef prev_cont = prev == NULL ? NULL : prev->continue_target;
     
-    JumpTarget* new_target = arena_allocate_size(&context->arena,
-            sizeof(JumpTarget));
+    JumpTarget* new_target = arena_malloc(&context->arena, sizeof(JumpTarget));
     new_target->previous = llvm->jump_target;
     new_target->continue_target = prev_cont;
     new_target->break_target = bb;

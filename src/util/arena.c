@@ -8,62 +8,93 @@
 
 #include "util/xmalloc.h"
 
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define ALIGNED_POW2(align) ((align & (align - 1)) == 0)
+
+struct ArenaChunk {
+    ArenaChunk* next;
+
+    size_t size;
+    size_t align;
+
+    char* start;
+
+    size_t off;
+};
+
 static size_t arena_round_up(size_t used, size_t align)
 {
-    assert((align & (align - 1)) == 0);
-
+    assert(ALIGNED_POW2(align) && "Should align to a power of 2");
     return (used + (align - 1)) & ~(align - 1);
 }
 
-static ArenaChunk* arena_chunk_new(size_t capacity, size_t alignment)
+static ArenaChunk* arena_chunk_new(size_t size, size_t align)
 {
-    // Here allocate alignment extra space so that we have space to burn
-    ArenaChunk* chunk = xmalloc(sizeof(ArenaChunk));
-    chunk->base_ptr = xmalloc(capacity);
-    chunk->used = 0;
-    chunk->capacity = capacity;
-    chunk->next = NULL;
+    assert(ALIGNED_POW2(align) && "Should be aligned to a power of 2");
 
-    // Check alignment of the base ptr here...
-    if ((uintptr_t) chunk->base_ptr % alignment != 0)
+    // Round up the allocation size to be a multiple of the alignment so that
+    // even if an allocation of size occurs in the region that we are able to
+    // accomodate it even with the alignment.
+    size = arena_round_up(size, align);
+
+    ArenaChunk* region = xmalloc(sizeof(ArenaChunk));
+    *region = (ArenaChunk)
     {
-        chunk->used += alignment - ((uintptr_t) chunk->base_ptr % alignment);
-    }
+        .next = NULL,
+        .size = size,
+        .align = align,
+        .start = xmalloc(sizeof(char) * size),
+        .off = 0 
+    };
 
-    assert(((uintptr_t) chunk->base_ptr + chunk->used) % alignment == 0);
+    return region;
+}
 
-    return chunk;
+static ArenaChunk* arena_chunk_next(const ArenaChunk* current)
+{
+    assert(current != NULL && "Should have a current chunk");
+    return current->next;
+}
+
+static void arena_chunk_set_next(ArenaChunk* current, ArenaChunk* next)
+{
+    assert(current->next == NULL && "Cannot have a next region!");
+    current->next = next;
 }
 
 static void arena_chunk_delete(ArenaChunk* chunk)
 {
-    free(chunk->base_ptr);
-    free(chunk);
+    assert(chunk != NULL && "Can't free NULL chunk");
+    xfree(chunk->start);
+    xfree(chunk);
 }
 
-static void arena_chunk_reset(ArenaChunk* chunk)
+static void* arena_chunk_bump(ArenaChunk* region, size_t size)
 {
-    chunk->used = 0;
+    assert(region->off % region->align == 0 && "not aligned to a power of 2");
+    assert(size != 0 && "Should not have a allocation size of 0");
+
+    size_t size_with_align = arena_round_up(size, region->align);
+
+    // No space for the allocation with the alignment will want to tell the
+    // allocator to retry so give it NULL
+    if (region->off + size_with_align > region->size)
+    {
+        return NULL;
+    }
+
+    // Get the pointer that we are going to return and increment the current 
+    // offset of the region
+    void* ptr = region->start + region->off;
+    region->off += size_with_align;
+
+    assert(region->off <= region->size && "Allocated too much size?");
+    return ptr;
 }
 
 Arena arena_new(size_t chunk_size, size_t alignment)
 {
-    // Check we got a power of 2
-    assert((alignment & (alignment - 1)) == 0);
-    
-    // Non-zero chunk size
-    assert(chunk_size);
-
-    // Make sure we can sufficiently allocate
-    assert(alignment < chunk_size);
-
-    Arena arena;
-    arena.chunk_size = chunk_size;
-    arena.alignment = alignment;
-    arena.first = arena_chunk_new(chunk_size, alignment);
-    arena.current = arena.first;
-
-    return arena;
+    return (Arena) { chunk_size, alignment, NULL, NULL };
 }
 
 Arena arena_new_default(void)
@@ -74,75 +105,60 @@ Arena arena_new_default(void)
 void arena_delete(Arena* arena)
 {
     ArenaChunk* current = arena->first;
-    ArenaChunk* tmp;
-
-    assert(current != NULL);
-
-    do {
-        tmp = current->next;
-
-        arena_chunk_delete(current);
-
-        current = tmp;
-    } while (current != NULL);
-}
-
-void arena_reset(Arena* arena)
-{
-    ArenaChunk* current = arena->first;
+    ArenaChunk* next = NULL;
 
     while (current != NULL)
     {
-        // Set the use count to 0
-        current->used = 0;
-
-        current = current->next;
+        next = arena_chunk_next(current);
+        arena_chunk_delete(current);
+        current = next;
     }
-
-    // Reset arena back to the first
-    arena->current = arena->first;
 }
 
-void* arena_allocate_size(Arena* arena, size_t size)
+void* arena_malloc(Arena* arena, size_t size)
 {
-    assert(arena->chunk_size >= size);
+    assert(arena != NULL && "Can't allocate without an arena");
 
-    void* return_ptr = NULL;
-
-    // Check if the current arena can fit it
-    if (arena->current->used + size < arena->current->capacity)
+    // Test for the allocation of an empty size.
+    if (size == 0)
     {
-        return_ptr = arena->current->base_ptr + arena->current->used;
-
-        // Add to the size
-        arena->current->used += size;
+        return NULL;
     }
-    else
-    {
-        // Get a new chunk and allocate it there
-        ArenaChunk* new_chunk = arena_chunk_new(arena->chunk_size, arena->alignment);
 
-        arena->current->next = new_chunk;
+    // Okay we now need to get the current region potentially having to set up
+    // a space of memory if the allocator has not been used yet.
+    if (arena->current == NULL)
+    {
+        ArenaChunk* new_chunk = arena_chunk_new(arena->chunk_size,
+                arena->alignment);
+        arena->first = new_chunk;
         arena->current = new_chunk;
-
-        arena->current->used += size;
-
-        return_ptr = new_chunk->base_ptr;
     }
 
-    size_t new_used = arena_round_up(arena->current->used, arena->alignment);
+    assert(arena->current != NULL && "need a region to allocate");
+    
+    // Okay now get the current region and simply try to do an easy bump to 
+    // update it internally and its pointers
+    ArenaChunk* region = arena->current;
+    void* ptr = arena_chunk_bump(region, size);
+    if (ptr != NULL)
+    {
+        return ptr;
+    }
 
-    assert(new_used >= arena->current->used);
+    // Okay we failed to allocate a region so we will need to create a new 
+    // region with the specifier values and set this region to be the current
+    // region we want to allocate for
+    size_t new_region_size = MAX(arena->chunk_size, size);
+    ArenaChunk* new_chunk = arena_chunk_new(new_region_size, arena->alignment);
 
-    arena->current->used = new_used;
+    arena_chunk_set_next(arena->current, new_chunk);
+    arena->current = new_chunk;
 
-    // TODO: what if alignment requirements are more strict that what malloc gives?
-    // Just do a sanity check to be 100% sure we got the alignment for previous
-    assert(((uintptr_t) return_ptr % arena->alignment) == 0);
-
-    return return_ptr;
+    // Then again try to do a region bump which should never fail since we 
+    // should have allocated enough space for the allocation this time.
+    ptr = arena_chunk_bump(new_chunk, size);
+    assert(ptr != NULL && "Failed allocator on retry");
+    return ptr;
 }
-
-
-
 

@@ -44,3 +44,8 @@ void* xrealloc(void* ptr, size_t size)
 
     return ptr_new;
 }
+
+void xfree(void* ptr)
+{
+    free(ptr);
+}

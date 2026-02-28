@@ -206,8 +206,7 @@ typedef enum TokenFlags {
     TOK_FLAG_NONE = 0, // Represents no flag
     TOK_FLAG_BOL = 1 << 0, // Beginning of line
     TOK_FLAG_WHITESPACE = 1 << 1, // leading space
-    TOK_FLAG_DISABLE_EXPAND = 1 << 2, // disable expand
-    TOK_FLAG_DIGRAPH = 1 << 3, // Are we a digraph
+    TOK_FLAG_DIGRAPH = 1 << 2, // Are we a digraph
 } TokenFlags;
 
 // The structure of a token in order to capture all of the relavent information
@@ -224,11 +223,22 @@ typedef struct Token {
 
 typedef struct TokenListEntry TokenListEntry;
 
+// TODO: I feel it would be nice to add a count of how many tokens are currently
+// TODO: in the TokenList as it would somethimes be helpful for flattening the
+// TODO: list.
 typedef struct TokenList {
     Arena allocator;
     TokenListEntry* head;
     TokenListEntry* tail;
 } TokenList;
+
+// Basically a string view but for tokens. Really nice and simple structure 
+// which should be relatively easy to work with.
+typedef struct TokenStream {
+    Token* tokens;
+    size_t length;
+    size_t cursor;
+} TokenStream;
 
 void token_set_flag(Token* token, TokenFlags flag);
 void token_unset_flag(Token* token, TokenFlags flag);
@@ -249,6 +259,8 @@ bool token_is_identifier_like(const Token* token);
 String token_get_literal_node(const Token* token);
 size_t token_get_length(Token* tok);
 
+bool tokens_equal(const Token* tok1, const Token* tok2);
+
 const char* token_type_get_name(TokenType type);
 
 // Token list stuff
@@ -258,10 +270,34 @@ Token token_list_entry_token(const TokenListEntry* entry);
 TokenList token_list(Arena arena);
 void token_list_free(TokenList* list);
 bool token_list_empty(const TokenList* list);
-void token_list_push_back(TokenList* list, Token tok);
 void token_list_push_front(TokenList* list, Token tok);
 Token token_list_peek_front(const TokenList* list);
 Token token_list_pop_front(TokenList* list);
+void token_list_push_back(TokenList* list, Token tok);
+Token token_list_peek_back(const TokenList* list);
 TokenListEntry* token_list_iter(const TokenList* list);
+
+// Desctructively move all of the tokens in the list (should be the same size)
+// as the count, into an array of allocated tokens (by arena) for the purposes
+// of collecting macro arguments and other things.
+Token* token_list_flatten(Arena* arena, TokenList* list, size_t count);
+
+// Token stream functions are below. Note that our token stream structure does
+// not actually own the memory used for the tokens so it does not have to do
+// anything in order to deallocate the memory and can just be destroyed like
+// any other stack memory.
+TokenStream token_stream_create(Token* tokens, size_t len);
+
+Token* token_stream_tokens(const TokenStream* stream);
+size_t token_stream_length(const TokenStream* stream);
+size_t token_stream_cursor(const TokenStream* stream);
+
+bool token_stream_end(const TokenStream* stream);
+Token token_stream_consume(TokenStream* stream);
+Token token_stream_peek(const TokenStream* stream);
+
+Token token_stream_get(const TokenStream* stream, size_t index);
+Token token_stream_first(const TokenStream* stream);
+Token token_stream_last(const TokenStream* stream);
 
 #endif /* TOKEN_H */

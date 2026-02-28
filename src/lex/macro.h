@@ -5,7 +5,6 @@
 #include <stddef.h>
 
 #include "util/arena.h"
-#include "util/buffer.h"
 
 #include "files/location.h"
 
@@ -25,37 +24,54 @@ typedef struct Macro {
     Token* tokens; // The list of replacement tokens in the macro
     size_t num_tokens; // the number of replacement tokens in the macro
 
+    bool function_like; // true if this macro is a function like macro
     bool builtin_macro; // Does this require special handling at all?
                         // This is mainly used for __LINE__, __COUNTER__, etc...
                         // macros since they need to be specially expanded
     bool pragma; // Are we the _Pragma macro
+
+    bool disabled; // Is this macro currently disabled? Set to false on creation
 } Macro;
 
 Macro* macro_create(Arena* allocator, Identifier* name, Location location,
         Identifier** params, size_t num_params, bool variadic, Token* tokens,
         size_t num_tokens, bool builtin, bool pragma);
+Macro* macro_create_builtin(Arena* allocator, Identifier* name, bool pragma);
+
 Identifier* macro_name(const Macro* macro);
 Location macro_location(const Macro* macro);
+
 Identifier** macro_params(const Macro* macro);
 size_t macro_num_params(const Macro* macro);
 bool macro_variadic(const Macro* macro);
+
+// Set the parameters in the macro but also set it's function_like flag to be
+// true. Important for macros like #define FOO()
+void macro_set_params(Macro* macro, Identifier** params, size_t num_params,
+        bool variadic);
+
 Token* macro_tokens(const Macro* macro);
 size_t macro_num_tokens(const Macro* macro);
+
+void macro_set_tokens(Macro* macro, Token* tokens, size_t num_tokens);
+
+bool macro_function_like(const Macro* macro);
 bool macro_builtin(const Macro* macro);
 bool macro_pragma(const Macro* macro);
+bool macro_disabled(const Macro* macro);
+
+void macro_disable(Macro* macro);
+void macro_enable(Macro* macro);
+
+bool macro_object(const Macro* macro);
+bool macro_function(const Macro* macro);
+
 bool macro_has_param(const Macro* macro, const Identifier* identifier);
+size_t macro_get_param_num(const Macro* macro, const Identifier* identifier);
 
 // Function to check if two macro definitios are equal
 // TODO: will need to implement a function for checking if two tokens are
 // TODO: equal...
 bool macro_definitions_equal(const Macro* macro1, const Macro* macro2);
-
-Token macro_stringify_arg(const Token* tokens, size_t num_tokens);
-Token macro_concat_tokens(const Token* token1, const Token* token2);
-
-// Destringize a pragma literal token as we will consider this to be macro like
-// in terms of the preprocessor
-Buffer destringize_pragma_literal(const Token* token);
-
 
 #endif /* MACRO_H */

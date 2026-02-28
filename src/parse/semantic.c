@@ -638,9 +638,15 @@ static QualifiedType semantic_checker_arithmetic_conversion(SemanticChecker* sc,
 }
 
 bool semantic_checker_identifier_is_typename(SemanticChecker* sc,
-        Identifier* identifier)
+        Identifier* identifier, bool recurse)
 {
-    Declaration* decl = semantic_checker_lookup_ordinairy(sc, identifier, true);
+    Declaration* decl = semantic_checker_lookup_ordinairy(sc, identifier,
+            recurse);
+    if (decl == NULL)
+    {
+        return false;
+    }
+
     return declaration_is(decl, DECLARATION_TYPEDEF);
 }
 
@@ -1615,7 +1621,7 @@ Declaration* semantic_checker_process_knr_param(SemanticChecker* sc,
         Identifier* identifier, Location location)
 {
     // If we got a typename don't create a new fake declaration.
-    if (semantic_checker_identifier_is_typename(sc, identifier))
+    if (semantic_checker_identifier_is_typename(sc, identifier, true))
     {
         diagnostic_error_at(sc->dm, location,
                 "unexpected type name '%s': expected identifier",

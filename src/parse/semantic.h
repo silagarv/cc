@@ -92,7 +92,7 @@ void semantic_checker_switch_stack_add_default(SemanticChecker* sc,
 // be treated as a typename or not. Returns 'true' if it should and 'false' 
 // otherwise
 bool semantic_checker_identifier_is_typename(SemanticChecker* sc,
-        Identifier* identifier);
+        Identifier* identifier, bool recurse);
 Declaration* semantic_checker_get_typename(SemanticChecker* sc,
         Identifier* identifier);
 

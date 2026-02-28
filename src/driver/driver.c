@@ -66,7 +66,7 @@ void compiler_driver_free(CompilerDriver* driver)
 
 TranslationUnit* compiler_driver_tu_allocate(CompilerDriver* driver)
 {
-    return arena_allocate_size(&driver->arena, sizeof(TranslationUnit));
+    return arena_malloc(&driver->arena, sizeof(TranslationUnit));
 }
 
 CompilerDriverAction compiler_driver_determine_action(const CompilerDriver* d)

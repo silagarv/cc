@@ -13,10 +13,10 @@ typedef struct SourceFileEntry {
     LineMap map; // Map from location to triplet
 } SourceFileEntry;
 
-// A structure to represent a Macro map. (not yet complete)
-typedef struct MacroMapEntry {
-    Location start_location;
-} MacroMapEntry;
+// // A structure to represent a Macro map. (not yet complete)
+// typedef struct MacroMapEntry {
+//     Location start_location;
+// } MacroMapEntry;
 
 // A structure to represent a location range of either a source file or of a
 // macro map (although this second part is not yet implemented)
@@ -28,7 +28,7 @@ typedef struct LocationEntry {
     // or a macro map. This union can always be discriminated by is_file
     union LocationEntryType {
         SourceFileEntry source_file;
-        MacroMapEntry macro_map;
+        // MacroMapEntry macro_map;
     } type;
 } LocationEntry;
 

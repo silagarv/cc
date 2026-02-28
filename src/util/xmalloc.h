@@ -11,4 +11,6 @@ void* xcalloc(size_t nmenb, size_t size);
 
 void* xrealloc(void* ptr, size_t size);
 
+void xfree(void* ptr);
+
 #endif /* XMALLOC_H */

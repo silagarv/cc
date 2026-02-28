@@ -33,7 +33,7 @@ Location conditional_stack_location(const ConditionalStack* stack)
 void conditional_stack_push(ConditionalStack* stack, Location location)
 {
     // Create the new entry and set it's previous to the stacks current.
-    ConditionalStackEntry* entry = arena_allocate_size(stack->pp_allocator,
+    ConditionalStackEntry* entry = arena_malloc(stack->pp_allocator,
             sizeof(ConditionalStackEntry));
     entry->location = location;
     entry->prev = stack->entries;

@@ -19,9 +19,7 @@ PtrSet pointer_set_create(void)
 {
     PtrSet set = (PtrSet)
     {
-        hash_map_create(pointer_set_hash,
-                pointer_set_compare,
-                NULL)
+        hash_map_create(pointer_set_hash, pointer_set_compare, NULL)
     };
 
     return set;

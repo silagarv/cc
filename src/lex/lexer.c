@@ -334,9 +334,9 @@ static void skip_block_comment(Lexer* lexer, Location start_loc)
 static TokenData lexer_create_literal_node(Lexer* lexer, Buffer* buffer)
 {
     // Mode the buffers data into the memory and delete the buffer
-    LiteralNode* node = arena_allocate_size(lexer->literal_arena,
+    LiteralNode* node = arena_malloc(lexer->literal_arena,
             sizeof(LiteralNode));
-    node->value.ptr = arena_allocate_size(lexer->literal_arena,
+    node->value.ptr = arena_malloc(lexer->literal_arena,
             buffer_get_len(buffer) + 1);
     memcpy(node->value.ptr, buffer_get_ptr(buffer), buffer_get_len(buffer) + 1);
     node->value.len = buffer_get_len(buffer);
@@ -568,6 +568,9 @@ static bool lex_identifier(Lexer* lexer, Token* token, char* start)
             &string);
     string_free(&string);
 
+    // Finally, classify the identifier in the token before passing the token
+    // on to the preprocessor.
+    token_classify_identifier(token);
     return true;
 }
 
@@ -840,7 +843,6 @@ retry_lexing:;
     token_set_flag(token, whitespace ? TOK_FLAG_WHITESPACE : TOK_FLAG_NONE);
     token_set_flag(token,
             lexer->start_of_line ? TOK_FLAG_BOL : TOK_FLAG_NONE);
-    token_unset_flag(token, TOK_FLAG_DISABLE_EXPAND);
 
     token->data = (TokenData) {0};
 

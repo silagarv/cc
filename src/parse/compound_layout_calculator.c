@@ -61,7 +61,8 @@ static void set_next(CompoundLayoutEntry* curr, CompoundLayoutEntry* next)
 static CompoundLayout* create_layout(AstAllocator* allocator, size_t size,
         size_t alignment, CompoundLayoutEntry* entries)
 {
-    CompoundLayout* layout = ast_allocator_alloc(allocator, size);
+    CompoundLayout* layout = ast_allocator_alloc(allocator,
+            sizeof(CompoundLayout));
     layout->size = size;
     layout->alignment = alignment;
     layout->entries = entries;

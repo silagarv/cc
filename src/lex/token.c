@@ -167,7 +167,11 @@ void token_set_type(Token* token, TokenType type)
 
 struct Identifier* token_get_identifier(const Token* token)
 {
-    assert(token_is_identifier_like(token));
+    if (!token_is_identifier_like(token))
+    {
+        return NULL;
+    }
+    
     return token->data.identifier;
 }
 
@@ -413,6 +417,17 @@ size_t token_get_length(Token* tok)
     return (tok->end - tok->loc + 1);
 }
 
+bool tokens_equal(const Token* tok1, const Token* tok2)
+{
+    if (token_get_type(tok1) != token_get_type(tok2))
+    {
+        return false;
+    }
+
+    // TODO: determine how to do this function properly for macros.
+    return true;
+}
+
 static size_t token_get_real_length(const Token* token)
 {
     assert(token_is_identifier(token) || token_is_literal(token));
@@ -449,7 +464,7 @@ Token token_list_entry_token(const TokenListEntry* entry)
 
 static TokenListEntry* token_list_entry_create(TokenList* list, Token tok)
 {
-    TokenListEntry* entry = arena_allocate_size(&list->allocator,
+    TokenListEntry* entry = arena_malloc(&list->allocator,
             sizeof(TokenListEntry));
     *entry = (TokenListEntry)
     {
@@ -479,23 +494,8 @@ void token_list_free(TokenList* list)
 
 bool token_list_empty(const TokenList* list)
 {
+    assert(list != NULL && "need token list???");
     return list->head == NULL;
-}
-
-void token_list_push_back(TokenList* list, Token tok)
-{
-    TokenListEntry* entry = token_list_entry_create(list, tok);
-    if (list->head == NULL)
-    {
-        list->head = entry;
-    }
-    else
-    {
-        assert(list->tail != NULL);
-        list->tail->next = entry;
-    }
-    list->tail = entry;
-
 }
 
 void token_list_push_front(TokenList* list, Token tok)
@@ -546,7 +546,105 @@ Token token_list_pop_front(TokenList* list)
     return token_list_entry_token(entry);
 }
 
+void token_list_push_back(TokenList* list, Token tok)
+{
+    TokenListEntry* entry = token_list_entry_create(list, tok);
+    if (list->head == NULL)
+    {
+        list->head = entry;
+    }
+    else
+    {
+        assert(list->tail != NULL);
+        list->tail->next = entry;
+    }
+    list->tail = entry;
+}
+
+Token token_list_peek_back(const TokenList* list)
+{
+    assert(!token_list_empty(list));
+    return token_list_entry_token(list->tail);
+}
+
 TokenListEntry* token_list_iter(const TokenList* list)
 {
     return list->head;
+}
+
+Token* token_list_flatten(Arena* arena, TokenList* list, size_t count)
+{
+    assert(arena && list && "need these to flatten the list");
+    
+    // Make sure that we are not doing any extra would if we shouldn't be
+    if (count == 0)
+    {
+        assert(token_list_empty(list) && "0 count but have tokens?");
+        return NULL;
+    }
+
+    Token* tokens = arena_malloc(arena, sizeof(Token) * count);
+    for (size_t i = 0; i < count; i++)
+    {
+        assert(!token_list_empty(list) && "incorrect token count!");
+        tokens[i] = token_list_pop_front(list);
+    }
+    assert(token_list_empty(list) && "incorrect token count");
+    return tokens;
+}
+
+TokenStream token_stream_create(Token* tokens, size_t length)
+{
+    assert(tokens != NULL && "need tokens to create a stream");
+    return (TokenStream) { tokens, length, 0 };
+}
+
+Token* token_stream_tokens(const TokenStream* stream)
+{
+    return stream->tokens;
+}
+
+size_t token_stream_length(const TokenStream* stream)
+{
+    return stream->length;
+}
+
+size_t token_stream_cursor(const TokenStream* stream)
+{
+    return stream->cursor;
+}
+
+bool token_stream_end(const TokenStream* stream)
+{
+    return token_stream_length(stream) == token_stream_cursor(stream);
+}
+
+Token token_stream_consume(TokenStream* stream)
+{
+    assert(!token_stream_end(stream));
+    Token the_tok = stream->tokens[stream->cursor];
+    stream->cursor++;
+    return the_tok;
+}
+
+Token token_stream_peek(const TokenStream* stream)
+{
+    assert(!token_stream_end(stream));
+    return stream->tokens[stream->cursor];
+}
+
+Token token_stream_get(const TokenStream* stream, size_t index)
+{
+    assert(index < stream->length && "invalid token stream index");
+    return stream->tokens[index];
+}
+
+Token token_stream_first(const TokenStream* stream)
+{
+    return stream->tokens[0];
+}
+
+Token token_stream_last(const TokenStream* stream)
+{
+    return stream->tokens[stream->length - 1];
 }

@@ -112,7 +112,7 @@ LLVMTypeRef llvm_create_function_type(CodegenContext* context,
     // Get the parameters and add them all into a function so that we can use
     // it to create the function type
     size_t parm_count = type_function_get_param_count(&type);
-    LLVMTypeRef* parms = arena_allocate_size(&context->arena,
+    LLVMTypeRef* parms = arena_malloc(&context->arena,
             sizeof(LLVMTypeRef) * parm_count);
     
     TypeFunctionParameter* curr = type_function_get_params(&type);

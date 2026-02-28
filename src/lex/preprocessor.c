@@ -6,21 +6,28 @@
 #include <assert.h>
 #include <string.h>
 
-#include "driver/warning.h"
-#include "files/location.h"
-#include "lex/pp_conditional.h"
+#include "lex/macro_map.h"
 #include "util/arena.h"
 #include "util/buffer.h"
+#include "util/vec.h"
+#include "util/ptr_set.h"
 
+#include "driver/warning.h"
 #include "driver/diagnostic.h"
 #include "driver/lang.h"
 
 #include "files/filepath.h"
 #include "files/source_manager.h"
+#include "files/location.h"
 
 #include "lex/identifier_table.h"
 #include "lex/token.h"
 #include "lex/lexer.h"
+#include "lex/pp_conditional.h"
+#include "lex/macro.h"
+#include "lex/directives.h"
+
+#define PREPROCESSOR_MAX_DEPTH 200
 
 // An input stack represents the inputs that we are using during preprocessing.
 // Each level on the input stack constails information about the current 
@@ -55,7 +62,7 @@ InputStack* input_stack_push(Arena* pp_allocator, InputStack* current,
         unsigned int depth, DiagnosticManager* dm, LangOptions* lang,
         Arena* literals, IdentifierTable* ids, SourceFile* source)
 {
-    InputStack* new_entry = arena_allocate_size(pp_allocator,
+    InputStack* new_entry = arena_malloc(pp_allocator,
             sizeof(InputStack));
     *new_entry = (InputStack)
     {
@@ -99,7 +106,7 @@ static void buffer_add_define_one(Buffer* buffer, const char* define)
 }
 
 // Print a basic define into a buffer
-static void buffer_add_define_simple(Buffer* buffer, const char* define)
+static void buffer_add_define_empty(Buffer* buffer, const char* define)
 {
     buffer_printf(buffer, "#define %s\n", define);
 }
@@ -190,10 +197,50 @@ static void preprocessor_pop_input(Preprocessor* pp)
     pp->inputs = input_stack_prev(current);
 }
 
+void preprocessor_get_builtin_identifiers(Preprocessor* pp)
+{
+    assert(pp->identifiers != NULL && "Need the identifier table for this!");
+
+    // All of these are a simple call to our identifier table to get all of 
+    // these nice and easily for us.
+    pp->id___VA_ARGS__ = identifier_table_get(pp->identifiers, "__VA_ARGS__");
+    pp->id___LINE__ = identifier_table_get(pp->identifiers, "__LINE__");
+    pp->id___FILE__ = identifier_table_get(pp->identifiers, "__FILE__");
+    pp->id___DATE__ = identifier_table_get(pp->identifiers, "__DATE__");
+    pp->id___TIME__ = identifier_table_get(pp->identifiers, "__TIME__");
+    pp->id___INCLUDE_LEVEL__ = identifier_table_get(pp->identifiers,
+            "__INCLUDE_LEVEL__");
+    pp->id___COUNTER__ = identifier_table_get(pp->identifiers, "__COUNTER__");
+    pp->id__Pragma = identifier_table_get(pp->identifiers, "_Pragma");
+}
+
+static void preprocessor_add_builtin_macro(Preprocessor* pp, Identifier* name,
+        bool pragma)
+{
+    Arena* allocator = macro_map_allocator(&pp->macros);
+    Macro* macro = macro_create_builtin(allocator, name, pragma);
+    macro_map_do_define(&pp->macros, pp->dm, macro);
+}
+
+void preprocessor_add_builtin_macros(Preprocessor* pp)
+{
+    preprocessor_add_builtin_macro(pp, pp->id___LINE__, false);
+    preprocessor_add_builtin_macro(pp, pp->id___FILE__, false);
+    preprocessor_add_builtin_macro(pp, pp->id___DATE__, false);
+    preprocessor_add_builtin_macro(pp, pp->id___TIME__, false);
+    preprocessor_add_builtin_macro(pp, pp->id___INCLUDE_LEVEL__, false);
+    preprocessor_add_builtin_macro(pp, pp->id___COUNTER__, false);
+    preprocessor_add_builtin_macro(pp, pp->id__Pragma, true);
+}
+
 bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
         LangOptions* opts, SourceManager* sm, Filepath main_file,
         IdentifierTable* ids)
 {
+    // Before doing anything clear the memory that the preprocessor holds so 
+    // that we hopefully crash instead of getting erroneous results.
+    *pp = (Preprocessor) {0};
+
     SourceFile* starting_file = source_manager_create_filepath(sm, main_file);
     if (starting_file == NULL)
     {
@@ -209,13 +256,20 @@ bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
     pp->lang = opts;    
     pp->sm = sm;
     pp->identifiers = ids;
-    pp->literal_arena = arena_new(ARENA_DEFAULT_CHUNK_SIZE,
-            ARENA_DEFAULT_ALIGNMENT);
-    pp->pp_allocator = arena_new(ARENA_DEFAULT_CHUNK_SIZE,
-            ARENA_DEFAULT_ALIGNMENT);
-    pp->max_depth = 200;
+
+    pp->literal_arena = arena_new_default();
+    pp->pp_allocator = arena_new_default();
+    
+    pp->max_depth = PREPROCESSOR_MAX_DEPTH;
     pp->inputs = NULL;
     pp->cache = token_list(arena_new_default());
+
+    // Initialise our important identifiers in the preprocessor.
+    preprocessor_get_builtin_identifiers(pp);
+
+    // Then add all the builtin macros to the preprocessor.
+    pp->macros = macro_map_create();
+    preprocessor_add_builtin_macros(pp);
 
     // Finally, put our input onto the stack so that we are ready to start 
     // lexing our tokens. Don't check the return value as this should never
@@ -228,16 +282,28 @@ bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
 
 void preprocessor_delete(Preprocessor* pp)
 {
+    macro_map_delete(&pp->macros);
     token_list_free(&pp->cache); // Free first since some tokens use other arena
     arena_delete(&pp->literal_arena);
     arena_delete(&pp->pp_allocator);
+}
+
+Arena* preprocessor_allocator(Preprocessor* pp)
+{
+    return &pp->pp_allocator;
+}
+
+void preprocessor_enter_directive(Preprocessor* pp)
+{
+    InputStack* current = pp->inputs;
+    lexer_set_directive(&current->lexer);
 }
 
 // Lex the next token from the preprocessor's stack of lexer and handle popping
 // all of the lexers off the stack as needed. Note that this does no handling
 // of macros or any expansion work and simply just uses the lexer information
 // for the next lexer.
-bool preprocessor_lex_next_token(Preprocessor* pp, Token* token)
+bool preprocessor_next_raw_token(Preprocessor* pp, Token* token)
 {
     assert(pp->inputs && "Can only lex tokens when we have a lexer");
 
@@ -253,6 +319,7 @@ bool preprocessor_lex_next_token(Preprocessor* pp, Token* token)
         if (token_is_type(token, TOK_EOF))
         {
             bool has_below = input_stack_has_below(current);
+            
             preprocessor_pop_input(pp);
             
             if(has_below)
@@ -269,35 +336,6 @@ bool preprocessor_lex_next_token(Preprocessor* pp, Token* token)
     return ret;
 }
 
-void preprocessor_set_directive(Preprocessor* pp)
-{
-    InputStack* current = pp->inputs;
-    lexer_set_directive(&current->lexer);
-}
-
-static void preprocessor_parse_directive(Preprocessor* pp, Token* token)
-{
-    assert(token_is_type(token, TOK_HASH));
-    assert(token_has_flag(token, TOK_FLAG_BOL));
-
-    // Get the location of the token's hash to preserve if for later.
-    Location hash_loc = token_get_location(token);
-    
-    // Enter directive mode in the lexer. So that we can sucessfully parse it.
-    // Without this we would not get the needed EOD token.
-    preprocessor_set_directive(pp);
-    do
-    {
-        preprocessor_lex_next_token(pp, token);
-        assert(!token_is_type(token, TOK_EOF) && "Can't have eof in directive");
-    }
-    while (!token_is_type(token, TOK_PP_EOD));
-
-    // Also produce a warning abouut preprocessing directives being ignored.
-    diagnostic_warning_at(pp->dm, hash_loc, Wunimplemented,
-            "preprocessing directives are not implemented; ignoring");
-}
-
 static bool preprocessor_get_next(Preprocessor* pp, Token* token, bool cache)
 {
     // TODO: will also have to handle skipping of conditionals and such.
@@ -307,14 +345,14 @@ static bool preprocessor_get_next(Preprocessor* pp, Token* token, bool cache)
         // First lex the token from the current lexer as the next actions we do
         // will be determined by the token we get.
         // ret = lexer_get_next(&pp->lexer, token);
-        ret = preprocessor_lex_next_token(pp, token);
+        ret = preprocessor_next_raw_token(pp, token);
 
         // Check if we have got a preprocessing directive here. Preprocessing
         // directives can only occur when there is a hash as the first token
         // on that line. If we have one, parse it and then try again to get the
-        // next token.
-        if (token_is_type(token, TOK_HASH) 
-                && token_has_flag(token, TOK_FLAG_BOL))
+        // next token. Even if we are caching our token then we will need to
+        // handle this directive to get to our next token. So handle it.
+        if (preprocessor_directive_start(pp, token))
         {
             preprocessor_parse_directive(pp, token);
             continue;
@@ -323,12 +361,6 @@ static bool preprocessor_get_next(Preprocessor* pp, Token* token, bool cache)
         // TODO: will need to handle situations like macro expansion also with
         // TODO: the possibility of function like macros as well... This may be
         // TODO: a bit tricky to do all at once.
-
-        // Otherwise handle the situation as normal.
-        if (token_is_type(token, TOK_IDENTIFIER))
-        {
-            token_classify_identifier(token);
-        }
 
         if (cache)
         {

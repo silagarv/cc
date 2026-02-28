@@ -124,13 +124,11 @@ bool identifier_is_equal(const Identifier* ident1, const Identifier* ident2)
 
 TokenType identifier_get_keyword(const Identifier* identifier)
 {
-    assert(identifier_is_keyword(identifier));
     return identifier->type;
 }
 
 TokenType identifier_get_pp_keyword(const Identifier* identifier)
 {
-    assert(identifier_is_pp_keyword(identifier));
     return identifier->pp_type;
 }
 

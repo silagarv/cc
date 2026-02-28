@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "driver/warning.h"
+#include "util/arena.h"
 #include "util/panic.h"
 
 #include "driver/lang.h"
@@ -522,7 +523,7 @@ static bool is_typename_start(Parser* parser, const Token* tok)
         {
             Identifier* identifier = tok->data.identifier;
             return semantic_checker_identifier_is_typename(&parser->sc,
-                    identifier);
+                    identifier, true);
         }
 
         // Not a typename start but is a type of declaration
@@ -4206,10 +4207,20 @@ static DeclarationSpecifiers parse_specifier_qualifier_list(Parser* parser)
 // This may not be 100% accurate but is helpful enough that it should catch
 // most missing ;'s after a tag defn. This function recursed if the current 
 // token is a type specifier AND we have a next token.
-static bool tokens_okay_after_tag_defn(const Token* current, const Token* next)
+static bool tokens_okay_after_tag_defn(Parser* parser, const Token* current,
+        const Token* next)
 {
     switch (token_get_type(current))
     {
+        // The case of having an identifier. This could be a typedef symbol. We
+        // will only error if the token is a typedef in the current scope. If
+        // the token is not an identifier in the current scope then it is okay
+        // for it to appear. So basically, return if the current token is a 
+        // typename in this scope.
+        case TOK_IDENTIFIER:
+            return !semantic_checker_identifier_is_typename(&parser->sc,
+                    token_get_identifier(current), false);
+
         // All of our basic type specifiers. These 100% cannot follow a tag
         // definition as they would try to combine with the previous but fail.
         case TOK_void:
@@ -4274,8 +4285,10 @@ static bool tokens_okay_after_tag_defn(const Token* current, const Token* next)
             // tag defn that we checked. Let's now go and check the next token.
             if (next != NULL)
             {
-                return tokens_okay_after_tag_defn(next, NULL);
+                return tokens_okay_after_tag_defn(parser, next, NULL);
             }
+
+            /* FALLTHROUGH */
 
         // By default assume that we can have whatever else follow a tag def.
         default:
@@ -4291,7 +4304,8 @@ static bool tokens_okay_after_tag_defn(const Token* current, const Token* next)
 // defined in this scope, then the semantic analyser will pick up on it.
 static void parser_handle_end_of_tag_defn(Parser* parser, const char* context)
 {
-    if (tokens_okay_after_tag_defn(current_token(parser), next_token(parser)))
+    if (tokens_okay_after_tag_defn(parser, current_token(parser),
+            next_token(parser)))
     {
         return;
     }
