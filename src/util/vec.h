@@ -29,13 +29,15 @@ typedef struct s_name ## Vector { \
 s_name ## Vector f_name ## _vector(void); \
 s_name ## Vector f_name ## _vector_create(size_t cap); \
 void f_name ## _vector_free(s_name ## Vector* vec, void (*free_func)(T)); \
+void f_name ## _vector_free_ptr(s_name ## Vector* vec, void (*free_func)(T*)); \
+bool f_name ## _vector_empty(const s_name ## Vector* vec); \
 size_t f_name ## _vector_size(const s_name ## Vector* vec); \
 size_t f_name ## _vector_capacity(const s_name ## Vector* vec); \
 void f_name ## _vector_push(s_name ## Vector* vec, T elem); \
 T f_name ## _vector_pop(s_name ## Vector* vec); \
-T f_name ## _vector_get(s_name ## Vector* vec, size_t index); \
-T* f_name ## _vector_data(s_name ## Vector* vec); \
-T* f_name ## _vector_data_end(s_name ## Vector* vec)
+T f_name ## _vector_get(const s_name ## Vector* vec, size_t index); \
+T* f_name ## _vector_front(const s_name ## Vector* vec); \
+T* f_name ## _vector_back(const s_name ## Vector* vec)
 
 #define vector_of_impl(T, s_name, f_name) \
 s_name ## Vector f_name ## _vector(void) \
@@ -65,7 +67,25 @@ void f_name ## _vector_free(s_name ## Vector* vec, void (*free_func)(T)) \
         } \
     } \
     \
-    free(vec->data); \
+    xfree(vec->data); \
+} \
+ \
+void f_name ## _vector_free_ptr(s_name ## Vector* vec, void (*free_func)(T*)) \
+{ \
+    if (free_func != NULL) \
+    { \
+        for (size_t i = 0; i < vec->count; i++) \
+        { \
+            free_func(&vec->data[i]); \
+        } \
+    } \
+    \
+    xfree(vec->data); \
+} \
+ \
+bool f_name ## _vector_empty(const s_name ## Vector* vec) \
+{ \
+    return vec->count == 0; \
 } \
  \
 size_t f_name ## _vector_size(const s_name ## Vector* vec) \
@@ -99,7 +119,7 @@ T f_name ## _vector_pop(s_name ## Vector* vec) \
     return vec->data[--vec->count]; \
 } \
  \
-T f_name ## _vector_get(s_name ## Vector* vec, size_t index) \
+T f_name ## _vector_get(const s_name ## Vector* vec, size_t index) \
 { \
     if (index >= vec->count) \
     { \
@@ -109,14 +129,18 @@ T f_name ## _vector_get(s_name ## Vector* vec, size_t index) \
     return vec->data[index]; \
 } \
  \
-T* f_name ## _vector_data(s_name ## Vector* vec) \
+T* f_name ## _vector_front(const s_name ## Vector* vec) \
 { \
     return vec->data; \
 } \
  \
-T* f_name ## _vector_data_end(s_name ## Vector* vec) \
+T* f_name ## _vector_back(const s_name ## Vector* vec) \
 { \
-    return vec->data + vec->count; \
+    if (vec->count == 0) \
+    { \
+        panic("vector is empty!"); \
+    } \
+    return vec->data + vec->count - 1; \
 }
 
 #endif /* VEC_H */

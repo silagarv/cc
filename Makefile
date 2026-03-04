@@ -51,7 +51,6 @@ FILES = src/files/filepath.c \
 	src/files/location.c \
 	src/files/line_map.c \
 	src/files/line_table.c \
-	src/files/location_manager.c \
 	src/files/source_manager.c
 
 DRIVER = src/driver/warning.c \
@@ -66,10 +65,11 @@ LEX = src/lex/identifier_table.c \
 	src/lex/char_help.c \
 	src/lex/unicode.c \
 	src/lex/lexer.c \
+	src/lex/include_stack.c \
 	src/lex/macro.c \
 	src/lex/macro_map.c \
 	src/lex/directives.c \
-	src/lex/pp_conditional.c \
+	src/lex/expand.c \
 	src/lex/preprocessor.c
 
 PARSE = src/parse/ast_allocator.c \

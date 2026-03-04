@@ -1472,3 +1472,39 @@ bool lexer_get_next(Lexer* lexer, Token* token)
     return lex_internal(lexer, token);
 }
 
+void lexer_read_diagnostic_string(Lexer* lexer, Buffer* buffer)
+{
+    // consume leading whitespace 
+    while (is_horizontal_whitespace(get_curr_char(lexer)))
+    {
+        consume_char(lexer);
+    }
+
+    while (true)
+    {
+        char curr;
+        switch ((curr = get_curr_char(lexer)))
+        {
+            // We got the end of the line
+            case '\r':
+            case '\n':
+                buffer_make_cstr(buffer);
+                return;
+
+            // We either got EOF or just some random null char
+            case '\0':
+                if (at_eof(lexer))
+                {
+                    buffer_make_cstr(buffer);
+                    return;
+                }
+
+                /* FALLTHROUGH */
+
+            default:
+                buffer_add_char(buffer, curr);
+                break;
+        }
+        consume_char(lexer);
+    }
+}

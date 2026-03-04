@@ -11,6 +11,7 @@
 
 #include "lex/token.h"
 #include "lex/identifier_table.h"
+#include "util/buffer.h"
 
 typedef struct Lexer {
     DiagnosticManager* dm;
@@ -43,6 +44,14 @@ void lexer_set_directive(Lexer* lexer);
 // cannot be undone. However, this should never be necessary as the token 
 // should always be saved be the preprocessor.
 bool lexer_get_next(Lexer* lexer, Token* tok);
+
+// Specialised function getting the rest of the line and putting it in a buffer
+// that we can used. This function is mainly used for warning diagnostics to get
+// the raw string of text. This function reads directly from the current 
+// position to the first newline it sees but does not eat the newline. So to
+// get out of preprocessor mode `lexer_get_next` should be called. Note that 
+// this function also consumes any leading whitespace and ignores it.
+void lexer_read_diagnostic_string(Lexer* lexer, Buffer* buffer);
 
 // Other lexer functions to help us with preprocessing primarily. These allow
 // for us to get the spelling for tokens which is particularly useful for things

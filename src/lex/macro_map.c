@@ -197,6 +197,11 @@ Macro* macro_map_get_macro(MacroMap* macros, Identifier* identifier)
     return macro_state_get_macro(state);
 }
 
+bool macro_map_is_defined(MacroMap* macros, Identifier* identifier)
+{
+    return macro_map_get_macro(macros, identifier) != NULL;
+}
+
 static void macro_map_add_new_entry(MacroMap* macros, Macro* macro)
 {
     Identifier* name = macro_name(macro);

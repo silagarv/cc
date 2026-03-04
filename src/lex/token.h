@@ -8,7 +8,6 @@
 #include "util/str.h"
 
 #include "files/location.h"
-#include "util/vec.h"
 
 struct Identifier;
 
@@ -295,6 +294,7 @@ size_t token_stream_cursor(const TokenStream* stream);
 bool token_stream_end(const TokenStream* stream);
 Token token_stream_consume(TokenStream* stream);
 Token token_stream_peek(const TokenStream* stream);
+Token token_stream_peek_n(const TokenStream* stream, size_t n);
 
 Token token_stream_get(const TokenStream* stream, size_t index);
 Token token_stream_first(const TokenStream* stream);

@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 
+#include "util/buffer.h"
 #include "util/arena.h"
 
 #include "driver/diagnostic.h"
@@ -12,13 +13,11 @@
 #include "files/source_manager.h"
 
 #include "lex/identifier_table.h"
-#include "lex/token.h"
-#include "lex/lexer.h"
 #include "lex/header_finder.h"
+#include "lex/token.h"
+#include "lex/include_stack.h"
 #include "lex/macro_map.h"
-
-// Implement at a typedef so when changes are made we don't have to recompile
-typedef struct InputStack InputStack;
+#include "lex/expand.h" 
 
 typedef struct Preprocessor {
     DiagnosticManager* dm;
@@ -44,8 +43,8 @@ typedef struct Preprocessor {
     // The header finder used to search for headers within the source
     HeaderFinder hf;
 
-    // The stack of lexers we are using for this preprocessor
-    InputStack* inputs;
+    // The stack of includes that we are using for this preprocessor.
+    IncludeVector inputs;
 
     // The max depth of inputs that we are allowed to do. set to 200
     unsigned int max_depth;
@@ -63,8 +62,15 @@ typedef struct Preprocessor {
     Identifier* id__Pragma;
 
     // The thing that will store all of our preprocessor macros and definitions
-    // and handle the defining and undefinting of these.
+    // and handle the defining and undefinting of these. This also helps the
+    // preprocessor by storing the current state of our macros.
     MacroMap macros;
+
+    // The macro expander used in the preprocessor. The macro expander 
+    // implements all of the functionality required in order to expand macros.
+    // Note that it hides alot of the complexity away from the preprocessor and
+    // only tells the preprocessor if it is expanding a macro right now or not.
+    MacroExpander expander;
 
     // The Arena that we are going to use for allocating all of our preprocessor
     // information onto particularaly for our macro tables and those kinds of
@@ -86,8 +92,15 @@ void preprocessor_delete(Preprocessor* pp);
 // Functions that should only be used by the preprocessor for preprocessing
 // purposes like the handling of directives and such. Should not be used by 
 // the parser for any purpose at all.
+DiagnosticManager* preprocessor_diagnostics(Preprocessor* pp);
+SourceManager* preprocessor_source_manager(Preprocessor* pp);
 Arena* preprocessor_allocator(Preprocessor* pp);
+IncludeVector* preprocessor_inputs(Preprocessor* pp);
+unsigned int preprocessor_include_depth(const Preprocessor* pp);
+MacroMap* preprocessor_macro_map(Preprocessor* pp);
+
 void preprocessor_enter_directive(Preprocessor* pp);
+void preprocessor_read_diagnostic_string(Preprocessor* pp, Buffer* buffer);
 
 // Get the next token from the preprocessor that is not macro expanded or 
 // anything. This should be used for trying to parse macro definitions and that

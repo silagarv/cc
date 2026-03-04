@@ -3,17 +3,19 @@
 #include <assert.h>
 #include <stddef.h>
 
+#include "util/arena.h"
+#include "util/buffer.h"
+#include "util/ptr_set.h"
+
 #include "driver/diagnostic.h"
 
-#include "driver/warning.h"
 #include "files/location.h"
+
 #include "lex/identifier_table.h"
 #include "lex/macro.h"
 #include "lex/macro_map.h"
 #include "lex/token.h"
 #include "lex/preprocessor.h"
-#include "util/arena.h"
-#include "util/ptr_set.h"
 
 bool preprocessor_directive_start(Preprocessor* pp, Token* token)
 {
@@ -54,6 +56,15 @@ bool preprocessor_get_macro_name(Preprocessor* pp, Token* token, bool defundef,
         Identifier** name, Location* loc)
 {
     preprocessor_next_raw_token(pp, token);
+
+    // If we got the end of the directive we should error about a missing macro
+    // name;
+    if (token_is_type(token, TOK_PP_EOD))
+    {
+        diagnostic_error_at(pp->dm, token_get_location(token), "macro name "
+                "missing");
+        return false;
+    }
 
     // If we don't have an identifier token then error and consume the rest
     if (!token_is_identifier_like(token))
@@ -112,7 +123,8 @@ void preprocessor_add_macro_params(Preprocessor* pp, Macro* macro,
         num_alloced++;
     }
 
-    Identifier** params = arena_malloc(&pp->pp_allocator,
+    Arena* allocator = macro_map_allocator(preprocessor_macro_map(pp));
+    Identifier** params = arena_malloc(allocator,
             sizeof(Identifier*) * num_alloced);
     for (size_t i = 0; i < num_names; i++)
     {
@@ -289,7 +301,8 @@ bool preprocessor_parse_macro_params(Preprocessor* pp, Token* token,
 void preprocessor_add_macro_body(Preprocessor* pp, Macro* macro,
         TokenList* tmp_toks, size_t num_toks)
 {
-    Token* tokens = token_list_flatten(&pp->pp_allocator, tmp_toks, num_toks);
+    Arena* allocator = macro_map_allocator(preprocessor_macro_map(pp));
+    Token* tokens = token_list_flatten(allocator, tmp_toks, num_toks);
     macro_set_tokens(macro, tokens, num_toks);
 }
 
@@ -438,7 +451,9 @@ void preprocessor_handle_define(Preprocessor* pp, Token* token)
 
     // Okay we have a valid and fully formed macro now. We can go and try to
     // define the thing (or hande a redefinition or such).
-    macro_map_do_define(&pp->macros, pp->dm, macro);
+    MacroMap* macros = preprocessor_macro_map(pp);
+    DiagnosticManager* dm = preprocessor_diagnostics(pp);
+    macro_map_do_define(macros, dm, macro);
 }
 
 void preprocessor_handle_undef(Preprocessor* pp, Token* token)
@@ -455,13 +470,133 @@ void preprocessor_handle_undef(Preprocessor* pp, Token* token)
     preprocessor_expect_directive_end(pp, "undef");
 
     // Finally go and actually handle the undefing
-    macro_map_do_undefine(&pp->macros, pp->dm, name, loc);
+    MacroMap* macros = preprocessor_macro_map(pp);
+    DiagnosticManager* dm = preprocessor_diagnostics(pp);
+    macro_map_do_undefine(macros, dm, name, loc);
+}
+
+void preprocessor_handle_include(Preprocessor* pp, Token* token)
+{
+    diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
+            "#include is valid but not implemented");
+    preprocessor_eat_to_eod(pp, token);
+}
+
+void preprocessor_handle_embed(Preprocessor* pp, Token* token)
+{
+    diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
+            "#embed is valid but not implemented");
+    preprocessor_eat_to_eod(pp, token);
+}
+
+void preprocessor_handle_if(Preprocessor* pp, Token* token)
+{
+    diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
+            "#if is valid but not implemented");
+    preprocessor_eat_to_eod(pp, token);
+}
+
+void preprocessor_handle_ifdef(Preprocessor* pp, Token* token)
+{
+    diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
+            "#ifdef is valid but not implemented");
+    preprocessor_eat_to_eod(pp, token);
+}
+
+void preprocessor_handle_ifndef(Preprocessor* pp, Token* token)
+{
+    diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
+            "#ifndef is valid but not implemented");
+    preprocessor_eat_to_eod(pp, token);
+}
+
+void preprocessor_handle_elifdef(Preprocessor* pp, Token* token)
+{
+    diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
+            "#elifdef is valid but not implemented");
+    preprocessor_eat_to_eod(pp, token);
+}
+
+void preprocessor_handle_elifndef(Preprocessor* pp, Token* token)
+{
+    diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
+            "#elifndef is valid but not implemented");
+    preprocessor_eat_to_eod(pp, token);
+}
+
+void preprocessor_handle_elif(Preprocessor* pp, Token* token)
+{
+    diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
+            "#elif is valid but not implemented");
+    preprocessor_eat_to_eod(pp, token);
+}
+
+void preprocessor_handle_else(Preprocessor* pp, Token* token)
+{
+    diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
+            "#else is valid but not implemented");
+    preprocessor_eat_to_eod(pp, token);
+}
+
+void preprocessor_handle_endif(Preprocessor* pp, Token* token)
+{
+    diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
+            "#endif is valid but not implemented");
+    preprocessor_eat_to_eod(pp, token);
+}
+
+void preprocessor_handle_line(Preprocessor* pp, Token* token)
+{
+    diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
+            "#line is valid but not implemented");
+    preprocessor_eat_to_eod(pp, token);
+}
+
+void preprocessor_handle_diagnostic(Preprocessor* pp, Token* token, bool warn)
+{
+    // First read the diagnostic string from the lexer using the preprocessor.
+    Buffer buffer = buffer_new();
+    preprocessor_read_diagnostic_string(pp, &buffer);
+
+    // This is fine since the location of the token is unaffected
+    Location location = token_get_location(token);
+    char* diag = buffer_get_ptr(&buffer);
+    if (!warn)
+    {
+        diagnostic_error_at(pp->dm, location, "%s", diag);
+    }
+    else
+    {
+        diagnostic_warning_at(pp->dm, location, Whash_warning, "%s", diag);
+    }
+    buffer_free(&buffer);
+
+    // Finally eat the newline to get us out of directive mode. 
+    preprocessor_next_raw_token(pp, token);
+    assert(token_is_type(token, TOK_PP_EOD) && "not at the end of the line??");
+}
+
+void preprocessor_handle_error(Preprocessor* pp, Token* token)
+{
+    preprocessor_handle_diagnostic(pp, token, false);
+}
+
+void preprocessor_handle_warning(Preprocessor* pp, Token* token)
+{
+    preprocessor_handle_diagnostic(pp, token, true);
+}
+
+void preprocessor_handle_pragma(Preprocessor* pp, Token* token)
+{
+    diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
+            "#pragma is valid but not implemented");
+    preprocessor_eat_to_eod(pp, token);
 }
 
 void preprocessor_handle_gnu_line_directive(Preprocessor* pp, Token* token)
 {
     diagnostic_warning_at(pp->dm, token_get_location(token),
-                Wunimplemented, "GNU style line directives are unimplemented");
+            Wunimplemented, "GNU style line directives are unimplemented");
     preprocessor_eat_to_eod(pp, token);
 }
 
@@ -497,25 +632,59 @@ void preprocessor_parse_directive(Preprocessor* pp, Token* token)
                 return;
 
             case TOK_PP_include:
+                preprocessor_handle_include(pp, token);
+                return;
+
             case TOK_PP_embed:
+                preprocessor_handle_embed(pp, token);
+                return;
+
             case TOK_PP_if:
+                preprocessor_handle_if(pp, token);
+                return;
+
             case TOK_PP_ifdef:
+                preprocessor_handle_ifdef(pp, token);
+                return;
+
             case TOK_PP_ifndef:
-            case TOK_PP_elifndef:
+                preprocessor_handle_ifndef(pp, token);
+                return;
+
             case TOK_PP_elifdef:
-            case TOK_PP_else:
+                preprocessor_handle_elifdef(pp, token);
+                return;
+
+            case TOK_PP_elifndef:
+                preprocessor_handle_elifndef(pp, token);
+                return;
+
             case TOK_PP_elif:
+                preprocessor_handle_elif(pp, token);
+                return;
+
+            case TOK_PP_else:
+                preprocessor_handle_else(pp, token);
+                return;
+
             case TOK_PP_endif:
+                preprocessor_handle_endif(pp, token);
+                return;
+
             case TOK_PP_line:
+                preprocessor_handle_line(pp, token);
+                return;
+            
             case TOK_PP_error:
+                preprocessor_handle_error(pp, token);
+                return;
+
             case TOK_PP_warning:
+                preprocessor_handle_warning(pp, token);
+                return;
+
             case TOK_PP_pragma:
-                // TODO: for now just issue a warning that the directive is
-                // TODO: unimplemented.
-                diagnostic_warning_at(pp->dm, token_get_location(token),
-                        Wunimplemented, "#%s is valid but not implemented",
-                        identifier_cstr(directive));
-                preprocessor_eat_to_eod(pp, token);
+                preprocessor_handle_pragma(pp, token);
                 return;
 
             default:

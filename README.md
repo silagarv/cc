@@ -19,6 +19,9 @@ Requirements
 To building, run 'make' in the cc directory and it wll output an executable named 'cc'
 
 ## Current TODO
+- Preprocessor
+    - Possibly move the macro expanding machinery into the preprocessing file itself since the expander and preprocessor struct a quite coupled due to how they have to communicate this might be helpful to us and also both files are currenly relatively small with the preprocessing file having not much responsibility
+    - Implement function like macros
 - Declaration parsing
     - also include a second list in struct / union decl's for all decls inside it
     - Fix declarations groups so they also optionally include a struct / unions definition inside them if it was

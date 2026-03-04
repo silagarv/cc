@@ -1,4 +1,3 @@
-#include "driver/warning.h"
 #ifndef WARNING
 #error "The WARNING macro should be defined when including this file."
 #endif /* WARNING */

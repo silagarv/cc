@@ -63,9 +63,6 @@ bool macro_disabled(const Macro* macro);
 void macro_disable(Macro* macro);
 void macro_enable(Macro* macro);
 
-bool macro_object(const Macro* macro);
-bool macro_function(const Macro* macro);
-
 bool macro_has_param(const Macro* macro, const Identifier* identifier);
 size_t macro_get_param_num(const Macro* macro, const Identifier* identifier);
 
@@ -73,5 +70,8 @@ size_t macro_get_param_num(const Macro* macro, const Identifier* identifier);
 // TODO: will need to implement a function for checking if two tokens are
 // TODO: equal...
 bool macro_definitions_equal(const Macro* macro1, const Macro* macro2);
+
+// Get the tokens from the macro as a token stream for the purposes of expansion
+TokenStream macro_get_stream(const Macro* macro);
 
 #endif /* MACRO_H */

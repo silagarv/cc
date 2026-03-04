@@ -22,6 +22,8 @@ typedef struct MacroMap {
     HashMap map; // The hashmap that stores the Identifier* to macro map entry
                  // states. and handles the finding of the current state of
                  // our macros.
+
+    // TODO: add a macro vector so that we can print all of the macros used?
 } MacroMap;
 
 // Functions for creating and destroying our macro map.
@@ -34,6 +36,7 @@ Arena* macro_map_allocator(MacroMap* macros);
 
 // Function to get the current active macro definition for an identifer
 Macro* macro_map_get_macro(MacroMap* macros, Identifier* identifier);
+bool macro_map_is_defined(MacroMap* macros, Identifier* identifier);
 
 // Functions that do all the work or defining and undefining our macros for us.
 // The need to take in a diagnostic manager so that we can handle any warnings

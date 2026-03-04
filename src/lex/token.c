@@ -10,8 +10,6 @@
 
 #include "util/arena.h"
 #include "util/panic.h"
-#include "util/vec.h"
-#include "util/xmalloc.h"
 #include "util/str.h"
 
 #include "lex/identifier_table.h"
@@ -631,6 +629,12 @@ Token token_stream_peek(const TokenStream* stream)
 {
     assert(!token_stream_end(stream));
     return stream->tokens[stream->cursor];
+}
+
+Token token_stream_peek_n(const TokenStream* stream, size_t n)
+{
+    assert(stream->cursor + n < stream->length && "out of bounds peek");
+    return stream->tokens[stream->cursor + n];
 }
 
 Token token_stream_get(const TokenStream* stream, size_t index)
