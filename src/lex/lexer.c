@@ -53,6 +53,11 @@ void lexer_create(Lexer* lexer, DiagnosticManager* dm, LangOptions* opts,
     };
 }
 
+static bool diagnose(const Lexer* lexer)
+{
+    return lexer->dm != NULL;
+}
+
 void lexer_set_directive(Lexer* lexer)
 {
     lexer->lexing_directive = true;
@@ -288,7 +293,7 @@ static void skip_line_comment(Lexer* lexer)
         }
 
         // Check for line comment terminated by end of file
-        if (current == '\0' && at_eof(lexer))
+        if (current == '\0' && at_eof(lexer) && diagnose(lexer))
         {
             diagnostic_warning_at(lexer->dm, get_curr_location(lexer),
                     Wnewline_eof, "no newline at end of file");
@@ -304,7 +309,7 @@ static void skip_block_comment(Lexer* lexer, Location start_loc)
 {
     do {
         char current = get_curr_char(lexer);
-        if (current == '\0' && at_eof(lexer))
+        if (current == '\0' && at_eof(lexer) && diagnose(lexer))
         {
             diagnostic_error_at(lexer->dm, start_loc,
                     "unterminated /* comment");
@@ -312,7 +317,7 @@ static void skip_block_comment(Lexer* lexer, Location start_loc)
         }
 
         // Check for nested block comments
-        if (current == '/' && peek_char(lexer) == '*')
+        if (current == '/' && peek_char(lexer) == '*' && diagnose(lexer))
         {
             diagnostic_warning_at(lexer->dm, get_curr_location(lexer),
                     Wcomment, "'/*' within block comment");
@@ -369,7 +374,7 @@ static bool try_lex_ucn(Lexer* lexer, Location slash_loc, Buffer* buffer,
     if (!lang_opts_c99(lexer->lang))
     {
         // TODO: this diagnostic can trigger twice in C90 mode for some reason
-        if (buffer == NULL)
+        if (buffer == NULL && diagnose(lexer))
         {
             // TODO: right warning opt?
             diagnostic_warning_at(lexer->dm, slash_loc, Wunicode, "universal "
@@ -395,7 +400,7 @@ static bool try_lex_ucn(Lexer* lexer, Location slash_loc, Buffer* buffer,
         {
             // Again only warn when we aren't trying to put it into an 
             // identifier since it will do it twice
-            if (buffer == NULL)
+            if (buffer == NULL && diagnose(lexer))
             {
                 diagnostic_warning_at(lexer->dm, slash_loc, Wunicode,
                         "incomplete universal character name; treating as '\\' "
@@ -425,7 +430,7 @@ static bool try_lex_ucn(Lexer* lexer, Location slash_loc, Buffer* buffer,
     {
         // Check for invalid UCN's here but allow invalid in numbers since we
         // will not convert then anyways
-        if (identifier && !is_valid_ucn(*value))
+        if (identifier && !is_valid_ucn(*value) && diagnose(lexer))
         {
             diagnostic_error_at(lexer->dm, slash_loc, "character <U+%0*X> "
                     "not allowed in an identifier", required_digits, *value);
@@ -719,8 +724,8 @@ static bool lex_string_like_literal(Lexer* lexer, Token* token, TokenType type)
         // Below are two bad cases. The first one is that we got a newline in
         // the string. I.e. an unterminated string. We just end the token here
         // the next one is that we got end of file during the string.
-        if (current == '\r' || current == '\n'
-                || (current == '\0' && at_eof(lexer)))
+        if ((current == '\r' || current == '\n'
+                || (current == '\0' && at_eof(lexer))) && diagnose(lexer))
         {
             token->type = TOK_UNKNOWN;
             diagnostic_warning_at(lexer->dm, token->loc, Winvalid_pp_token,
@@ -744,7 +749,7 @@ finish_string:
 
     // Invalid character constants since they have nothing in them...
     if (is_character_like(type) && !had_char
-            && !token_is_type(token, TOK_UNKNOWN))
+            && !token_is_type(token, TOK_UNKNOWN) && diagnose(lexer))
     {
         diagnostic_warning_at(lexer->dm, token->loc, Winvalid_pp_token,
                 "empty character constant");
@@ -800,9 +805,9 @@ static bool lex_end_of_file(Lexer* lexer, Token* token, char* tok_start)
 
     // Warn about no newline at eof since we know we have definitely hit the
     // end of file. Also issue a warning on a completely empty translation unit
-    if (lexer->buffer_start == lexer->buffer_end 
+    if ((lexer->buffer_start == lexer->buffer_end 
             || (*(lexer->buffer_end - 1) != '\n' 
-            && *(lexer->buffer_end - 1) != '\r'))
+            && *(lexer->buffer_end - 1) != '\r')) && diagnose(lexer))
     {
         diagnostic_warning_at(lexer->dm, token->loc, Wnewline_eof,
                 "no newline at end of file");
@@ -1066,7 +1071,8 @@ retry_lexing:;
             {
                 consume_char(lexer);
 
-                if (!lang_opts_c99(lexer->lang) && !lexer->err_line_comment)
+                if (!lang_opts_c99(lexer->lang) && !lexer->err_line_comment
+                        && diagnose(lexer))
                 {
                     lexer->err_line_comment = true;
                     diagnostic_warning_at(lexer->dm, token->loc, Wcomment,
@@ -1446,17 +1452,13 @@ retry_lexing:;
                 // probably use the c99 status of if a codepoint is a valid
                 // identifier an go from there
 
-                panic("Non ascii character encountered");
+                panic("non ascii characters are currenlty not implemented");
             }
 
             token->type = TOK_UNKNOWN;
 
             Buffer unknown = buffer_from_format("%c", curr);
             token->data = lexer_create_literal_node(lexer, &unknown);
-
-            // Finally, since we got an unknown token produce a warning about it
-            // diagnostic_warning_at(lexer->dm, token->loc, "unknown token '%c' "
-            //         "encountered", curr);
             break;
     }
 
@@ -1470,6 +1472,36 @@ bool lexer_get_next(Lexer* lexer, Token* token)
 {
     reset_token(token);
     return lex_internal(lexer, token);
+}
+
+// TODO: the comment describing this function says it disables diagnostics but
+// TODO: this is not currently try. Figure our how we want to do this.
+bool lexer_peek_next(Lexer* lexer, Token* token)
+{
+    // Save our lexer's state and disable diagnostics
+    DiagnosticManager* dm = lexer->dm; // Save the diagnostic manager
+    lexer->dm = NULL; // Make sure to turn the diagnostics off completely by
+                      // removing the dm from the lexer.
+                      // TODO: is this an appropriate thing to do?
+    
+    char* current_ptr = lexer->current_ptr;
+    /* no need for err_line_comment as diagnostics are diable at the moment */
+    bool start_of_line =  lexer->start_of_line;
+    bool lexing_directive = lexer->lexing_directive;
+    bool can_lex_header = lexer->can_lex_header;
+
+    reset_token(token);
+    bool ret = lex_internal(lexer, token);
+
+    // Restore the lexer's state to before the token was lexed.
+    lexer->current_ptr = current_ptr;
+    lexer->start_of_line = start_of_line;
+    lexer->lexing_directive = lexing_directive;
+    lexer->can_lex_header = can_lex_header;
+    lexer->dm = dm; // Restore the diagnotic manager
+    
+    // Finally, properly return the token to the user.
+    return ret;
 }
 
 void lexer_read_diagnostic_string(Lexer* lexer, Buffer* buffer)

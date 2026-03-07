@@ -113,6 +113,11 @@ void arena_delete(Arena* arena)
         arena_chunk_delete(current);
         current = next;
     }
+
+    // Make sure that there are no dangling pointers in the arena so it can't
+    // be accidentally used again.
+    arena->first = NULL;
+    arena->current = NULL;
 }
 
 void* arena_malloc(Arena* arena, size_t size)

@@ -62,6 +62,12 @@ bool include_get_next(Include* include, Token* token)
     return lexer_get_next(&include->lexer, token);
 }
 
+bool include_peek_next(Include* include, Token* token)
+{
+    assert(include != NULL && token != NULL && "need both input and token!");
+    return lexer_peek_next(&include->lexer, token);
+}
+
 // Functions for pushing, popping, and general handling of conditionals
 // TODO: these will remain unimplemented.
 void include_push_conditional(Include* include, Location location)

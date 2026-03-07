@@ -21,4 +21,13 @@ void arena_delete(Arena* arena);
 
 void* arena_malloc(Arena* arena, size_t size);
 
+// TODO: I think it would be good to be able to steal the chunks from an unused
+// TODO: arena to create some kind of a free list in order to help reduce any
+// TODO: memory allocation. Then the free list could be raided everytime an 
+// TODO: arena needed another chunk. This might help reduce some pressure on
+// TODO: malloc and free in the future.
+// TODO: This would mainly be useful in the preprocessor, where we create alot 
+// TODO: of these arenas and then free them quickly for only things like macro
+// TODO: arguments which are relatively short lived.
+
 #endif /* ARENA_H */

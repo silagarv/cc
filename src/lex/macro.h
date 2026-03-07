@@ -18,7 +18,9 @@ typedef struct Macro {
     Location location; // The location this macro was defined at.
 
     Identifier** params; // the names of the paramaeters in a function macro
-    size_t num_params; // the number of paramaeters this macro has
+    size_t num_params; // the number of paramaeters this macro has. Note that if
+                       // this macro is variadic the num_parmas == 1 + actual
+                       // since we include __VA_ARGS__ in our count.
     bool variadic; // is this macro variadic e.g. #define A(a, ...) ...
 
     Token* tokens; // The list of replacement tokens in the macro
@@ -64,7 +66,8 @@ void macro_disable(Macro* macro);
 void macro_enable(Macro* macro);
 
 bool macro_has_param(const Macro* macro, const Identifier* identifier);
-size_t macro_get_param_num(const Macro* macro, const Identifier* identifier);
+bool macro_get_param_num(const Macro* macro, const Identifier* identifier,
+        size_t* param_num);
 
 // Function to check if two macro definitios are equal
 // TODO: will need to implement a function for checking if two tokens are

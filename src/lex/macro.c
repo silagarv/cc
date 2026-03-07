@@ -141,9 +141,10 @@ bool macro_has_param(const Macro* macro, const Identifier* identifier)
     return false;
 }
 
-size_t macro_get_param_num(const Macro* macro, const Identifier* identifier)
+bool macro_get_param_num(const Macro* macro, const Identifier* identifier,
+        size_t* param_num)
 {
-    assert(macro_has_param(macro, identifier) && "Don't have this param??");
+    assert(macro && identifier && param_num && "invalid params!");
 
     Identifier** params = macro_params(macro);
     size_t num_params = macro_num_params(macro);
@@ -152,12 +153,12 @@ size_t macro_get_param_num(const Macro* macro, const Identifier* identifier)
     {
         if (params[i] == identifier)
         {
-            return i;
+            *param_num = i;
+            return true;
         }
     }
 
-    assert(false && "uncreacable");
-    return (size_t)(-1);
+    return false;
 }
 
 bool macro_definitions_equal(const Macro* macro1, const Macro* macro2)

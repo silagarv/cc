@@ -45,6 +45,14 @@ void lexer_set_directive(Lexer* lexer);
 // should always be saved be the preprocessor.
 bool lexer_get_next(Lexer* lexer, Token* tok);
 
+// Lex the next token but do not advance the lexer at all. This function will
+// save the entire state of the lexer and also ensure that it does not emit any
+// diagnositcs while we are lexing the code. Note that technichally this has
+// 'observable' effects since lexing a token may require and identifier table
+// lookup or some form of memory allocation. However, this is typically minimal
+// and this function should be used sparingly anyways.
+bool lexer_peek_next(Lexer* lexer, Token* token);
+
 // Specialised function getting the rest of the line and putting it in a buffer
 // that we can used. This function is mainly used for warning diagnostics to get
 // the raw string of text. This function reads directly from the current 

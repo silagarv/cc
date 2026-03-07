@@ -27,7 +27,7 @@ void preprocessor_eat_to_eod(Preprocessor* pp, Token* token)
 {
     while (!token_is_type(token, TOK_PP_EOD))
     {
-        preprocessor_next_raw_token(pp, token);
+        preprocessor_next_lexer_token(pp, token);
         assert(!token_is_type(token, TOK_EOF) && "EOF in directive");
     }
 }
@@ -35,7 +35,7 @@ void preprocessor_eat_to_eod(Preprocessor* pp, Token* token)
 void preprocessor_expect_directive_end(Preprocessor* pp, const char* context)
 {
     Token token;
-    preprocessor_next_raw_token(pp, &token);
+    preprocessor_next_lexer_token(pp, &token);
 
     // If the next token was the end of directive we are ok
     if (token_is_type(&token, TOK_PP_EOD))
@@ -55,7 +55,7 @@ void preprocessor_expect_directive_end(Preprocessor* pp, const char* context)
 bool preprocessor_get_macro_name(Preprocessor* pp, Token* token, bool defundef,
         Identifier** name, Location* loc)
 {
-    preprocessor_next_raw_token(pp, token);
+    preprocessor_next_lexer_token(pp, token);
 
     // If we got the end of the directive we should error about a missing macro
     // name;
@@ -153,7 +153,7 @@ bool preprocessor_parse_macro_params(Preprocessor* pp, Token* token,
     // Now we get the next token from the PP. If it is a ')' then we simply 
     // optimize that case to not have to create our set of identifiers to make
     // it slightly quicker.
-    preprocessor_next_raw_token(pp, token);
+    preprocessor_next_lexer_token(pp, token);
 
     if (token_is_type(token, TOK_RPAREN))
     {
@@ -161,7 +161,7 @@ bool preprocessor_parse_macro_params(Preprocessor* pp, Token* token,
         preprocessor_add_macro_params(pp, macro, NULL, 0, false);
 
         // Eat the ')' so it doesn't make it into the list.
-        preprocessor_next_raw_token(pp, token);
+        preprocessor_next_lexer_token(pp, token);
         return true;
     }
 
@@ -214,7 +214,7 @@ bool preprocessor_parse_macro_params(Preprocessor* pp, Token* token,
             variadic = true;
 
             // skip part the '...'
-            preprocessor_next_raw_token(pp, token);
+            preprocessor_next_lexer_token(pp, token);
 
             // Now we like to eat the closing paren but we should also check
             // that we actually have it
@@ -228,7 +228,7 @@ bool preprocessor_parse_macro_params(Preprocessor* pp, Token* token,
             {
                 // Eat the ')'
                 assert(token_is_type(token, TOK_RPAREN));
-                preprocessor_next_raw_token(pp, token);
+                preprocessor_next_lexer_token(pp, token);
             }
             break;
         }
@@ -262,19 +262,19 @@ bool preprocessor_parse_macro_params(Preprocessor* pp, Token* token,
         // tokens should either be a ',' or a ')'. If we do not have either of
         // these error. Note that there are some GCC and Clang extensions that
         // make this different but we will not implement those.
-        preprocessor_next_raw_token(pp, token);
+        preprocessor_next_lexer_token(pp, token);
 
         if (token_is_type(token, TOK_RPAREN))
         {
             // Eat the ')' we are done.
-            preprocessor_next_raw_token(pp, token);
+            preprocessor_next_lexer_token(pp, token);
             break;
         }
 
         if (token_is_type(token, TOK_COMMA))
         {
             // Eat the ',' and then try to parse the next parameter.
-            preprocessor_next_raw_token(pp, token);
+            preprocessor_next_lexer_token(pp, token);
             continue;
         }
 
@@ -337,7 +337,7 @@ bool preprocessor_parse_macro_body(Preprocessor* pp, Token* token, Macro* macro)
         if (function_like && token_is_type(token, TOK_HASH))
         {
             // Eat the '#' so we can check if we got a macro parameter.
-            preprocessor_next_raw_token(pp, token);
+            preprocessor_next_lexer_token(pp, token);
 
             // Get the identifier from the token and see if we either got a non
             // identifier type token or the macro doesn't have it as a parameter
@@ -358,7 +358,7 @@ bool preprocessor_parse_macro_body(Preprocessor* pp, Token* token, Macro* macro)
 
         // Otherwise eat the token and get the next one.
         assert(!token_is_type(token, TOK_PP_EOD) && "current on an EOD token");
-        preprocessor_next_raw_token(pp, token);
+        preprocessor_next_lexer_token(pp, token);
     }
     assert(num_tokens != 0 && "non-empty body but no tokens?");
 
@@ -399,7 +399,7 @@ bool preprocessor_parse_macro_params_and_body(Preprocessor* pp, Token* token,
     // token we get is the end of directive token then we should bail and return
     // true to indicate we are okay. Otherwise if we have a leading space then
     // we cannot be a parameterised macro.
-    preprocessor_next_raw_token(pp, token);
+    preprocessor_next_lexer_token(pp, token);
     if (token_is_type(token, TOK_PP_EOD))
     {
         return true;
@@ -572,7 +572,7 @@ void preprocessor_handle_diagnostic(Preprocessor* pp, Token* token, bool warn)
     buffer_free(&buffer);
 
     // Finally eat the newline to get us out of directive mode. 
-    preprocessor_next_raw_token(pp, token);
+    preprocessor_next_lexer_token(pp, token);
     assert(token_is_type(token, TOK_PP_EOD) && "not at the end of the line??");
 }
 
@@ -609,7 +609,7 @@ void preprocessor_parse_directive(Preprocessor* pp, Token* token)
     preprocessor_enter_directive(pp);
 
     // Now get the directive token from the preprocessor.
-    preprocessor_next_raw_token(pp, token);
+    preprocessor_next_lexer_token(pp, token);
 
     // We got the null directive. # \n
     if (token_is_type(token, TOK_PP_EOD))

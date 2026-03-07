@@ -72,6 +72,9 @@ typedef struct Preprocessor {
     // only tells the preprocessor if it is expanding a macro right now or not.
     MacroExpander expander;
 
+    // The current value of the __COUNTER__ macro
+    unsigned int counter;
+
     // The Arena that we are going to use for allocating all of our preprocessor
     // information onto particularaly for our macro tables and those kinds of
     // things.
@@ -105,7 +108,18 @@ void preprocessor_read_diagnostic_string(Preprocessor* pp, Buffer* buffer);
 // Get the next token from the preprocessor that is not macro expanded or 
 // anything. This should be used for trying to parse macro definitions and that
 // general kind of thing.
-bool preprocessor_next_raw_token(Preprocessor* pp, Token* token);
+bool preprocessor_next_lexer_token(Preprocessor* pp, Token* token);
+
+// Get the next unexpanded token from the preprocessor, that is get either the
+// token on top of the macro expansion currently, OR the token which is from
+// the lexer. This is like the function below exept the token is actually
+// consumed.
+bool preprocessor_next_unexpanded_token(Preprocessor* pp, Token* token);
+
+// Peek the next raw token from the preprocessor. Note that this token could
+// be from a macor expansion or it could be from the lexer but it impossible
+// to know which one it is from
+bool preprocessor_peek_raw_token(Preprocessor* pp, Token* token);
 
 // Routines for the parser to use to help manage it's current token in the 
 // preprocessor. It can either advance the token stream to the next token, or

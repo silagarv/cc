@@ -55,6 +55,7 @@ DirectoryEntry* include_get_search_path(Include* include);
 ConditionalVector* include_get_conditionals(Include* include);
 
 bool include_get_next(Include* include, Token* token);
+bool include_peek_next(Include* include, Token* token);
 
 // Functions for pushing, popping, and general handling of conditionals
 // TODO: these will remain unimplemented.
