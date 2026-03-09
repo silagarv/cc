@@ -4245,6 +4245,11 @@ static bool tokens_okay_after_tag_defn(Parser* parser, const Token* current,
         case TOK__Bitint:
         case TOK_typeof:
         case TOK_typeof_unqual:
+
+        // FIXME: should add any other declaration start here too or any tokens
+        // FIXME: that we can prove cannot come in this context.
+
+        case TOK_EOF: // Definitely not okay... no semi at the end of file
             return false;
 
         // Special case of _Atomic which if followed by a '(' is a type 

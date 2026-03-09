@@ -68,6 +68,14 @@ void macro_enable(Macro* macro);
 bool macro_has_param(const Macro* macro, const Identifier* identifier);
 bool macro_get_param_num(const Macro* macro, const Identifier* identifier,
         size_t* param_num);
+size_t macro_param_num(const Macro* macro, const Identifier* identifier);
+
+// This function tests if the replacement list in a function like macro is 
+// trivial i.e. it does not use any of it's arguments in it's replacement list
+// Note that this should not be used for builtin or non-function macro's as it
+// is meaningless. Also note, this does not know about any other macros and
+// is not testing for them.
+bool macro_function_like_uses_args(const Macro* macro);
 
 // Function to check if two macro definitios are equal
 // TODO: will need to implement a function for checking if two tokens are

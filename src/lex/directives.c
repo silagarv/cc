@@ -3,6 +3,8 @@
 #include <assert.h>
 #include <stddef.h>
 
+#include "driver/warning.h"
+#include "files/filepath.h"
 #include "util/arena.h"
 #include "util/buffer.h"
 #include "util/ptr_set.h"
@@ -202,11 +204,13 @@ bool preprocessor_parse_macro_params(Preprocessor* pp, Token* token,
             // The one thing we have to be careful here is to check if the 
             // __VA_ARGS__ identifier is in the set of macro names. This is not
             // really well defined so we will hard error if this occurs. This is
-            // what GCC does and seems sensible enough.
+            // what GCC does and seems sensible enough. (apart from crashing
+            // afterwards)
+            // FIXME: clang allows this but internally it seems dubious to me...
             if (pointer_set_contains(&set, pp->id___VA_ARGS__))
             {
                 diagnostic_error_at(pp->dm, token_get_location(token),
-                        "duplicate macro parameter name '__VA_ARGS'");
+                        "duplicate macro parameter name '__VA_ARGS__'");
                 okay = false;
                 break;                
             }
@@ -475,11 +479,62 @@ void preprocessor_handle_undef(Preprocessor* pp, Token* token)
     macro_map_do_undefine(macros, dm, name, loc);
 }
 
+bool preprocessor_get_filename(Preprocessor* pp, Token* token)
+{
+    // Before we advance the token make sure the lexer know's it's okay to parse
+    // a header name. This will greatly help us out and save us alot of time
+    // having to glue headers togeter alot.
+    preprocessor_allow_headers(pp);
+    preprocessor_advance_token(pp, token);
+
+    if (token_is_type(token, TOK_STRING))
+    {
+        // TODO: handle strings and extract the filename from them...
+        diagnostic_warning_at(pp->dm, token_get_location(token), Wexperimental,
+                "got string header");
+        return true;
+    }
+    else if (token_is_type(token, TOK_PP_HEADER_NAME))
+    {
+        diagnostic_warning_at(pp->dm, token_get_location(token), Wexperimental,
+                "got angled header");
+        return true;
+    }
+    else if (token_is_type(token, TOK_LT))
+    {
+        // FIXME: Clang and GCC both done handle `<<` investigate this?
+        diagnostic_warning_at(pp->dm, token_get_location(token), Wexperimental,
+                "got caret header");
+
+        // TODO: handle the gluing case
+        return true;
+    }
+    else
+    {
+        diagnostic_error_at(pp->dm, token_get_location(token), "expected "
+                "\"FILENAME\" or <FILENAME>");
+        return false;
+    }
+}
+
 void preprocessor_handle_include(Preprocessor* pp, Token* token)
 {
     diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
-            "#include is valid but not implemented");
-    preprocessor_eat_to_eod(pp, token);
+            "#include is currently being implemented");
+
+    // Try and get the filename that we are wanting to include. If getting the
+    // filename itself fails just eat to the end of the directive. Note that 
+    // this doesn't attempt to include it so it is not yet a fatal error.
+    Filepath path;
+    bool angled;
+    if (!preprocessor_get_filename(pp, token))
+    {
+        preprocessor_eat_to_eod(pp, token);
+        return;
+    }
+    
+    // Otherwise we should just have a newline
+    preprocessor_expect_directive_end(pp, "include");
 }
 
 void preprocessor_handle_embed(Preprocessor* pp, Token* token)

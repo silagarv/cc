@@ -182,7 +182,8 @@ typedef enum TokenType {
     
     TOK_PP_HEADER_NAME,
 
-    TOK_PP_EOD,
+    TOK_PP_ARGEND, // Special token to mark the end of a argument preexpansion
+    TOK_PP_EOD, // Special token to mark the end of directive
 
     TOK_UNKNOWN,
 
@@ -206,6 +207,7 @@ typedef enum TokenFlags {
     TOK_FLAG_BOL = 1 << 0, // Beginning of line
     TOK_FLAG_WHITESPACE = 1 << 1, // leading space
     TOK_FLAG_DIGRAPH = 1 << 2, // Are we a digraph
+    TOK_FLAG_NOEXPAND = 1 << 3 // Should we avoid expanding this token. 6.10.3
 } TokenFlags;
 
 // The structure of a token in order to capture all of the relavent information
@@ -286,6 +288,7 @@ Token* token_list_flatten(Arena* arena, TokenList* list, size_t count);
 // anything in order to deallocate the memory and can just be destroyed like
 // any other stack memory.
 TokenStream token_stream_create(Token* tokens, size_t len);
+TokenStream token_stream_create_empty(void);
 
 Token* token_stream_tokens(const TokenStream* stream);
 size_t token_stream_length(const TokenStream* stream);

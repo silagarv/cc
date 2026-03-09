@@ -17,7 +17,19 @@
 #include "lex/token.h"
 #include "lex/include_stack.h"
 #include "lex/macro_map.h"
-#include "lex/expand.h" 
+
+typedef struct MacroExpansion MacroExpansion;
+
+// A structure which represents the preprocessors current state of macro 
+// expansion and helps handling the implementation of all of the machinary 
+// necessary in order to run and handle the preprocesor.
+typedef struct MacroExpander {
+    Arena allocator; // The allocator used for macro expansion and building our
+                     // macro expansion stack.
+
+    MacroExpansion* expansion; // the current macro expansion or NULL if we are
+                               // done expanding
+} MacroExpander;
 
 typedef struct Preprocessor {
     DiagnosticManager* dm;
@@ -75,14 +87,24 @@ typedef struct Preprocessor {
     // The current value of the __COUNTER__ macro
     unsigned int counter;
 
-    // The Arena that we are going to use for allocating all of our preprocessor
-    // information onto particularaly for our macro tables and those kinds of
-    // things.
-    Arena pp_allocator;
+    // The source buffers that should be used for the __DATE__ and __TIME__ 
+    // macros respectively. These are calculated on preprocessor initialisation
+    // and should never properly be null once they are created.
+    SourceFile* file__DATE__;
+    SourceFile* file__TIME__;
+
+    // Set if we are currently collecting macro arguments that we might want to
+    // expand.
+    bool collecting_args;
 
     // The token cache that we are going to use for macro tokens and the like.
     // Also used to inject tokens into the token stream when needed.
     TokenList cache;
+
+    // The Arena that we are going to use for allocating all of our preprocessor
+    // information onto particularaly for our macro tables and those kinds of
+    // things.
+    Arena pp_allocator;
 } Preprocessor;
 
 // Functions for creating or destorying the current preprocessor and all of it's
@@ -101,8 +123,11 @@ Arena* preprocessor_allocator(Preprocessor* pp);
 IncludeVector* preprocessor_inputs(Preprocessor* pp);
 unsigned int preprocessor_include_depth(const Preprocessor* pp);
 MacroMap* preprocessor_macro_map(Preprocessor* pp);
+MacroExpander* preprocessor_expander(Preprocessor* pp);
+bool preprocessor_collecting_args(const Preprocessor* pp);
 
 void preprocessor_enter_directive(Preprocessor* pp);
+void preprocessor_allow_headers(Preprocessor* pp);
 void preprocessor_read_diagnostic_string(Preprocessor* pp, Buffer* buffer);
 
 // Get the next token from the preprocessor that is not macro expanded or 
@@ -129,10 +154,19 @@ bool preprocessor_peek_token(Preprocessor* pp, Token* token);
 // TODO: would it be beneficial to be able to peek arbitrarily far ahead?
 // bool preprocessor_peek_n_token(Preprocessor* pp, Token* token, size_t n);
 
+// FIXME: for the two functions below should there be an option to make sure 
+// FIXME: that the tokens we arbitrarily insert get properly expanded?
 // Insert a token directly into the lexers token stream. Should only be used to
 // help error recovery within the parser and not to just push tokens in whenever
 // we feel like it. Note that this pushes said token right into the start of the
 // stream, regardless of whatever tokens are already in front of it.
 void preprocessor_insert_token(Preprocessor* pp, Token token);
+
+// Same as above but for a number of tokens. This is only really used for the
+// preexpansion of macro arguments so that we can substitute them in properly.
+// This should probably not be used by parsing functions as this may have
+// unintended consequences.
+void preprocessor_insert_tokens(Preprocessor* pp, Token* tokens,
+        size_t num_tokens);
 
 #endif /* PREPROCESSOR_H */

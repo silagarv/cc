@@ -127,6 +127,8 @@ void macro_enable(Macro* macro)
 
 bool macro_has_param(const Macro* macro, const Identifier* identifier)
 {
+    assert(macro != NULL && identifier != NULL && "missing inputs");
+
     Identifier** params = macro_params(macro);
     size_t num_params = macro_num_params(macro);
 
@@ -154,6 +156,42 @@ bool macro_get_param_num(const Macro* macro, const Identifier* identifier,
         if (params[i] == identifier)
         {
             *param_num = i;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+size_t macro_param_num(const Macro* macro, const Identifier* identifier)
+{
+    assert(macro_has_param(macro, identifier) && "doesn't have param?");
+    size_t result;
+    macro_get_param_num(macro, identifier, &result);
+    return result;
+}
+
+// FIXME: just add a field to the macro and check this at definition time
+bool macro_function_like_uses_args(const Macro* macro)
+{
+    assert(macro_function_like(macro) && "not a function like macro");
+
+    // Trivial case we have no parameters so we can't use any arguments anyway
+    if (macro->num_params == 0)
+    {
+        return false;
+    }
+
+    for (size_t i = 0, end = macro->num_tokens; i < end; i++)
+    {
+        Identifier* id = token_get_identifier(&macro->tokens[i]);
+        if (id == NULL)
+        {
+            continue;
+        }
+
+        if (macro_has_param(macro, id))
+        {
             return true;
         }
     }

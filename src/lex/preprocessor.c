@@ -4,10 +4,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <stdio.h>
 #include <string.h>
-#include <threads.h>
+#include <time.h> // For initialising builtin pp macros.
 
-#include "driver/warning.h"
 #include "files/line_map.h"
 #include "util/arena.h"
 #include "util/buffer.h"
@@ -25,11 +25,323 @@
 #include "lex/include_stack.h"
 #include "lex/macro.h"
 #include "lex/directives.h"
-#include "lex/expand.h"
 #include "lex/include_stack.h"
 #include "lex/macro_map.h"
 
 #define PREPROCESSOR_MAX_DEPTH 200
+
+// Structure which represents the tokens used in the argument to a macro 
+// invocation. This struct does not own the tokens, rather these tokens are 
+// collected by a macro expander from a token list. Also note that this is
+// only counting the tokens that are actually part of the argument. For every
+// valid macro argument a TOK_PP_ENDARG token exists at tokens[num_tokens]
+typedef struct MacroArgs {
+    Token* tokens;
+    size_t num_tokens;
+} MacroArgs;
+
+// A structure to hold and represent the current state of a macro expansion. 
+// This gives us the raw tokens from the body of the macro and 
+struct MacroExpansion {
+    Macro* macro; // The macro currently being expanded
+
+    MacroArgs* args; // An allocated list of macro args structures which 
+                     // represent the tokens that should be used for each 
+                     // argument in the macro expansion. Or NULL if the macro is
+                     // object like. Note that args is guaranteed to be as big
+                     // as the number of macro parameters.
+
+    TokenStream tokens; // The stream of tokens that we are currently expanding
+                        // This also helps store the current position in the 
+                        // expansion for us.
+
+    Location location; // The location that this macro was invoked at.
+
+    struct MacroExpansion* prev; // The previous macro expansion which is the
+                                 // one that triggered this one or NULL
+};
+
+// Forward declaration for builtin macros and expansion of function like macros
+// and also other functions which are needed in order for the preprocessor to
+// work
+TokenStream preprocessor_expand_builtin_macro(Preprocessor* pp,
+        const Macro* macro, Location location);
+TokenStream preprocessor_expand_function_macro(Preprocessor* pp,
+        const Macro* macro, const MacroArgs* args, Location location);
+bool preprocessor_get_next(Preprocessor* pp, Token* token);
+
+MacroArgs macro_args_create(Token* tokens, size_t num_tokens)
+{
+    return (MacroArgs) { tokens, num_tokens };
+}
+
+TokenStream macro_args_get_stream(const MacroArgs* arg)
+{
+    return token_stream_create(arg->tokens, arg->num_tokens);
+}
+
+Token* macro_arg_tokens(const MacroArgs* arg)
+{
+    return arg->tokens;
+}
+
+size_t macro_arg_num_tokens(const MacroArgs* arg)
+{
+    return arg->num_tokens;
+}
+
+// Get the replacement list for a particular macro invocation. For object like
+// macros this function get's it's replacement list directly from the macro
+// whereas with builtin and function like macros, there is the possibility that
+// we will have to call out to the preprocessor to help us expand the macros.
+TokenStream macro_expansion_replacement_list(Arena* arena, Macro* macro,
+        MacroArgs* args, Location location, Preprocessor* pp)
+{
+    // If we are a built in macro we will do some special processing by the 
+    // preprocessor in order to properly be expanded. So go off and handle this
+    // properly returning a replacement token stream for us to lex
+    if (macro_builtin(macro))
+    {
+        assert(args == NULL && "builtin macro with arguments?");
+        return preprocessor_expand_builtin_macro(pp, macro, location);
+    }
+
+    // If we are not a function like macro then the replacement list is simply
+    // the replacement list of the macro (i.e. no macro parameters that we need
+    // to be able to handle)
+    if (!macro_function_like(macro))
+    {
+        return macro_get_stream(macro);
+    }
+    
+    return preprocessor_expand_function_macro(pp, macro, args, location);
+}
+
+MacroExpansion* macro_expansion_create(Arena* allocator, Macro* macro,
+        MacroArgs* args, Location location, MacroExpansion* prev,
+        Preprocessor* pp)
+{
+    // Determine the replacement list of the macro here. Note that we may have
+    // to do some expansion of macros in the replacement list for this.
+    TokenStream replacement_list = macro_expansion_replacement_list(allocator,
+            macro, args, location, pp);
+
+    // Finally, once we have go the replacement list finish creating the macro
+    // expansion structure and push it.
+    MacroExpansion* expansion = arena_malloc(allocator, sizeof(MacroExpansion));
+    *expansion = (MacroExpansion)
+    {
+        .macro = macro,
+        .args = args,
+        .tokens = replacement_list,
+        .location = location,
+        .prev = prev
+    };
+
+    return expansion;
+}
+
+// Create a macro expansion object for an argument expansion
+MacroExpansion* macro_expansion_create_arg(Arena* allocator, Token* tokens,
+        size_t num_tokens, Location location, MacroExpansion* prev)
+{
+    MacroExpansion* expansion = arena_malloc(allocator, sizeof(MacroExpansion));
+    *expansion = (MacroExpansion)
+    {
+        .macro = NULL,
+        .args = NULL,
+        .tokens = token_stream_create(tokens, num_tokens),
+        .location = location,
+        .prev = prev
+    };
+
+    return expansion;
+}
+
+Macro* macro_expansion_macro(const MacroExpansion* expansion)
+{
+    assert(expansion != NULL && "need expansion");
+    return expansion->macro;
+}
+
+TokenStream* macro_expansion_tokens(MacroExpansion* expansion)
+{
+    assert(expansion != NULL && "need expansion");
+    return &expansion->tokens;
+}
+
+Location macro_expansion_location(const MacroExpansion* expansion)
+{
+    assert(expansion != NULL && "need expansion");
+    return expansion->location;   
+}
+
+MacroExpansion* macro_expansion_prev(const MacroExpansion* expansion)
+{
+    assert(expansion != NULL && "need expansion");
+    return expansion->prev;
+}
+
+// Special function to test if we are doing an argument expansion
+bool macro_expansion_arg(const MacroExpansion* expansion)
+{
+    return expansion->macro == NULL;
+}
+
+Token macro_expansion_consume(MacroExpansion* expansion)
+{
+    assert(!token_stream_end(&expansion->tokens) && "stream exhausted!");
+    return token_stream_consume(&expansion->tokens);
+}
+
+Token macro_expansion_peek(const MacroExpansion* expansion)
+{
+    assert(!token_stream_end(&expansion->tokens) && "stream exhausted!");
+    return token_stream_peek(&expansion->tokens);
+}
+
+bool macro_expansion_finished(const MacroExpansion* expansion)
+{
+    return token_stream_end(&expansion->tokens);
+}
+
+MacroExpander macro_expander_create(SourceManager* sm)
+{
+    return (MacroExpander) { arena_new_default(), NULL };
+}
+
+void macro_expander_delete(MacroExpander* expander)
+{
+    arena_delete(&expander->allocator);
+}
+
+Arena* macro_expander_allocator(MacroExpander* expander)
+{
+    return &expander->allocator;
+}
+
+bool macro_expander_expanding(const MacroExpander* expander)
+{
+    return expander->expansion != NULL;
+}
+
+void macro_expander_push(MacroExpander* expander, Macro* macro, MacroArgs* args,
+        Location location, Preprocessor* pp)
+{
+    assert(!macro_disabled(macro) && "macro is currently expanding!");
+
+    // Before we go and push the macro we should check that the macro is not
+    // empty. If it is empty we can simply return. This act's like we pushed,
+    // expanded nothing and then popped it off.
+    if (!macro_builtin(macro) && macro_num_tokens(macro) == 0)
+    {
+        return;
+    }
+
+    // Push to our macro stack with all of the given macro information.
+    expander->expansion = macro_expansion_create(&expander->allocator, macro,
+            args, location, expander->expansion, pp);
+
+    // And then also remember to disable the macro once we push it.
+    macro_disable(macro);
+}
+
+void macro_expander_push_arg(MacroExpander* expander, MacroArgs arg,
+        Location location)
+{
+    Token* tokens = macro_arg_tokens(&arg);
+    size_t num_tokens = macro_arg_num_tokens(&arg);
+    assert(token_is_type(&tokens[num_tokens], TOK_PP_ARGEND) && "need argend!");
+
+    // Push to our macro stack with all the macro expansion argument.
+    expander->expansion = macro_expansion_create_arg(&expander->allocator,
+            tokens, num_tokens + 1, location, expander->expansion);
+}
+
+void macro_expander_pop(MacroExpander* expander)
+{
+    assert(macro_expansion_finished(expander->expansion) && "unfinished invoc");
+    assert(!macro_expansion_arg(expander->expansion) && "popping an arg!!");
+    
+    // Make sure to get the macro and re-enable it so we can expand it again
+    Macro* macro = macro_expansion_macro(expander->expansion);
+    macro_enable(macro);
+
+    // Then pop the expansion off of the stack
+    expander->expansion = macro_expansion_prev(expander->expansion);
+}
+
+void macro_expander_pop_arg(MacroExpander* expander)
+{
+    assert(macro_expansion_finished(expander->expansion) && "unfinished invoc");
+    assert(macro_expansion_arg(expander->expansion) && "popping a macro!!");
+
+    // Simply pop the current expansion off of the stack
+    expander->expansion = macro_expansion_prev(expander->expansion);
+}
+
+bool macro_expander_next(MacroExpander* expander, Token* token)
+{
+    assert(macro_expander_expanding(expander) && "not expanding a macro?");
+
+    // If the current macro expansion is finished then pop the current expansion
+    // off and try again. Continue to do this until we get to an expansion that
+    // is not finished.
+    while (macro_expansion_finished(expander->expansion))
+    {
+        // Pop the expansion.
+        macro_expander_pop(expander);
+        
+        // If we are no longer expanding that means we have popped the final
+        // expansion off of the stack. Return false to indicated we didn't get
+        // a token so that the caller can know that we are done.
+        if (!macro_expander_expanding(expander))
+        {
+            return false;
+        }
+    }
+
+    // Otherwise simply consume the token
+    *token = macro_expansion_consume(expander->expansion);
+
+    // Then we will always want to pop at this point if we have an argument type
+    // expansion. Note that I think it may work without this? But I do not want
+    // to risk it.
+    if (macro_expansion_arg(expander->expansion))
+    {
+        if (macro_expansion_finished(expander->expansion))
+        {
+            macro_expander_pop_arg(expander);
+        }
+    }
+
+    return true;
+}
+
+bool macro_expander_peek(MacroExpander* expander, Token* token)
+{
+    assert(macro_expander_expanding(expander) && "should be expanding");
+
+    // Similar to the above code, whilst we are at the end of expansions we need
+    // to be able peek tokens to see what we get. Note, that we don't pop them
+    // off of the stack here, rather we travel down the stack until we find what
+    // we're looking for.
+    MacroExpansion* expansion = expander->expansion;
+    while (macro_expansion_finished(expansion))
+    {
+        expansion = macro_expansion_prev(expansion);
+        
+        // NULL means theres no more expansions so no more macro tokens
+        if (expansion == NULL)
+        {
+            return false;
+        }        
+    }
+    
+    // Otherwise peek the token on the expansion
+    *token = macro_expansion_peek(expansion);
+    return true;
+}
 
 // Print a quoted include filename into a buffer
 static void buffer_add_quote_include(Buffer* buffer, const char* filename)
@@ -167,6 +479,43 @@ void preprocessor_add_builtin_macros(Preprocessor* pp)
     preprocessor_add_builtin_macro(pp, pp->id__Pragma, true);
 }
 
+void preprocessor_initialise_date_time(Preprocessor* pp)
+{
+    // Get an array containing all of the months
+    static const char* const months[12] = { "Jan", "Feb", "Mar", "Apr", "May",
+            "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+
+    // Start by attemptin to get the time from the system.
+    time_t t = time(NULL);
+    struct tm* tm = NULL;
+    if (t != (time_t) -1)
+    {
+        tm = localtime(&t);
+    }
+
+    // Print the date into the buffer if we go the struct and then create the
+    // date buffer no matter what.
+    char date[sizeof("mmm dd yyyy")] = "??? ?? ???";
+    if (tm != NULL)
+    {
+        sprintf(date, "%s %2d %d", months[tm->tm_mon], tm->tm_mday,
+                tm->tm_year + 1900);
+    }
+    Buffer date_buffer = buffer_from_format("\"%s\"\n", date);
+    pp->file__DATE__ = source_manager_create_anonomous_buffer(pp->sm,
+            date_buffer, LOCATION_INVALID);
+
+    // The do something very similar for the time
+    char time[sizeof("hh:mm:ss")] = "??:??:??";
+    if (tm != NULL)
+    {
+        sprintf(date, "%2d:%2d:%2d", tm->tm_hour, tm->tm_min, tm->tm_sec);
+    }
+    Buffer time_buffer = buffer_from_format("\"%s\"\n", date);
+    pp->file__TIME__ = source_manager_create_anonomous_buffer(pp->sm,
+            time_buffer, LOCATION_INVALID);
+}
+
 bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
         LangOptions* opts, SourceManager* sm, Filepath main_file,
         IdentifierTable* ids)
@@ -202,11 +551,13 @@ bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
     preprocessor_get_builtin_identifiers(pp);
 
     // Then add all the builtin macros to the preprocessor and initialise the
-    // counter macro.
+    // counter, __DATE__, and __TIME__ macros
     pp->macros = macro_map_create();
     pp->expander = macro_expander_create(sm);
     preprocessor_add_builtin_macros(pp);
     pp->counter = 0;
+    preprocessor_initialise_date_time(pp);
+    pp->collecting_args = false;
 
     // Finally, put our input onto the stack so that we are ready to start 
     // lexing our tokens. Don't check the return value as this should never
@@ -247,7 +598,16 @@ IncludeVector* preprocessor_inputs(Preprocessor* pp)
 
 unsigned int preprocessor_include_depth(const Preprocessor* pp)
 {
-    return include_vector_size(&pp->inputs);
+    size_t size = include_vector_size(&pp->inputs);
+    
+    // In case this is somehow called for the instance of having no current 
+    // inputs. Otherwise size-- is sufficient
+    if (size > 0)
+    {
+        size--;
+    }
+
+    return size;
 }
 
 MacroMap* preprocessor_macro_map(Preprocessor* pp)
@@ -255,11 +615,28 @@ MacroMap* preprocessor_macro_map(Preprocessor* pp)
     return &pp->macros;
 }
 
+MacroExpander* preprocessor_expander(Preprocessor* pp)
+{
+    return &pp->expander;
+}
+
+bool preprocessor_collecting_args(const Preprocessor* pp)
+{
+    return pp->collecting_args;
+}
+
 void preprocessor_enter_directive(Preprocessor* pp)
 {
     Include* current = include_vector_back(&pp->inputs);
     Lexer* lexer = include_get_lexer(current);
     lexer_set_directive(lexer);
+}
+
+void preprocessor_allow_headers(Preprocessor* pp)
+{
+    Include* current = include_vector_back(&pp->inputs);
+    Lexer* lexer = include_get_lexer(current);
+    lexer_set_header(lexer);
 }
 
 void preprocessor_read_diagnostic_string(Preprocessor* pp, Buffer* buffer)
@@ -347,6 +724,13 @@ bool preprocessor_should_expand(Preprocessor* pp, Token* token)
         return false;
     }
 
+    // C99 6.10.3.4 -> some tokens are no longer available for macro expansion
+    // in some cases. So this is an important check to do.
+    if (token_has_flag(token, TOK_FLAG_NOEXPAND))
+    {
+        return false;
+    }
+
     // Get the identifier from the token, and subsequentyly any macro definition
     // that is currently around.
     Identifier* name = token_get_identifier(token);
@@ -356,8 +740,14 @@ bool preprocessor_should_expand(Preprocessor* pp, Token* token)
         return false;
     }
 
+    // C99 6.10.3.4 -> some tokens are no longer available for macro expansion
+    // in some cases. `The non-replaced macro name preprocessing tokens are no
+    // longer available for further replacement...`
     if (macro_disabled(macro))
     {
+        // FIXME: should check that this does not break anything in an 
+        // FIXME: unexpected ways...
+        token_set_flag(token, TOK_FLAG_NOEXPAND);
         return false;
     }
 
@@ -379,44 +769,11 @@ bool preprocessor_should_expand(Preprocessor* pp, Token* token)
     return true;
 }
 
-// TODO: here put functions for pre-expanding macros
-void preprocessor_expand_line(Preprocessor* pp, Location location)
+TokenStream preprocessor_expand_token_from_file(Preprocessor* pp,
+        Location location, SourceFile* source, TokenType expected)
 {
-    
-}
+    assert(source != NULL && "need a source to expand a token from!");
 
-void preprocessor_expand_file(Preprocessor* pp, Location location)
-{
-    
-}
-
-void preprocessor_expand_date(Preprocessor* pp)
-{
-    
-}
-
-void preprocessor_expand_time(Preprocessor* pp)
-{
-    
-}
-
-void preprocessor_expand_include_level(Preprocessor* pp, Location location)
-{
-    unsigned int lever = preprocessor_include_depth(pp);
-}
-
-TokenStream preprocessor_expand_counter(Preprocessor* pp, Location location)
-{
-    // First start by getting the counter and incrementing it.
-    unsigned int counter = pp->counter++;
-    assert(counter != 0 && "counter overflowed?");
-
-    // Then print the counter value into a buffer and from this buffer create
-    // and lex the replacement list that we need.
-    Buffer counter_buffer = buffer_from_format("%u\n", counter);
-    SourceFile* source = source_manager_create_anonomous_buffer(pp->sm,
-            counter_buffer, LOCATION_INVALID);
-    
     // Then since we now have a source file we can lex from create a lexer and
     // read all of the tokens from the source (should be a single token here)
     // Note: in theory we should never get a tokens that can be expanded again
@@ -426,31 +783,267 @@ TokenStream preprocessor_expand_counter(Preprocessor* pp, Location location)
 
     // Next lex the number token and the theoretical EOF token from the lexer
     // we just created.
-    Token number;
-    lexer_get_next(&lexer, &number);
-    assert(token_is_type(&number, TOK_NUMBER) && "not a number token?");
+    Token token;
+    lexer_get_next(&lexer, &token);
+    assert(token_is_type(&token, expected) && "didn't get the expeced token");
 
     Token eof;
     lexer_get_next(&lexer, &eof);
-    assert(token_is_type(&number, TOK_EOF) && "got a token that wasn't eof?");
+    assert(token_is_type(&eof, TOK_EOF) && "got a token that wasn't eof?");
 
     // Finally, using the preprocessor macro expanding allocator, allocate our
     // replacement list for the token and then create our token stream with it
     Token* replacement = arena_malloc(macro_expander_allocator(&pp->expander),
             sizeof(Token));
-    *replacement = number;
+    *replacement = token;
     return token_stream_create(replacement, 1);
 }
 
-void preprocessor_expand_pragma(Preprocessor* pp)
+TokenStream preprocessor_expand_unsigned(Preprocessor* pp, Location location,
+        unsigned int value)
 {
+    // Then print the counter value into a buffer and from this buffer create
+    // and lex the replacement list that we need.
+    Buffer buffer = buffer_from_format("%u\n", value);
+    SourceFile* source = source_manager_create_anonomous_buffer(pp->sm,
+            buffer, LOCATION_INVALID);
     
+    // Finally, go ahed and attempt to expand the token from the file.
+    return preprocessor_expand_token_from_file(pp, location, source,
+            TOK_NUMBER);
+}
+
+TokenStream preprocessor_expand_string(Preprocessor* pp, Location location,
+        const char* value)
+{
+    // Then print the counter value into a buffer and from this buffer create
+    // and lex the replacement list that we need.
+    // FIXME: do we need to properly quote the value possible???
+    Buffer buffer = buffer_from_format("\"%s\"\n", value);
+    SourceFile* source = source_manager_create_anonomous_buffer(pp->sm,
+            buffer, LOCATION_INVALID);
+    
+    return preprocessor_expand_token_from_file(pp, location, source,
+            TOK_STRING);
+}
+
+TokenStream preprocessor_expand_line(Preprocessor* pp, Location location)
+{
+    // FIXME: add properly handling of resolving of the line number.
+    // TODO: this should be implemented in the SourceManager.c file as currently
+    // TODO: the diagnostic manager does some janky stuff in order to get the 
+    // TODO: current line and column number.
+    SourceFile* source = source_manager_from_location(pp->sm, location);
+    assert(source != NULL && "got a location but no source?");
+    unsigned int line = line_map_resolve_line(&source->line_map, location);
+    return preprocessor_expand_unsigned(pp, location, line);    
+}
+
+TokenStream preprocessor_expand_file(Preprocessor* pp, Location location)
+{
+    // Initialise the filepath that we are going to print into.
+    // FIXME: come back and implement this
+    // TODO: like the line will need to do some work in the implementation of
+    // TODO: the source manager so that this will give the correct path name
+    // TODO: this in particular is more when we have a file that has line 
+    // TODO: directives though
+    SourceFile* source = source_manager_from_location(pp->sm, location);
+    assert(source != NULL && "got a location but no source?");
+    Filepath* path = source_file_get_name(source);
+    return preprocessor_expand_string(pp, location, filepath_get_cstr(path));
+}
+
+TokenStream preprocessor_expand_date(Preprocessor* pp, Location location)
+{
+    assert(pp->file__DATE__ != NULL && "should have a date!");
+    return preprocessor_expand_token_from_file(pp, location, pp->file__DATE__,
+            TOK_STRING);
+}
+
+TokenStream preprocessor_expand_time(Preprocessor* pp, Location location)
+{
+    assert(pp->file__TIME__ != NULL && "should have a time!");
+    return preprocessor_expand_token_from_file(pp, location, pp->file__TIME__,
+            TOK_STRING);
+}
+
+TokenStream preprocessor_expand_include_level(Preprocessor* pp, Location location)
+{
+    unsigned int level = preprocessor_include_depth(pp);
+    return preprocessor_expand_unsigned(pp, location, level);
+}
+
+TokenStream preprocessor_expand_counter(Preprocessor* pp, Location location)
+{
+    // Get the counter and increment it returning the result of expanding the 
+    // original value.
+    // FIXME: what if the counter overflows?
+    unsigned int value = pp->counter++;
+    return preprocessor_expand_unsigned(pp, location, value);
+}
+
+// TODO: how should we handle this since the preprocessor handles some pragmas
+// TODO: but it does not handle other pragmas, this might be a bit tricky...?
+TokenStream preprocessor_expand_pragma(Preprocessor* pp, Location location)
+{
+    // TODO: need to properly parse the pragma. It appears we do proper 
+    // TODO: expansion of the tokens once we know we have a pragma token 
+    panic("_Pragma handling unimplemented");
+    return token_stream_create_empty();
+}
+
+TokenStream preprocessor_expand_builtin_macro(Preprocessor* pp,
+        const Macro* macro, Location location)
+{
+    Identifier* identifier = macro_name(macro);
+    if (identifier == pp->id___LINE__)
+    {
+        return preprocessor_expand_line(pp, location);
+    }
+    else if (identifier == pp->id___FILE__)
+    {
+        return preprocessor_expand_file(pp, location);
+    }
+    else if (identifier == pp->id___DATE__)
+    {
+        return preprocessor_expand_date(pp, location);
+    }
+    else if (identifier == pp->id___TIME__)
+    {
+        return preprocessor_expand_time(pp, location);
+    }
+    else if (identifier == pp->id___INCLUDE_LEVEL__)
+    {
+        return preprocessor_expand_include_level(pp, location);
+    }
+    else if (identifier == pp->id___COUNTER__)
+    {
+        return preprocessor_expand_counter(pp, location);
+    }
+    else if (identifier == pp->id__Pragma)
+    {
+        // TODO: should I change the handling of the _Pragma here???
+        return preprocessor_expand_pragma(pp, location);
+    }
+
+    panic("unreachable; unhandled builtin macro type");
+    return token_stream_create_empty();
+}
+
+void preprocessor_push_macro_argument(Preprocessor* pp, MacroArgs arg,
+        Location location)
+{
+    macro_expander_push_arg(&pp->expander, arg, location);
+}
+
+void preprocessor_expand_macro_argument(Preprocessor* pp, TokenList* result,
+        size_t* count, MacroArgs arg, Location location)
+{
+    // This should be true since we first pull from the cache in 
+    // preprocessor_get_next which should not be done so this is checked here.
+    assert(token_list_empty(&pp->cache) && "non-empty cache???");
+
+    // Push this macro argument as is to the expansion stack so that we can then
+    // go and expand it nice and quickly.
+    preprocessor_push_macro_argument(pp, arg, location);
+
+    // Then keep grabbing tokens from the stream until we get to the argend 
+    // token. This make expanding the arguments nice and simple from our 
+    // perspective.
+    Token tmp = {0};
+    while (true)
+    {
+        preprocessor_get_next(pp, &tmp);
+        assert(!token_is_type(&tmp, TOK_EOF) && "EOF expanding macro arg!");
+
+        // Once we reach the end of the argument stop attempting to get more
+        // tokens. If we do this we will be affecting the 
+        if (token_is_type(&tmp, TOK_PP_ARGEND))
+        {
+            break;
+        }
+
+        // Add the token to the list and increase the current count of tokens
+        token_list_push_back(result, tmp);
+        (*count)++;
+    }
+}
+
+// The algorithm for replacing the arguemtns and expanding function like macros
+// can be a little tricky. The basic steps are follows. Note that we have 
+// already collected all of our unexpanded macro arguments and checked that the
+// macro has a replacement list which has at least one token in it.
+TokenStream preprocessor_expand_function_macro(Preprocessor* pp,
+        const Macro* macro, const MacroArgs* args, Location location)
+{
+    assert(macro_function_like(macro) && "not function macro?");
+
+    // C99 6.10.3.1 Argument substution
+    // After the arguments for the invocation of a function-like macro have been
+    // identified, argument substitution takes place. A parameter in the 
+    // replacement list, unless preceded by a # or ## preprocessing token or 
+    // followed by a ## preprocessing token (see below), is replaced by the 
+    // corresponding argument after all macros contained therein have been
+    // expanded. Before being substituted, each argument’s preprocessing tokens
+    // are completely macro replaced as if they formed the rest of the 
+    // preprocessing file; no other preprocessing tokens are available
+
+    // First do a check for a macro which doesn't use it's arguments for 
+    // anything. In this case just return the stream. This avoid allocating
+    // assitional memory that we might need.
+    if (!macro_function_like_uses_args(macro))
+    {
+        return macro_get_stream(macro);
+    }
+
+    // Get the initial replacement list of the macro and scan through it until
+    // FIXME: it would be good if TokenList could just track it's count since
+    // FIXME: there are alot of situations list this that probably should be
+    // FIXME: fixed to reduce errors and make code cleaner.
+    TokenList result = token_list(arena_new_default());
+    size_t count = 0;
+
+    TokenStream replacement = macro_get_stream(macro);
+    while (!token_stream_end(&replacement))
+    {
+        // FIXME: stringification and concatenation handling needed.
+        
+        // Get the current token from the stream and test if it is a parameter
+        // name. If it is not a parameter name then simply add it to the 
+        // replacement list for the later rescanning.
+        Token tok = token_stream_consume(&replacement);
+        Identifier* name = token_get_identifier(&tok);
+        size_t param;
+        if (name == NULL || !macro_get_param_num(macro, name, &param))
+        {
+            token_list_push_back(&result, tok);
+            count++;
+            continue;
+        }
+
+        // Otherwise we need to macro expand the macros replacement list
+        preprocessor_expand_macro_argument(pp, &result, &count, args[param],
+                location);
+    }
+
+    // Now that we have the final replacement list for the macro (which is due
+    // for rescanning) we can flatten our linked list into tokens.
+    MacroExpander* expander = preprocessor_expander(pp);
+    Token* tokens = token_list_flatten(macro_expander_allocator(expander),
+            &result, count);
+    
+    // Free the replacement list.
+    token_list_free(&result);
+
+    // Finally, we can return the stream that we got.
+    return token_stream_create(tokens, count);
 }
 
 void preprocessor_push_macro_expansion(Preprocessor* pp, Token* token,
         Macro* macro, MacroArgs* args)
 {
-    macro_expander_push(&pp->expander, macro, args, token_get_location(token));
+    macro_expander_push(&pp->expander, macro, args, token_get_location(token),
+            pp);
 }
 
 // Collect a token list into a series of macro arguments that we can used for
@@ -461,13 +1054,22 @@ MacroArgs* preprocessor_collect_macro_arguments(Preprocessor* pp,
         TokenList* tmp_tokens, size_t token_count, size_t num_expected,
         bool variadic)
 {
+    // FIXME: if token_count is 0 this allocated alot of memory in the list's
+    // FIXME: arena all for only one token.
     // If we didn't expect any arguemtns then just exit, we don't have anything
     // to really do here.
-    if (num_expected == 0 || (num_expected == 1 && token_count == 0))
+    if (num_expected == 0/*|| (num_expected == 1 && token_count == 0)*/)
     {
         assert(token_count == 0 && "expected no arguments but got tokens?");
         return NULL;
     }
+
+    // Before we finish collecting macro arguments we will need to add the 
+    // argend token onto the end of the token list. So create that fake token
+    // and push it onto the end of the list
+    Token end = {0};
+    token_set_type(&end, TOK_PP_ARGEND);
+    token_list_push_back(tmp_tokens, end);
 
     // Get the macro expanders allocator and make it responsible for storing
     // the tokens. And then allocate the arguments we are going to use and also 
@@ -475,7 +1077,8 @@ MacroArgs* preprocessor_collect_macro_arguments(Preprocessor* pp,
     // our macro arguments.
     Arena* allocator = macro_expander_allocator(&pp->expander);
     MacroArgs* args = arena_malloc(allocator, sizeof(MacroArgs) * num_expected);
-    Token* tokens = token_list_flatten(allocator, tmp_tokens, token_count);
+    // Plus one for ARGEND so that we can have a terminator for the last arg.
+    Token* tokens = token_list_flatten(allocator, tmp_tokens, token_count + 1);
 
     // For each of our arguments find the non-nested comma and turn it into a
     // special token which represents the end of an argument so that we can
@@ -528,12 +1131,13 @@ MacroArgs* preprocessor_collect_macro_arguments(Preprocessor* pp,
         {
             assert(token_is_type(&tokens[current_offset], TOK_COMMA)
                     && "should be a comma but we don't have it?");
+                
+            // Set the token type to be ARGEND so that we have some kind of 
+            // sentinal and know when the argument ends later.
+            token_set_type(&tokens[current_offset], TOK_PP_ARGEND);
             current_offset++;
         }
 
-        // TODO: should we modify the token stream to remove any of the excess 
-        // TODO: commas so that we have some kind of sentinal to make sure we 
-        // TODO: don't expand the comma ever by accident?
         args[arg] = macro_args_create(tokens + start_offset, arg_tokens);
     }
     assert(current_offset == token_count && "didn't go through all tokens?");
@@ -541,8 +1145,9 @@ MacroArgs* preprocessor_collect_macro_arguments(Preprocessor* pp,
     return args;
 }
 
-MacroArgs* preprocessor_get_macro_arguments(Preprocessor* pp, Token* macro_tok,
-        Macro* macro)
+// Returns false if we failed to collect the macro arguments, otherwise true.
+bool preprocessor_get_macro_arguments(Preprocessor* pp, Token* macro_tok,
+        Macro* macro, MacroArgs** args)
 {
     Token tmp_tok;
     preprocessor_next_unexpanded_token(pp, &tmp_tok);
@@ -570,7 +1175,8 @@ MacroArgs* preprocessor_get_macro_arguments(Preprocessor* pp, Token* macro_tok,
     {
         preprocessor_next_unexpanded_token(pp, &tmp_tok);
 
-        if (token_is_type(&tmp_tok, TOK_EOF))
+        if (token_is_type(&tmp_tok, TOK_EOF)
+                || token_is_type(&tmp_tok, TOK_PP_EOD))
         {
             diagnostic_error_at(pp->dm, token_get_location(&tmp_tok),
                     "unterminated function-like macro invocation");
@@ -668,10 +1274,9 @@ MacroArgs* preprocessor_get_macro_arguments(Preprocessor* pp, Token* macro_tok,
 
     // Now if we didn't have a fatal error then let's go and collect the macro
     // arguments into nice structures for use to use then.
-    MacroArgs* args = NULL;
     if (!fatal_error)
     {
-        args = preprocessor_collect_macro_arguments(pp, &tmp_tokens,
+        *args = preprocessor_collect_macro_arguments(pp, &tmp_tokens,
                 token_count, num_expected, variadic);
         assert(token_list_empty(&tmp_tokens) && "didn't collect all tokens?");
     }
@@ -679,8 +1284,8 @@ MacroArgs* preprocessor_get_macro_arguments(Preprocessor* pp, Token* macro_tok,
     // Finally, free the token list and get rid of it's memory
     token_list_free(&tmp_tokens);
 
-    // Then we can finally return our arguments
-    return args;
+    // If we got a fatal error return false, otherwise return true
+    return !fatal_error;
 }
 
 bool preprocessor_start_expansion(Preprocessor* pp, Token* token)
@@ -690,14 +1295,13 @@ bool preprocessor_start_expansion(Preprocessor* pp, Token* token)
     assert(macro != NULL && !macro_disabled(macro) && "need an alive macro!");
    
     // If we have a function like expansion then let's now go and collect the
-    // arguments for it.
-    void* args = NULL;
+    // arguments for it. Note that args may still be NULL after in some 
+    // particular situations so is not a good way to detect if that failed or
+    // not.
+    MacroArgs* args = NULL;
     if (macro_function_like(macro))
     {
-        args = preprocessor_get_macro_arguments(pp, token, macro);
-        
-        // Argument collection failed to produce anything
-        if (args == NULL)
+        if (!preprocessor_get_macro_arguments(pp, token, macro, &args))
         {
             return false;
         }
@@ -747,6 +1351,25 @@ bool preprocessor_expand_next(Preprocessor* pp, Token* token)
 // component of the preprocessor as it's own entity (as much as possible);
 bool preprocessor_get_next(Preprocessor* pp, Token* token)
 {
+    // If we have tokens in the cache we should pull those off. This mechanism
+    // is primarily used for getting the peek token.
+    if (!token_list_empty(&pp->cache))
+    {
+        *token = token_list_pop_front(&pp->cache);
+        return true;
+    }
+
+    // If we don't have any input simply return false to say we got nothing.
+    // This is mainly used as a fail safe in the event that all of our inputs
+    // are popped from the stack and we discard the EOF token acidentally.
+    if (!preprocessor_has_input(pp))
+    {
+        Token eof = {0};
+        token_set_type(&eof, TOK_EOF);
+        *token = eof;
+        return false;
+    }
+
     // If we are currently expanding, do the expansion and return the token
     // to the calling function to this one. Note that we need to check that
     // we get an expansion token to avoid us popping the expansion early and
@@ -769,6 +1392,8 @@ bool preprocessor_get_next(Preprocessor* pp, Token* token)
     // on that line. If we have one, parse it and then try again to get the
     // next token. Even if we are caching our token then we will need to
     // handle this directive to get to our next token. So handle it.
+    // FIXME: Is this okay for long chains at the start of a file when this
+    // FIXME: isn't getting deleted by tail recursion
     if (preprocessor_directive_start(pp, token))
     {
         preprocessor_parse_directive(pp, token);
@@ -790,38 +1415,37 @@ bool preprocessor_get_next(Preprocessor* pp, Token* token)
 
 bool preprocessor_advance_token(Preprocessor* pp, Token* token)
 {
-    // If we have cached tokens, pop them from the front of the list and thats
-    // how we get the next token.
-    if (!token_list_empty(&pp->cache))
-    {
-        *token = token_list_pop_front(&pp->cache);
-        return true;
-    }
-
-    // Otherwise get but don't cache the next token.
     return preprocessor_get_next(pp, token);
 }
 
 bool preprocessor_peek_token(Preprocessor* pp, Token* token)
 {
-    // If we have cached tokens, simply peek the front token of the list and
-    // return that token to us. As there is no work to do here.
-    if (!token_list_empty(&pp->cache))
-    {
-        *token = token_list_peek_front(&pp->cache);
-        return true;
-    }
-
     // Otherwise get and cache the next token for us.
     bool ret = preprocessor_get_next(pp, token);
 
-    // Make sure to add the token to our list of peeked tokens
+    // Make sure to add the token to the start of the list so that we don't lose
+    // our peek token as there is not way to go back currently.
     token_list_push_back(&pp->cache, *token);
+
     return ret;
 }
 
 void preprocessor_insert_token(Preprocessor* pp, Token token)
 {
-    token_list_push_front(&pp->cache, token);
+    preprocessor_insert_tokens(pp, &token, 1);
+}
+
+void preprocessor_insert_tokens(Preprocessor* pp, Token* tokens,
+        size_t num_tokens)
+{
+    size_t remaining = num_tokens;
+    while (remaining != 0)
+    {
+        // We must push the front as it is possible there could be tokens 
+        // current in the preprocessor's cache which would mean we would pick
+        // those off first each time we advance.
+        token_list_push_front(&pp->cache, tokens[remaining - 1]);
+        remaining--;
+    }
 }
 

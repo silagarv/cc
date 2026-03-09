@@ -39,6 +39,7 @@ typedef struct Lexer {
 void lexer_create(Lexer* lexer, DiagnosticManager* dm, LangOptions* opts,
         Arena* literal_arena, IdentifierTable* identifiers, SourceFile* source);
 void lexer_set_directive(Lexer* lexer);
+void lexer_set_header(Lexer* lexer);
 
 // Get the next token from the lexer advancing it's position. Note that this
 // cannot be undone. However, this should never be necessary as the token 

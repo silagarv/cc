@@ -593,8 +593,12 @@ Token* token_list_flatten(Arena* arena, TokenList* list, size_t count)
 
 TokenStream token_stream_create(Token* tokens, size_t length)
 {
-    assert(tokens != NULL && "need tokens to create a stream");
     return (TokenStream) { tokens, length, 0 };
+}
+
+TokenStream token_stream_create_empty(void)
+{
+    return (TokenStream) { NULL, 0, 0 };
 }
 
 Token* token_stream_tokens(const TokenStream* stream)

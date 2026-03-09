@@ -20,8 +20,10 @@ To building, run 'make' in the cc directory and it wll output an executable name
 
 ## Current TODO
 - Preprocessor
-    - Possibly move the macro expanding machinery into the preprocessing file itself since the expander and preprocessor struct a quite coupled due to how they have to communicate this might be helpful to us and also both files are currenly relatively small with the preprocessing file having not much responsibility
-    - Implement function like macros
+    - Implement token concatenation and argument stringification
+    - Improve diagnostics by giving macro expanded tokens a sensible location (currently it defaults to the location of the macro token)
+    - Eventually implement the 'multiple include' optimisation
+    - Preprocessor should probably properly propogate spacing information
 - Parser & semantic
     - Fix every occurance of getting an identifier from a token so that they use the token_get_identifier instead of getting directly from the token
 - Declaration parsing
@@ -29,6 +31,8 @@ To building, run 'make' in the cc directory and it wll output an executable name
     - Fix declarations groups so they also optionally include a struct / unions definition inside them if it was
     defined at that point. will have to go fix up for loop checking after this however
     - Need to fix non-detected of [*] modifier in function definitions
+- Codegen
+    - There is currently a use after free in the code generation for some unknown reason
 
 - Semantic
     - expressions

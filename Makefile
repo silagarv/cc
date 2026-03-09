@@ -69,7 +69,6 @@ LEX = src/lex/identifier_table.c \
 	src/lex/macro.c \
 	src/lex/macro_map.c \
 	src/lex/directives.c \
-	src/lex/expand.c \
 	src/lex/preprocessor.c
 
 PARSE = src/parse/ast_allocator.c \

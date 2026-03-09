@@ -63,6 +63,11 @@ void lexer_set_directive(Lexer* lexer)
     lexer->lexing_directive = true;
 }
 
+void lexer_set_header(Lexer* lexer)
+{
+    lexer->can_lex_header = true;
+}
+
 // Modify the lexer's position
 static void seek(Lexer* lexer, size_t pos)
 {
@@ -695,6 +700,10 @@ static char* get_string_literal_prefix(TokenType type)
         case TOK_UTF32_CHARACTER:
             return "U";
 
+        // Special case here.
+        case TOK_PP_HEADER_NAME:
+            return "";
+
         default:
             panic("unknown string literal type");
             return NULL;
@@ -715,7 +724,7 @@ static bool lex_string_like_literal(Lexer* lexer, Token* token, TokenType type)
     while (current != ending_delim)
     {
         // Escaped character get the next character but dont add just yet...
-        if (current == '\\')
+        if (current == '\\' && type != TOK_PP_HEADER_NAME)
         {
             buffer_add_char(&string, '\\');
             current = get_next_char(lexer);
@@ -783,7 +792,10 @@ static bool lex_wide_character_literal(Lexer* lexer, Token* token)
 
 static bool lex_header_name(Lexer* lexer, Token* token)
 {
-    return lex_string_like_literal(lexer, token, TOK_PP_HEADER_NAME);
+    assert(lexer->can_lex_header && "can't lex a header right now?");
+    bool ret = lex_string_like_literal(lexer, token, TOK_PP_HEADER_NAME);
+    lexer->can_lex_header = false;
+    return ret;
 }
 
 static bool lex_end_of_file(Lexer* lexer, Token* token, char* tok_start)
@@ -906,6 +918,7 @@ retry_lexing:;
             {
                 // Reset our lexing flags and set the token type
                 lexer->lexing_directive = false;
+                lexer->can_lex_header = false; // In the event of not getting it
                 lexer->start_of_line = true;
                 token->type = TOK_PP_EOD;
                 break;
