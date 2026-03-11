@@ -8,22 +8,12 @@
 #include "util/panic.h"
 #include "util/arena.h"
 
-#include "driver/lang.h"
 #include "files/filepath.h"
 
 #include "driver/diagnostic.h"
 #include "driver/options.h"
 #include "driver/target.h"
 #include "driver/translation_unit.h"
-
-#include "files/source_manager.h"
-
-#include "lex/preprocessor.h"
-
-#include "parse/parser.h"
-#include "parse/ast.h"
-
-#include "codegen/codegen.h"
 
 // TODO: get rid of below include
 #include <llvm-c/Core.h>

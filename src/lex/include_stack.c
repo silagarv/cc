@@ -28,8 +28,9 @@ Include include_create(DiagnosticManager* dm, LangOptions* opts,
 {
     // Create the include given that we already have everything else.
     Include include = {0};
-    lexer_create(&include.lexer, dm, opts, literals, names, source);
+    include.sf = source;
     include.search_path = entry;
+    lexer_create(&include.lexer, dm, opts, literals, names, source);
     include.cond = conditional_vector();
     return include;
 }
@@ -39,15 +40,22 @@ void include_delete(Include* include)
     conditional_vector_free(&include->cond, NULL);
 }
 
-Lexer* include_get_lexer(Include* include)
+SourceFile* include_get_source(Include* include)
 {
     assert(include != NULL && "include is NULL");
-    return &include->lexer;
+    return include->sf;
 }
+
 DirectoryEntry* include_get_search_path(Include* include)
 {
     assert(include != NULL && "include is NULL");
     return include->search_path;
+}
+
+Lexer* include_get_lexer(Include* include)
+{
+    assert(include != NULL && "include is NULL");
+    return &include->lexer;
 }
 
 ConditionalVector* include_get_conditionals(Include* include)

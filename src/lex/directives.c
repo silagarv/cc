@@ -2,9 +2,11 @@
 
 #include <assert.h>
 #include <stddef.h>
+#include <stdio.h>
 
 #include "driver/warning.h"
 #include "files/filepath.h"
+#include "files/source_manager.h"
 #include "util/arena.h"
 #include "util/buffer.h"
 #include "util/ptr_set.h"
@@ -18,6 +20,7 @@
 #include "lex/macro_map.h"
 #include "lex/token.h"
 #include "lex/preprocessor.h"
+#include "util/str.h"
 
 bool preprocessor_directive_start(Preprocessor* pp, Token* token)
 {
@@ -479,7 +482,85 @@ void preprocessor_handle_undef(Preprocessor* pp, Token* token)
     macro_map_do_undefine(macros, dm, name, loc);
 }
 
-bool preprocessor_get_filename(Preprocessor* pp, Token* token)
+bool preprocessor_copy_path(Preprocessor* pp, String str, Location location,
+        TokenType type, Filepath* path)
+{
+    // Decompose into pointer and length pairs.
+    const char* ptr = string_get_ptr(&str);
+    size_t len = string_get_len(&str);
+
+    // We then need to check those for validity of being able to copy into the
+    // path. If they are not valid then we return false but cannot issue a 
+    // diagnostic
+    char starting_delim = type == TOK_STRING ? '"' : '<';
+    char ending_delim = type == TOK_STRING ? '"' : '>';
+    assert(ptr[0] == starting_delim && "unusual token start?");
+
+    // For case of #include <abc -> Clang does not double error! so do the same
+    if (ptr[len - 1] != ending_delim)
+    {
+        return false;
+    }
+    
+    // Otherwise let's go and try to copy the filepath into path. So first 
+    // adjust our values so that we remove the starting delim and the length of
+    // the delims.
+    assert(len >= 2 && "name to short?");
+    len -= 2;
+    ptr += 1;
+
+    if (len == 0)
+    {
+        diagnostic_error_at(pp->dm, location, "empty filename");
+        return false;
+    }
+
+    int printed = snprintf(path->path, FILEPATH_LEN, "%.*s", (int) len, ptr);
+    path->len = (size_t) printed;
+
+    // Finally, also check if the filename is too long for us to be able to
+    // handle. If it is error here and make into an EOF token.
+    if (printed > FILEPATH_LEN)
+    {
+        diagnostic_fatal_error_at(pp->dm, location, "cannot include %s: file "
+                "name too long", string_get_ptr(&str));
+        return false;
+    }
+
+    assert(path->len < FILEPATH_LEN && "path length invalid value");
+    return true;
+}
+
+bool preprocessor_copy_path_simple(Preprocessor* pp, Token* token,
+        Filepath* path)
+{
+    if (!preprocessor_copy_path(pp, token_get_literal_node(token),
+            token_get_location(token), token_get_type(token), path))
+    {
+        token_set_type(token, TOK_EOF);
+        return false;
+    }
+
+    return true;
+}
+
+bool preprocessor_try_combine_tokens_for_header(Preprocessor* pp, Token* token,
+        Filepath* path)
+{
+    diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
+            "concatenation of tokens to try to form a header is unimplemented");
+    // FIXME: implement
+
+    // TODO: use a buffer and print the current tokens spelling into the buffer
+    // TODO: and that kind of thing...
+    Buffer buffer = buffer_new();
+    buffer_free(&buffer);
+
+    return false;
+}
+
+bool preprocessor_get_filename(Preprocessor* pp, Token* token, Filepath* path,
+        bool* angled)
 {
     // Before we advance the token make sure the lexer know's it's okay to parse
     // a header name. This will greatly help us out and save us alot of time
@@ -489,25 +570,19 @@ bool preprocessor_get_filename(Preprocessor* pp, Token* token)
 
     if (token_is_type(token, TOK_STRING))
     {
-        // TODO: handle strings and extract the filename from them...
-        diagnostic_warning_at(pp->dm, token_get_location(token), Wexperimental,
-                "got string header");
-        return true;
+        *angled = false;
+        return preprocessor_copy_path_simple(pp, token, path);
     }
     else if (token_is_type(token, TOK_PP_HEADER_NAME))
     {
-        diagnostic_warning_at(pp->dm, token_get_location(token), Wexperimental,
-                "got angled header");
-        return true;
+        *angled = true;
+        return preprocessor_copy_path_simple(pp, token, path);
     }
     else if (token_is_type(token, TOK_LT))
     {
         // FIXME: Clang and GCC both done handle `<<` investigate this?
-        diagnostic_warning_at(pp->dm, token_get_location(token), Wexperimental,
-                "got caret header");
-
-        // TODO: handle the gluing case
-        return true;
+        *angled = true;
+        return preprocessor_try_combine_tokens_for_header(pp, token, path);
     }
     else
     {
@@ -519,22 +594,50 @@ bool preprocessor_get_filename(Preprocessor* pp, Token* token)
 
 void preprocessor_handle_include(Preprocessor* pp, Token* token)
 {
-    diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
-            "#include is currently being implemented");
-
     // Try and get the filename that we are wanting to include. If getting the
     // filename itself fails just eat to the end of the directive. Note that 
     // this doesn't attempt to include it so it is not yet a fatal error.
     Filepath path;
     bool angled;
-    if (!preprocessor_get_filename(pp, token))
+    if (!preprocessor_get_filename(pp, token, &path, &angled))
     {
         preprocessor_eat_to_eod(pp, token);
         return;
     }
-    
-    // Otherwise we should just have a newline
+
+    // Check for the existance of a newline.
     preprocessor_expect_directive_end(pp, "include");
+
+    // Okay we have an okay path and know if we are an angled header or not.
+    // We will now need to go try and search for this header. This is probably
+    // the most complex step in this process and will require us to do alot of
+    // string processing and file statting :)
+    // FIXME: Will we need to include information about the directory entry
+    // FIXME: this was found in?
+    SourceFile* include = NULL;
+    if (!preprocessor_try_find_include(pp, &path, angled,
+            token_get_location(token), &include))
+    {
+        diagnostic_fatal_error_at(pp->dm, token_get_location(token),
+                "'%s' file not found", filepath_get_cstr(&path));
+        token_set_type(token, TOK_EOF);
+        return;
+    }
+    assert(include != NULL && "found include but didn't find it?");
+
+    // In this case we should absolutely not do this!
+    if (preprocessor_include_depth(pp) >= preprocessor_max_include_depth(pp))
+    {
+        diagnostic_fatal_error_at(pp->dm, token_get_location(token), "#include "
+                "nested too deeply");
+        token_set_type(token, TOK_EOF);
+        return;
+    }
+
+    // Here we have found a file and know it exsists. We just need to actually 
+    // got and do the include for it. This is the easiest part of the whole
+    // process :O
+    preprocessor_do_include(pp, token, include);
 }
 
 void preprocessor_handle_embed(Preprocessor* pp, Token* token)

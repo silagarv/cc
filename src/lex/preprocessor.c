@@ -9,6 +9,7 @@
 #include <time.h> // For initialising builtin pp macros.
 
 #include "files/line_map.h"
+#include "lex/header_finder.h"
 #include "util/arena.h"
 #include "util/buffer.h"
 
@@ -343,74 +344,10 @@ bool macro_expander_peek(MacroExpander* expander, Token* token)
     return true;
 }
 
-// Print a quoted include filename into a buffer
-static void buffer_add_quote_include(Buffer* buffer, const char* filename)
-{
-    buffer_printf(buffer, "#include \"%s\"\n");
-}
-
-static void buffer_add_angle_include(Buffer* buffer, const char* filename)
-{
-    buffer_printf(buffer, "#include <%s>\n");
-}
-
-static void buffer_add_define_one(Buffer* buffer, const char* define)
-{
-    buffer_printf(buffer, "#define %s 1\n", define);
-}
-
-// Print a basic define into a buffer
-static void buffer_add_define_empty(Buffer* buffer, const char* define)
-{
-    buffer_printf(buffer, "#define %s\n", define);
-}
-
-// Print a define into a buffer with a given value
-static void buffer_add_define_value(Buffer* buffer, const char* define, 
-        const char* value)
-{
-    buffer_printf(buffer, "#define %s %s\n", define, value);
-}
-
-static void preprocessor_add_defines(Preprocessor* pp)
-{
-    // Create buffer add defines and turn it into a filebuffer
-    Buffer predefs = buffer_new();
-
-    // STDC defines
-    buffer_add_define_one(&predefs, "__STDC__");
-    buffer_add_define_value(&predefs, "__STDC_VERSION__", "199901L"); 
-
-    // Endian defines
-    buffer_add_define_value(&predefs, "__BYTE_ORDER__",
-            "__ORDER_LITTLE_ENDIAN__");
-    buffer_add_define_value(&predefs, "__ORDER_BIG_ENDIAN__", "4321");
-    buffer_add_define_value(&predefs, "__ORDER_LITTLE_ENDIAN__", "1234");
-    buffer_add_define_value(&predefs, "__ORDER_PDP_ENDIAN__", "3412");
-    buffer_add_define_one(&predefs, "__LITTLE_ENDIAN__");
-
-    // Pointer type defines
-    buffer_add_define_value(&predefs, "__POINTER_WIDTH__", "64");
-
-    buffer_add_define_value(&predefs, "__PTRDIFF_TYPE__", "long int");
-    buffer_add_define_value(&predefs, "__PTRDIFF_WIDTH__", "64");
-
-    // Misc defines
-    buffer_add_define_one(&predefs, "__linux");
-    buffer_add_define_one(&predefs, "__linux__");
-    buffer_add_define_one(&predefs, "linux");
-    buffer_add_define_one(&predefs, "__unix");
-    buffer_add_define_one(&predefs, "__unix__");
-    buffer_add_define_one(&predefs, "unix");
-    buffer_add_define_one(&predefs, "__x86_64");
-    buffer_add_define_one(&predefs, "__x86_64__");
-
-    buffer_free(&predefs);
-}
-
 void preprocessor_push_input(Preprocessor* pp, SourceFile* file)
 {
-    assert(include_vector_size(&pp->inputs) < pp->max_depth);
+    assert(preprocessor_include_depth(pp) < pp->max_depth 
+            && "didn't do a check for an input depth thats too deep!");
 
     // Simply create the include and push it only the preprocessor.
     Include include = include_create(pp->dm, pp->lang, &pp->literal_arena,
@@ -516,6 +453,76 @@ void preprocessor_initialise_date_time(Preprocessor* pp)
             time_buffer, LOCATION_INVALID);
 }
 
+// Print a quoted include filename into a buffer
+static void buffer_add_quote_include(Buffer* buffer, const char* filename)
+{
+    buffer_printf(buffer, "#include \"%s\"\n");
+}
+
+static void buffer_add_angle_include(Buffer* buffer, const char* filename)
+{
+    buffer_printf(buffer, "#include <%s>\n");
+}
+
+static void buffer_add_define_one(Buffer* buffer, const char* define)
+{
+    buffer_printf(buffer, "#define %s 1\n", define);
+}
+
+// Print a basic define into a buffer
+static void buffer_add_define_empty(Buffer* buffer, const char* define)
+{
+    buffer_printf(buffer, "#define %s\n", define);
+}
+
+// Print a define into a buffer with a given value
+static void buffer_add_define_value(Buffer* buffer, const char* define, 
+        const char* value)
+{
+    buffer_printf(buffer, "#define %s %s\n", define, value);
+}
+
+static void preprocessor_push_builtins(Preprocessor* pp)
+{
+    // Create buffer add defines and turn it into a filebuffer
+    Buffer predefs = buffer_new();
+
+    // STDC defines
+    buffer_add_define_one(&predefs, "__STDC__");
+    buffer_add_define_value(&predefs, "__STDC_VERSION__", "199901L"); 
+
+    // Endian defines
+    buffer_add_define_value(&predefs, "__BYTE_ORDER__",
+            "__ORDER_LITTLE_ENDIAN__");
+    buffer_add_define_value(&predefs, "__ORDER_BIG_ENDIAN__", "4321");
+    buffer_add_define_value(&predefs, "__ORDER_LITTLE_ENDIAN__", "1234");
+    buffer_add_define_value(&predefs, "__ORDER_PDP_ENDIAN__", "3412");
+    buffer_add_define_one(&predefs, "__LITTLE_ENDIAN__");
+
+    // Pointer type defines
+    buffer_add_define_value(&predefs, "__POINTER_WIDTH__", "64");
+
+    buffer_add_define_value(&predefs, "__PTRDIFF_TYPE__", "long int");
+    buffer_add_define_value(&predefs, "__PTRDIFF_WIDTH__", "64");
+
+    // Misc defines
+    buffer_add_define_one(&predefs, "__linux");
+    buffer_add_define_one(&predefs, "__linux__");
+    buffer_add_define_one(&predefs, "linux");
+    buffer_add_define_one(&predefs, "__unix");
+    buffer_add_define_one(&predefs, "__unix__");
+    buffer_add_define_one(&predefs, "unix");
+    buffer_add_define_one(&predefs, "__x86_64");
+    buffer_add_define_one(&predefs, "__x86_64__");
+
+    // Special stuff for ignoring attributes :$
+    buffer_add_define_value(&predefs, "__attribute__(x)", "");
+
+    // Now turn this buffer into a source file for us to use.
+    SourceFile* source = source_manager_create_builtin_buffer(pp->sm, predefs);
+    preprocessor_push_input(pp, source);
+}
+
 bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
         LangOptions* opts, SourceManager* sm, Filepath main_file,
         IdentifierTable* ids)
@@ -524,7 +531,8 @@ bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
     // that we hopefully crash instead of getting erroneous results.
     *pp = (Preprocessor) {0};
 
-    SourceFile* starting_file = source_manager_create_filepath(sm, main_file);
+    SourceFile* starting_file = source_manager_create_filepath(sm, main_file,
+            LOCATION_INVALID);
     if (starting_file == NULL)
     {
         diagnostic_error(dm, "no such file or directory: '%s'", main_file.path);
@@ -542,6 +550,8 @@ bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
 
     pp->literal_arena = arena_new_default();
     pp->pp_allocator = arena_new_default();
+
+    pp->hf = header_finder_create();
     
     pp->max_depth = PREPROCESSOR_MAX_DEPTH;
     pp->inputs = include_vector();
@@ -559,10 +569,13 @@ bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
     preprocessor_initialise_date_time(pp);
     pp->collecting_args = false;
 
-    // Finally, put our input onto the stack so that we are ready to start 
-    // lexing our tokens. Don't check the return value as this should never
-    // fail.
+    // Put our input onto the stack so that we are ready to start lexing tokens
     preprocessor_push_input(pp, starting_file);
+
+    // Now we will also want to create our builtin file and stack it to be on
+    // top of this file. Note that I would actually prefer to do this first 
+    // then stack the input but oh well.
+    preprocessor_push_builtins(pp);
     return true;
 }
 
@@ -572,6 +585,7 @@ void preprocessor_delete(Preprocessor* pp)
     macro_map_delete(&pp->macros);
     include_vector_free_ptr(&pp->inputs, include_delete);
     token_list_free(&pp->cache); // Free first since some tokens use other arena
+    header_finder_delete(&pp->hf);
     arena_delete(&pp->literal_arena);
     arena_delete(&pp->pp_allocator);
 }
@@ -610,6 +624,11 @@ unsigned int preprocessor_include_depth(const Preprocessor* pp)
     return size;
 }
 
+unsigned int preprocessor_max_include_depth(const Preprocessor* pp)
+{
+    return pp->max_depth;
+}
+
 MacroMap* preprocessor_macro_map(Preprocessor* pp)
 {
     return &pp->macros;
@@ -623,6 +642,30 @@ MacroExpander* preprocessor_expander(Preprocessor* pp)
 bool preprocessor_collecting_args(const Preprocessor* pp)
 {
     return pp->collecting_args;
+}
+
+bool preprocessor_try_find_include(Preprocessor* pp, Filepath* path,
+        bool angled, Location include_loc, SourceFile** include)
+{
+    // First get the current include and the source file that is relavent to
+    // it. This is so that we can use the current file path as needed from it.
+    Include* curr_file = include_vector_back(&pp->inputs);
+    SourceFile* curr_sf = include_get_source(curr_file);
+    Filepath* curr_path = source_file_get_name(curr_sf);
+
+    // Don't forget the current search directory is super important!!!
+    DirectoryEntry* dir = include_get_search_path(curr_file);
+
+    // Okay now just get the header finder to do all of the work that needs to
+    // be done. This is a fairly straight forward call to make.
+    return header_finder_try_find_include(&pp->hf, pp->sm, curr_path, dir, path,
+            angled, include_loc, include);
+}
+
+// FIXME: the token input is unused so do we really need it?
+void preprocessor_do_include(Preprocessor* pp, Token* token, SourceFile* sf)
+{
+    preprocessor_push_input(pp, sf);
 }
 
 void preprocessor_enter_directive(Preprocessor* pp)
@@ -936,12 +979,18 @@ void preprocessor_push_macro_argument(Preprocessor* pp, MacroArgs arg,
     macro_expander_push_arg(&pp->expander, arg, location);
 }
 
-void preprocessor_expand_macro_argument(Preprocessor* pp, TokenList* result,
+// Returns true if we expanded to tokens and false otherwise. The only reason
+// that this even returns anything is so that we can more easily handle the 
+// token pasting operator.
+bool preprocessor_expand_macro_argument(Preprocessor* pp, TokenList* result,
         size_t* count, MacroArgs arg, Location location)
 {
     // This should be true since we first pull from the cache in 
     // preprocessor_get_next which should not be done so this is checked here.
     assert(token_list_empty(&pp->cache) && "non-empty cache???");
+
+    // Track the initial count so that can know if we expanded to empty
+    size_t initial_count = *count;
 
     // Push this macro argument as is to the expansion stack so that we can then
     // go and expand it nice and quickly.
@@ -967,6 +1016,9 @@ void preprocessor_expand_macro_argument(Preprocessor* pp, TokenList* result,
         token_list_push_back(result, tmp);
         (*count)++;
     }
+
+    // If they are not equal that means we got tokens when we expanded :)
+    return initial_count != *count;
 }
 
 // The algorithm for replacing the arguemtns and expanding function like macros
@@ -1007,6 +1059,11 @@ TokenStream preprocessor_expand_function_macro(Preprocessor* pp,
     while (!token_stream_end(&replacement))
     {
         // FIXME: stringification and concatenation handling needed.
+        // TODO: for stringification we need to do that first. And then 
+        // TODO: concatenation sometimes needs to be removed if the LHS or the
+        // TODO: RHS expands to and empty thing. But concatenation is handled
+        // TODO: at a later stage. But we still need to potentially skip 
+        // TODO: expanding an argument if we find them
         
         // Get the current token from the stream and test if it is a parameter
         // name. If it is not a parameter name then simply add it to the 
@@ -1021,9 +1078,10 @@ TokenStream preprocessor_expand_function_macro(Preprocessor* pp,
             continue;
         }
 
-        // Otherwise we need to macro expand the macros replacement list
-        preprocessor_expand_macro_argument(pp, &result, &count, args[param],
-                location);
+        // Otherwise we need to macro expand the macros replacement list. Also
+        // keep track of if we got tokens or not.
+        bool non_empty= preprocessor_expand_macro_argument(pp, &result, &count,
+                args[param], location);
     }
 
     // Now that we have the final replacement list for the macro (which is due
@@ -1397,6 +1455,13 @@ bool preprocessor_get_next(Preprocessor* pp, Token* token)
     if (preprocessor_directive_start(pp, token))
     {
         preprocessor_parse_directive(pp, token);
+
+        // Handle the cases where we fail to parse a directive
+        if (token_is_type(token, TOK_EOF))
+        {
+            return false;
+        }
+        
         return preprocessor_get_next(pp, token);
     }
 

@@ -128,17 +128,18 @@ static SourceFile* source_manager_assign_file(SourceManager* sm, FileBuffer* fb,
     return sf;
 }
 
-SourceFile* source_manager_create_filepath(SourceManager* sm, Filepath path)
+SourceFile* source_manager_create_filepath(SourceManager* sm, Filepath path,
+        Location include)
 {
     FileBuffer* fb = file_manager_try_get(&sm->fm, path);
-    
+
     // Could not find or read the file so give up
     if (!fb)
     {
         return NULL;
     }
 
-    return source_manager_assign_file(sm, fb, 0);
+    return source_manager_assign_file(sm, fb, include);
 }
 
 SourceFile* source_manager_create_builtin_buffer(SourceManager* sm,

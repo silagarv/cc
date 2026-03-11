@@ -68,6 +68,7 @@ LEX = src/lex/identifier_table.c \
 	src/lex/include_stack.c \
 	src/lex/macro.c \
 	src/lex/macro_map.c \
+	src/lex/header_finder.c \
 	src/lex/directives.c \
 	src/lex/preprocessor.c
 

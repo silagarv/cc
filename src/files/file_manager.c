@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <string.h>
 #include <limits.h>
+#include <sys/stat.h> // For statting files
 
 #include "files/filepath.h"
 #include "util/hash_map.h"
@@ -34,7 +35,22 @@ static void read_file_contents(FILE* fp, char** buffer, size_t* length)
 // Create a file buffer from a given path (or at least attempt to). Path should
 // be the canonical path to the file itself
 FileBuffer* file_buffer_try_get(Filepath path)
-{        
+{
+    // FIXME: it would probably be ideal to make sure we get the errno value
+    // FIXME: here as it would provide better error messages.
+    struct stat st;
+    if (stat(path.path, &st) == -1)
+    {
+        return NULL;
+    }
+
+    // Now since we know the stat was okay check if the file was a useable file
+    // or not. For now we will only consider regular files to be useable...
+    if (!S_ISREG(st.st_mode))
+    {
+        return NULL;
+    }
+
     FILE* fp = fopen(path.path, "rb");
 
     // Check if we got a file or not
@@ -247,6 +263,8 @@ FileBuffer* file_manager_try_get(FileManager* fm, Filepath path)
     
     // Attempt see if we are asking for the file from stdin. If so attempt to
     // read and return it but only if we didn't get the file yet.
+    // FIXME: this would allow reading stdin from an include so this should
+    // FIXME: be reworked a bit...
     if (!fb && filepath_is(&path, "-")) {
         fb = file_buffer_from_stdin();
     }
@@ -282,7 +300,7 @@ FileBuffer* file_manager_add_builtin(FileManager* fm, Buffer buffer)
 {
     assert(fm->builtin == NULL);
 
-    Filepath name = filepath_from_cstring("<command-line>");
+    Filepath name = filepath_from_cstring("<built-in>");
     
     // Create the new filebuffer and add it as our builtin buffer
     FileBuffer* new_buff = file_buffer_from_buffer(name, buffer,

@@ -27,12 +27,14 @@ vector_of_decl(Conditional, Conditional, conditional);
 // This represents an input in the stack of includes that we currently have 
 // active.
 typedef struct Include {
-    Lexer lexer; // The controlling lexer for this include.
+    SourceFile* sf; // The logical `source` that is used for this include.
 
     // TODO: will need to see if this changes when includes are actually 
     // TODO: implemented as I'm not sure what that implementation will actually
     // TODO: look like
     DirectoryEntry* search_path;
+
+    Lexer lexer; // The controlling lexer for this include.
 
     ConditionalVector cond; // The current stack of conditionals. Note that any
                             // unhadnled conditionals are dealth with at the end
@@ -50,8 +52,9 @@ Include include_create(DiagnosticManager* dm, LangOptions* opts,
         DirectoryEntry* entry);
 void include_delete(Include* include);
 
-Lexer* include_get_lexer(Include* include);
+SourceFile* include_get_source(Include* include);
 DirectoryEntry* include_get_search_path(Include* include);
+Lexer* include_get_lexer(Include* include);
 ConditionalVector* include_get_conditionals(Include* include);
 
 bool include_get_next(Include* include, Token* token);

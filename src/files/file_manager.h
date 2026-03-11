@@ -21,6 +21,10 @@ typedef enum FileBufferType {
     FILE_BUFFER_ANONOMOUS
 } FileBufferType;
 
+// FIXME: it would be nice if the filebuffer structure was able to better be
+// FIXME: used for ACTUAL files exclusively. Then we could delegate the handling
+// FIXME: of things such as pragma once better, and also remove the weird 
+// FIXME: handling from here.
 // FileBuffer object to help us keep track of our nice buffer and to help us 
 // cache the results of file lookups to help keep them quick
 typedef struct FileBuffer {

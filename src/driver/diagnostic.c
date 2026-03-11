@@ -468,7 +468,7 @@ static void diagnostic_internal_at(DiagnosticManager* dm, DiagnosticKind kind,
     }
 
     // Now increment the diagnostic counts.
-    if (kind == DIAGNOSTIC_ERROR)
+    if (kind == DIAGNOSTIC_ERROR || kind == DIAGNOSTIC_FATAL)
     {
         dm->error_count++;
     }

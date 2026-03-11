@@ -346,16 +346,16 @@ static TokenData lexer_create_literal_node(Lexer* lexer, Buffer* buffer)
     // Mode the buffers data into the memory and delete the buffer
     LiteralNode* node = arena_malloc(lexer->literal_arena,
             sizeof(LiteralNode));
-    node->value.ptr = arena_malloc(lexer->literal_arena,
+    char* value = arena_malloc(lexer->literal_arena,
             buffer_get_len(buffer) + 1);
-    memcpy(node->value.ptr, buffer_get_ptr(buffer), buffer_get_len(buffer) + 1);
-    node->value.len = buffer_get_len(buffer);
-    
+    memcpy(value, buffer_get_ptr(buffer), buffer_get_len(buffer) + 1);
+    size_t len = buffer_get_len(buffer);
+
+    // Don't forget to free the buffers memory
     buffer_free(buffer);
 
-    TokenData data = { .literal = node };
-
-    return data;
+    node->value = (String) { value, len };
+    return (TokenData) { .literal = node };
 }
 
 // Try to lex a UCN, we assume the calling functions already saw a '\' so we 
@@ -720,6 +720,7 @@ static bool lex_string_like_literal(Lexer* lexer, Token* token, TokenType type)
     buffer_add_char(&string, get_starting_delimiter(type));
 
     bool had_char = false;
+    char* save_pos = get_position(lexer);
     char current = get_next_char(lexer);
     while (current != ending_delim)
     {
@@ -727,6 +728,7 @@ static bool lex_string_like_literal(Lexer* lexer, Token* token, TokenType type)
         if (current == '\\' && type != TOK_PP_HEADER_NAME)
         {
             buffer_add_char(&string, '\\');
+            save_pos = get_position(lexer);
             current = get_next_char(lexer);
         }
 
@@ -736,14 +738,29 @@ static bool lex_string_like_literal(Lexer* lexer, Token* token, TokenType type)
         if ((current == '\r' || current == '\n'
                 || (current == '\0' && at_eof(lexer))) && diagnose(lexer))
         {
-            token->type = TOK_UNKNOWN;
-            diagnostic_warning_at(lexer->dm, token->loc, Winvalid_pp_token,
-                    "missing terminating '%c' character", ending_delim);
+            // FIXME: special case of <FILENAME> token this is a bit janky but
+            // FIXME: works pretty much the same as Clang and GCC
+            if (type != TOK_PP_HEADER_NAME)
+            {
+                token->type = TOK_UNKNOWN;
+                diagnostic_warning_at(lexer->dm, token->loc, Winvalid_pp_token,
+                        "missing terminating '%c' character", ending_delim);
+            }
+            else
+            {
+                // Here we need to fix the lexer so it will exit directive mode
+                // on the same line it started on and also produce a diagnostic
+                // at a sensible location for us.
+                set_position(lexer, save_pos);
+                diagnostic_error_at(lexer->dm, get_curr_location(lexer),
+                        "expected '>'");
+            }
             goto finish_string;
         }
 
         // Finally add the char and get the next one
         buffer_add_char(&string, current);
+        save_pos = get_position(lexer);
         current = get_next_char(lexer);
 
         had_char = true;

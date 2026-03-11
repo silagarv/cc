@@ -26,7 +26,7 @@ Filepath filepath_from_cstring(const char* path)
     return fp;
 }
 
-const char* filepath_get_cstr(const Filepath* path)
+char* filepath_get_cstr(Filepath* path)
 {
     return path->path;
 }

@@ -42,7 +42,8 @@ static CodegenLLVM* create_codegen_context_llvm(CodegenContext* context)
     LLVMContextRef c = LLVMContextCreate();
 
     // Get our filepath as our module name
-    const char* name = filepath_get_cstr(context->input_file);
+    // FIXME: HELP!
+    char* name = filepath_get_cstr((Filepath*) context->input_file);
 
     CodegenLLVM* llvm = arena_malloc(&context->arena, sizeof(CodegenLLVM));
     *llvm = (CodegenLLVM)

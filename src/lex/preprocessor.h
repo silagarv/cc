@@ -122,9 +122,14 @@ SourceManager* preprocessor_source_manager(Preprocessor* pp);
 Arena* preprocessor_allocator(Preprocessor* pp);
 IncludeVector* preprocessor_inputs(Preprocessor* pp);
 unsigned int preprocessor_include_depth(const Preprocessor* pp);
+unsigned int preprocessor_max_include_depth(const Preprocessor* pp);
 MacroMap* preprocessor_macro_map(Preprocessor* pp);
 MacroExpander* preprocessor_expander(Preprocessor* pp);
 bool preprocessor_collecting_args(const Preprocessor* pp);
+
+bool preprocessor_try_find_include(Preprocessor* pp, Filepath* path,
+        bool angled, Location include_loc, SourceFile** include);
+void preprocessor_do_include(Preprocessor* pp, Token* token, SourceFile* sf);
 
 void preprocessor_enter_directive(Preprocessor* pp);
 void preprocessor_allow_headers(Preprocessor* pp);
