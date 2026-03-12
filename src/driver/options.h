@@ -1,6 +1,8 @@
 #ifndef OPTIONS_H
 #define OPTIONS_H
 
+#include "util/vec.h"
+
 #include "driver/lang.h"
 #include "driver/diagnostic.h"
 

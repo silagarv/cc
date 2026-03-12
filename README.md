@@ -19,20 +19,31 @@ Requirements
 To building, run 'make' in the cc directory and it wll output an executable named 'cc'
 
 ## Current TODO
+- Driver
+    - Make the driver more friendly to being extended so that we are more easily able to extend it to add args as we want and do have to do silly things
+    - Maybe create an argparser and use that for parsing???
 - Preprocessor
+    - EVENTUALLY, it would be nice if the lexer could avoid using a literal arena to store all created literals as this would
+        - 1) save alot of memory
+        - 2) make the implementation more simple in alot of places
+        - 3) increase how easy it is to 'just construct' a lexer on the stack and use it instead of having to pretty much keep the PP in the call stack
     - Implement token concatenation and argument stringification
     - Improve diagnostics by giving macro expanded tokens a sensible location (currently it defaults to the location of the macro token)
     - Eventually implement the 'multiple include' optimisation
     - Preprocessor should probably properly propogate spacing information
+    - Implement the header finder
+    - Implement conditional directivees :/
+    - Implement preprocessor conditionals
 - Parser & semantic
     - Fix every occurance of getting an identifier from a token so that they use the token_get_identifier instead of getting directly from the token
 - Declaration parsing
-    - also include a second list in struct / union decl's for all decls inside it
+    - also include a second list in struct / union decl's for all decls inside it as currently the canonical decl is used even in situations where it is not the current decl. Also the lcoations for the decls can be quite wrong as a result.
     - Fix declarations groups so they also optionally include a struct / unions definition inside them if it was
     defined at that point. will have to go fix up for loop checking after this however
     - Need to fix non-detected of [*] modifier in function definitions
 - Codegen
     - There is currently a use after free in the code generation for some unknown reason
+    - Codegen is also highly incomplete: should I even do this part?
 
 - Semantic
     - expressions

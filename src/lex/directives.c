@@ -554,6 +554,9 @@ bool preprocessor_try_combine_tokens_for_header(Preprocessor* pp, Token* token,
     // TODO: use a buffer and print the current tokens spelling into the buffer
     // TODO: and that kind of thing...
     Buffer buffer = buffer_new();
+
+    // FIXME: will probably just create a new buffer then go and lex a header
+    // FIXME: name???
     buffer_free(&buffer);
 
     return false;
@@ -626,6 +629,7 @@ void preprocessor_handle_include(Preprocessor* pp, Token* token)
     assert(include != NULL && "found include but didn't find it?");
 
     // In this case we should absolutely not do this!
+    // FIXME: I don't really like this here but oh well...
     if (preprocessor_include_depth(pp) >= preprocessor_max_include_depth(pp))
     {
         diagnostic_fatal_error_at(pp->dm, token_get_location(token), "#include "

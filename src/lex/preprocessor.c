@@ -112,6 +112,7 @@ TokenStream macro_expansion_replacement_list(Arena* arena, Macro* macro,
     // to be able to handle)
     if (!macro_function_like(macro))
     {
+        assert(args == NULL && "object macro with arguments?");
         return macro_get_stream(macro);
     }
     
@@ -644,6 +645,9 @@ bool preprocessor_collecting_args(const Preprocessor* pp)
     return pp->collecting_args;
 }
 
+// TODO: eventually if I want to implement pragma once, or the multiple include
+// TODO: optimisatin, then I will have to have more to say then just a boolean
+// TODO: of found / not found...
 bool preprocessor_try_find_include(Preprocessor* pp, Filepath* path,
         bool angled, Location include_loc, SourceFile** include)
 {
@@ -665,6 +669,9 @@ bool preprocessor_try_find_include(Preprocessor* pp, Filepath* path,
 // FIXME: the token input is unused so do we really need it?
 void preprocessor_do_include(Preprocessor* pp, Token* token, SourceFile* sf)
 {
+    // TODO: I think I could use this function to do multiple include 
+    // TODO: optimisation checks if that is ever implemented.
+
     preprocessor_push_input(pp, sf);
 }
 
@@ -965,7 +972,6 @@ TokenStream preprocessor_expand_builtin_macro(Preprocessor* pp,
     }
     else if (identifier == pp->id__Pragma)
     {
-        // TODO: should I change the handling of the _Pragma here???
         return preprocessor_expand_pragma(pp, location);
     }
 
@@ -973,7 +979,7 @@ TokenStream preprocessor_expand_builtin_macro(Preprocessor* pp,
     return token_stream_create_empty();
 }
 
-void preprocessor_push_macro_argument(Preprocessor* pp, MacroArgs arg,
+void preprocessor_push_macro_arg(Preprocessor* pp, MacroArgs arg,
         Location location)
 {
     macro_expander_push_arg(&pp->expander, arg, location);
@@ -982,7 +988,7 @@ void preprocessor_push_macro_argument(Preprocessor* pp, MacroArgs arg,
 // Returns true if we expanded to tokens and false otherwise. The only reason
 // that this even returns anything is so that we can more easily handle the 
 // token pasting operator.
-bool preprocessor_expand_macro_argument(Preprocessor* pp, TokenList* result,
+bool preprocessor_expand_macro_arg(Preprocessor* pp, TokenList* result,
         size_t* count, MacroArgs arg, Location location)
 {
     // This should be true since we first pull from the cache in 
@@ -994,7 +1000,7 @@ bool preprocessor_expand_macro_argument(Preprocessor* pp, TokenList* result,
 
     // Push this macro argument as is to the expansion stack so that we can then
     // go and expand it nice and quickly.
-    preprocessor_push_macro_argument(pp, arg, location);
+    preprocessor_push_macro_arg(pp, arg, location);
 
     // Then keep grabbing tokens from the stream until we get to the argend 
     // token. This make expanding the arguments nice and simple from our 
@@ -1019,6 +1025,46 @@ bool preprocessor_expand_macro_argument(Preprocessor* pp, TokenList* result,
 
     // If they are not equal that means we got tokens when we expanded :)
     return initial_count != *count;
+}
+
+Token preprocessor_stringify_macro_arg(Preprocessor* pp, MacroArgs arg,
+        Location expansion_loc, Location param_loc)
+{
+    Token* tokens = macro_arg_tokens(&arg);
+    size_t num_tokens = macro_arg_num_tokens(&arg);
+
+    // Create a buffer and add an initial " character to it. Then for each of 
+    // the tokens in the argument we should get their spelling and add it to the
+    // buffer. Finally, add a trailing " character.
+    Buffer arg_buff = buffer_new();
+    buffer_add_char(&arg_buff, '"');
+    // TODO: make a call to a function for the lexer to stringify the tokens
+    // TODO: Note that we cannot make assumptions about where the macr arg 
+    // TODO: tokens can come from so we may need alot of inputs into the 
+    // TODO: function
+    buffer_add_char(&arg_buff, '"');
+    buffer_make_cstr(&arg_buff);
+
+    // Then, we  will need to turn the buffer into a sourcefile so go do this.
+    // One we have that, create a lexer (without diagnostics).
+    SourceFile* string = source_manager_create_anonomous_buffer(pp->sm,
+            arg_buff, param_loc);
+    Lexer tmp_lex;
+    lexer_create(&tmp_lex, /*dm*/NULL, pp->lang, &pp->literal_arena,
+            pp->identifiers, string);
+
+    // Lex the single string token from it.
+    Token string_tok;
+    lexer_get_next(&tmp_lex, &string_tok);
+    assert(token_is_type(&string_tok, TOK_STRING) && "expected string token");
+
+    Token eof_tok;
+    lexer_get_next(&tmp_lex, &eof_tok);
+    assert(token_is_type(&eof_tok, TOK_EOF) && "didn't get the EOF token");
+
+    // FIXME: fix the tokens location when we do this and have that facility
+    // FIXME: available.
+    return string_tok;
 }
 
 // The algorithm for replacing the arguemtns and expanding function like macros
@@ -1065,10 +1111,31 @@ TokenStream preprocessor_expand_function_macro(Preprocessor* pp,
         // TODO: at a later stage. But we still need to potentially skip 
         // TODO: expanding an argument if we find them
         
-        // Get the current token from the stream and test if it is a parameter
-        // name. If it is not a parameter name then simply add it to the 
-        // replacement list for the later rescanning.
         Token tok = token_stream_consume(&replacement);
+
+        // If this token is a hash then it is followed by a macro parameter.
+        // So let's go ahead and stringify this.
+        if (token_is_type(&tok, TOK_HASH))
+        {
+            // Consume the token after it and get the param number and the 
+            // subsequent MacroArg structure.
+            Token param = token_stream_consume(&replacement);
+            Identifier* param_name = token_get_identifier(&param);
+            size_t param_num = macro_param_num(macro, param_name);
+            MacroArgs arg = args[param_num];
+
+            // Then go ahead and stringify the tokens.
+            Token stringified = preprocessor_stringify_macro_arg(pp, arg,
+                    location, token_get_location(&param));
+
+            // Finally, simply 
+            token_list_push_back(&result, stringified);
+            count++;
+            continue;
+        }
+
+        //If it is not a parameter name then simply add it to the replacement 
+        // list for the later rescanning. 
         Identifier* name = token_get_identifier(&tok);
         size_t param;
         if (name == NULL || !macro_get_param_num(macro, name, &param))
@@ -1078,16 +1145,21 @@ TokenStream preprocessor_expand_function_macro(Preprocessor* pp,
             continue;
         }
 
+        // FIXME: here is where we should care about if we have a '##' after, or
+        // FIXME: before the macro argument list, so we should have this here.
+        // NOTE: for this we will also really need to care about if the macro
+        // NOTE: argument is empty or not since we will effectively have to
+        // NOTE: delete the '##' token if the LHS or the RHS is empty...
+
         // Otherwise we need to macro expand the macros replacement list. Also
         // keep track of if we got tokens or not.
-        bool non_empty= preprocessor_expand_macro_argument(pp, &result, &count,
+        bool non_empty= preprocessor_expand_macro_arg(pp, &result, &count,
                 args[param], location);
     }
 
     // Now that we have the final replacement list for the macro (which is due
     // for rescanning) we can flatten our linked list into tokens.
-    MacroExpander* expander = preprocessor_expander(pp);
-    Token* tokens = token_list_flatten(macro_expander_allocator(expander),
+    Token* tokens = token_list_flatten(macro_expander_allocator(&pp->expander),
             &result, count);
     
     // Free the replacement list.
@@ -1513,4 +1585,3 @@ void preprocessor_insert_tokens(Preprocessor* pp, Token* tokens,
         remaining--;
     }
 }
-

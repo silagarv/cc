@@ -102,7 +102,7 @@ static bool fyes_no_argument(const char* fyes_no, const char* arg, bool* truth)
 
 static CompilerOptions compiler_options_create(void)
 {
-    CompilerOptions opts =
+    CompilerOptions opts = (CompilerOptions)
     {
         .standard = LANG_STANDARD_DEFAULT,
         .syntax_only = false,

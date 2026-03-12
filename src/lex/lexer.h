@@ -12,6 +12,7 @@
 #include "lex/token.h"
 #include "lex/identifier_table.h"
 #include "util/buffer.h"
+#include <stddef.h>
 
 typedef struct Lexer {
     DiagnosticManager* dm;
@@ -22,9 +23,9 @@ typedef struct Lexer {
     const char* buffer_start;
     const char* buffer_end;
 
-    Location start_loc;
-
     char* current_ptr;
+
+    Location start_loc;
 
     // True if we have warned about a line comment in this lexer
     bool err_line_comment;

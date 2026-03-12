@@ -6,6 +6,9 @@
 #include <stdint.h>
 
 #include "util/buffer.h"
+#include "util/vec.h"
+
+vector_of_decl(char*, String, string);
 
 struct String {
     char* ptr;

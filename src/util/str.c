@@ -4,9 +4,10 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "util/panic.h"
 #include "util/xmalloc.h"
 #include "util/buffer.h"
+
+vector_of_impl(char*, String, string)
 
 // For when we have already allocated the string
 void string_init(String* dest, char* val)
