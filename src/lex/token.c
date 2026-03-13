@@ -274,6 +274,12 @@ bool token_is_identifier_like(const Token* token)
     return false;
 }
 
+bool token_is_directive_start(const Token* token)
+{
+    return token_is_type(token, TOK_HASH)
+            && token_has_flag(token, TOK_FLAG_BOL);
+}
+
 String token_get_literal_node(const Token* token)
 {
     return token->data.literal->value;

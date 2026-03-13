@@ -7,6 +7,8 @@
 #include "driver/warning.h"
 #include "files/filepath.h"
 #include "files/source_manager.h"
+#include "lex/include_stack.h"
+#include "lex/lexer.h"
 #include "util/arena.h"
 #include "util/buffer.h"
 #include "util/ptr_set.h"
@@ -623,6 +625,8 @@ void preprocessor_handle_include(Preprocessor* pp, Token* token)
     {
         diagnostic_fatal_error_at(pp->dm, token_get_location(token),
                 "'%s' file not found", filepath_get_cstr(&path));
+
+        preprocessor_set_fatal_error(pp);
         token_set_type(token, TOK_EOF);
         return;
     }
@@ -634,6 +638,8 @@ void preprocessor_handle_include(Preprocessor* pp, Token* token)
     {
         diagnostic_fatal_error_at(pp->dm, token_get_location(token), "#include "
                 "nested too deeply");
+
+        preprocessor_set_fatal_error(pp);
         token_set_type(token, TOK_EOF);
         return;
     }
@@ -651,6 +657,101 @@ void preprocessor_handle_embed(Preprocessor* pp, Token* token)
     preprocessor_eat_to_eod(pp, token);
 }
 
+// This function is for skipping to the next conditional block and then we 
+// determine what action we should take by trying to parse the directive that
+// we are given. Note that we disable the input diagnostics so that we do
+// not accidentally issue spurious diagnostics whilst in the this skipping mode.
+// Note that this disables all lexer diagnostics as we consider all of the code
+// in the conditional to be dead essentially.
+// Also note that we don't want to randomly be popping this include off of the
+// preprocessors stack so we should be careful to not use the preprocessing 
+// functions for that.
+void preprocessor_skip_conditional_block(Preprocessor* pp, Include* include)
+{
+    // Make sure to disable our lexer diagnostics here.
+    lexer_diable_diagnostics(include_get_lexer(include));
+
+    // Now we need to go until we reach a directive that is relavent to us.
+    // Note that we want to be as quick as we possibly can, however, this should
+    // be fixed later.
+    // FIXME: this double lexes every single token in the skipped conditional.
+    // TODO: fix the above by giving the lexer the ability to lex EOF as many
+    // TODO: times as it needs. This means we can hit eof here and then when
+    // TODO: we return from directive parsing mode we relex EOF, and pop all
+    // TODO: our conditionals.
+    Token tmp_token;
+    while (true)
+    {
+        // Peek the next token telling us information about it
+        include_peek_next(include, &tmp_token);
+
+        // If we get an eof token we are done since we should not keep eating
+        // at this point.
+        if (token_is_type(&tmp_token, TOK_EOF))
+        {
+            break;
+        }
+
+        // If we get a hash token then we need to investigate what directive we
+        // are going to get.
+        if (!token_is_directive_start(&tmp_token))
+        {
+            include_get_next(include, &tmp_token);
+            continue;
+        }
+
+        // Otherwise we should check the directive type that we have. So start
+        // by eating the hash and peeking the next token to see if it is 
+        // something we should investigate.
+        Token hash_token = tmp_token;
+        include_get_next(include, &tmp_token); // Eat '#'
+        include_peek_next(include, &tmp_token); // Peek the next.
+
+        // Not interesting if it's not a directive at all or some kind of 
+        // error e.g. # 3, # \n etc...
+        if (!token_is_identifier_like(&tmp_token))
+        {
+            continue;
+        }
+
+        Identifier* id = token_get_identifier(&tmp_token);
+        switch (identifier_get_pp_keyword(id))
+        {
+            // All our interesting cases here. These cause a possible change in
+            // what we will need to do. Note that some of these are not 
+            // implemented yet but will eventually be.
+            case TOK_PP_elif:
+            case TOK_PP_else:
+            case TOK_PP_elifdef:
+            case TOK_PP_elifndef:
+            case TOK_PP_endif:
+                break;
+
+            // everything else if not interesting
+            default:
+                continue;
+        }
+
+        // We have some kind of interesting pp directive that we should parse
+        // so exit this loop here. So exit so we can reenable the lexer 
+        // diagnostics for it. Also reset the temporary token to be the hash
+        // token so that the parse_directive function doesnt freak out.
+        tmp_token = hash_token;
+        break;
+    }
+    
+    // Make sure to reenabe lexer diagnostics before doing anything
+    lexer_enable_diagnostics(include_get_lexer(include),
+            preprocessor_diagnostics(pp));
+
+    // If we didn't get an EOF token then we should have a directive of interest
+    if (!token_is_type(&tmp_token, TOK_EOF))
+    {
+        assert(token_is_directive_start(&tmp_token) && "not a directive?");
+        preprocessor_parse_directive(pp, &tmp_token);
+    }
+}
+
 void preprocessor_handle_if(Preprocessor* pp, Token* token)
 {
     diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
@@ -658,18 +759,78 @@ void preprocessor_handle_if(Preprocessor* pp, Token* token)
     preprocessor_eat_to_eod(pp, token);
 }
 
+void preprocessor_handle_ifdef_type(Preprocessor* pp, Token* token, bool ifdef)
+{
+    // Save the ifdef tok for pushing onto the conditional stack
+    Location ifdef_loc = token_get_location(token);
+
+    // Get the current include and it's stack of conditionals
+    Include* current = preprocessor_current_input(pp);
+    ConditionalVector* conditionals = include_get_conditionals(current);
+
+    // Then try to read the macro name.
+    Identifier* name = NULL;
+    Location loc = LOCATION_INVALID;
+    if (!preprocessor_get_macro_name(pp, token, false, &name, &loc))
+    {
+        // both GCC and Clang like to skip the entire conditional block if no 
+        // macro name was given. So do this as well.
+        conditional_vector_push(conditionals, conditional_create(ifdef_loc,
+                false));
+        preprocessor_skip_conditional_block(pp, current);
+        return;
+    }
+
+    preprocessor_expect_directive_end(pp, ifdef ? "ifdef" : "ifndef");
+
+    // Now we know we have a valid macro name so get if the current macro is
+    // defined at the moment or not.
+    bool defined = macro_map_is_defined(preprocessor_macro_map(pp), name);
+
+    // Here if were defined and in ifdef then we want to read the next section.
+    // if we aren't defined and in an ifndef section then read it as well. 
+    // Otherwise we should skip the next section. For both situations we will
+    // need to create and entry on the conditional stack which reflects the 
+    // current situation.
+    if (defined == ifdef)
+    {
+        // Push a conditional entry saying that we have read one of the branches
+        // in the conditional and just stop here. Since we don't want to skip
+        // a branch we 
+        conditional_vector_push(conditionals, conditional_create(ifdef_loc,
+                /*branch taken*/true));
+    }
+    else
+    {
+        // Push a conditional entry saying that we have skipped this one and
+        // then go and do the skipping.
+        conditional_vector_push(conditionals, conditional_create(ifdef_loc,
+                /*branch taken*/false));
+        preprocessor_skip_conditional_block(pp, current);
+    }
+}
+
 void preprocessor_handle_ifdef(Preprocessor* pp, Token* token)
 {
-    diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
-            "#ifdef is valid but not implemented");
-    preprocessor_eat_to_eod(pp, token);
+    preprocessor_handle_ifdef_type(pp, token, true);
 }
 
 void preprocessor_handle_ifndef(Preprocessor* pp, Token* token)
 {
-    diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
-            "#ifndef is valid but not implemented");
-    preprocessor_eat_to_eod(pp, token);
+    preprocessor_handle_ifdef_type(pp, token, false);
+}
+
+bool preprocessor_handle_spurious_conditional(Preprocessor* pp, Token* token,
+        Include* current, const char* context)
+{
+    if (include_conditional_empty(current))
+    {
+        Location location = token_get_location(token);
+        diagnostic_error_at(pp->dm, location, "#%s without #if", context);
+        return true;
+    }
+    
+    return false;
 }
 
 void preprocessor_handle_elifdef(Preprocessor* pp, Token* token)
@@ -695,16 +856,59 @@ void preprocessor_handle_elif(Preprocessor* pp, Token* token)
 
 void preprocessor_handle_else(Preprocessor* pp, Token* token)
 {
-    diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
-            "#else is valid but not implemented");
-    preprocessor_eat_to_eod(pp, token);
+    // We should not have any extra tokens at the end of the directive
+    preprocessor_expect_directive_end(pp, "endif");
+
+    // Get the current input from the preprocessor and check if this endif is
+    // valid or not. If it is invalid we have nothing to do.
+    Include* include = preprocessor_current_input(pp);
+    if (preprocessor_handle_spurious_conditional(pp, token, include, "else"))
+    {
+        return;
+    }
+
+    // Get the current conditional from the include and determine if we should
+    // take the branch or not.
+    Conditional* conditional = include_get_current_conditional(include);
+
+    // If we previously had an else directive then error about that. Also skip
+    // the block like clang seems to do.
+    if (conditional_had_else(conditional))
+    {
+        diagnostic_error_at(pp->dm, token_get_location(token),
+                "#else after #else");
+        preprocessor_skip_conditional_block(pp, include);
+        return;
+    }
+
+    // If we have already have a conditional path taken we should skip this path
+    if (conditional_taken(conditional))
+    {
+        preprocessor_skip_conditional_block(pp, include);
+        return;
+    }
+
+    // Otherwise we will just take the else block as is. Make sure to notify
+    // the conditional that we had the else.
+    conditional_set_else(conditional);
 }
 
 void preprocessor_handle_endif(Preprocessor* pp, Token* token)
 {
-    diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
-            "#endif is valid but not implemented");
-    preprocessor_eat_to_eod(pp, token);
+    // We should not have any extra tokens at the end of the directive
+    preprocessor_expect_directive_end(pp, "endif");
+
+    // Get the current input from the preprocessor and check if this endif is
+    // valid or not. If it is invalid we have nothing to do.
+    Include* include = preprocessor_current_input(pp);
+    if (preprocessor_handle_spurious_conditional(pp, token, include, "endif"))
+    {
+        return;
+    }
+
+    // If this include is valid, for endif's we simply pop off the top of the
+    // include stack.
+    include_pop_conditional(include);
 }
 
 void preprocessor_handle_line(Preprocessor* pp, Token* token)

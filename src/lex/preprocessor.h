@@ -97,6 +97,9 @@ typedef struct Preprocessor {
     // expand.
     bool collecting_args;
 
+    // Set if we had a complete failure #includ'ing a file.
+    bool fatal_error;
+
     // The token cache that we are going to use for macro tokens and the like.
     // Also used to inject tokens into the token stream when needed.
     TokenList cache;
@@ -118,14 +121,25 @@ void preprocessor_delete(Preprocessor* pp);
 // purposes like the handling of directives and such. Should not be used by 
 // the parser for any purpose at all.
 DiagnosticManager* preprocessor_diagnostics(Preprocessor* pp);
+
 SourceManager* preprocessor_source_manager(Preprocessor* pp);
+
 Arena* preprocessor_allocator(Preprocessor* pp);
+
 IncludeVector* preprocessor_inputs(Preprocessor* pp);
+Include* preprocessor_current_input(Preprocessor* pp);
+
 unsigned int preprocessor_include_depth(const Preprocessor* pp);
 unsigned int preprocessor_max_include_depth(const Preprocessor* pp);
+
 MacroMap* preprocessor_macro_map(Preprocessor* pp);
+
 MacroExpander* preprocessor_expander(Preprocessor* pp);
+
 bool preprocessor_collecting_args(const Preprocessor* pp);
+
+bool preprocessor_fatal_error(const Preprocessor* pp);
+void preprocessor_set_fatal_error(Preprocessor* pp);
 
 bool preprocessor_try_find_include(Preprocessor* pp, Filepath* path,
         bool angled, Location include_loc, SourceFile** include);

@@ -68,6 +68,17 @@ void lexer_set_header(Lexer* lexer)
     lexer->can_lex_header = true;
 }
 
+void lexer_diable_diagnostics(Lexer* lexer)
+{
+    lexer->dm = NULL;
+}
+
+void lexer_enable_diagnostics(Lexer* lexer, DiagnosticManager* dm)
+{
+    assert(!diagnose(lexer) && "should only be reenabled when diabled");
+    lexer->dm = dm;
+}
+
 // Modify the lexer's position
 static void seek(Lexer* lexer, size_t pos)
 {
@@ -83,7 +94,8 @@ static char* get_position(const Lexer* lexer)
 // Set the lexers position
 static void set_position(Lexer* lexer, char* pos)
 {
-    assert(pos >= lexer->buffer_start && pos <= lexer->buffer_end);
+    assert(pos >= lexer->buffer_start);
+    assert(pos <= lexer->buffer_end);
 
     lexer->current_ptr = pos;
 }
@@ -828,6 +840,8 @@ static bool lex_end_of_file(Lexer* lexer, Token* token, char* tok_start)
 
         token_set_type(token, TOK_PP_EOD);
 
+        // Reset the lexer position so we can go again at the same spot and get 
+        // an EOF token.
         set_position(lexer, tok_start);
         return true;
     }
@@ -843,7 +857,13 @@ static bool lex_end_of_file(Lexer* lexer, Token* token, char* tok_start)
     }
 
     // Set the token type to be the EOF token.
-    token->type = TOK_EOF;
+    token_set_type(token, TOK_EOF);
+    
+    // Reset the lexer position back to the token start to allow for unlimited
+    // EOF tokens to be sent. This is a bit of a hack to support fully 
+    // unterminated conditionals in the directive handling.
+    // FIXME: not a great hack here.
+    set_position(lexer, tok_start);
     return false;
 }
 
@@ -865,6 +885,7 @@ retry_lexing:;
 
     // Set up the token here...
     char* token_start = get_position(lexer);
+    assert(token_start <= lexer->buffer_end && "currently off buffer end!");
 
     Location token_location = get_curr_location(lexer);
 

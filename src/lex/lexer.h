@@ -42,6 +42,9 @@ void lexer_create(Lexer* lexer, DiagnosticManager* dm, LangOptions* opts,
 void lexer_set_directive(Lexer* lexer);
 void lexer_set_header(Lexer* lexer);
 
+void lexer_diable_diagnostics(Lexer* lexer);
+void lexer_enable_diagnostics(Lexer* lexer, DiagnosticManager* dm);
+
 // Get the next token from the lexer advancing it's position. Note that this
 // cannot be undone. However, this should never be necessary as the token 
 // should always be saved be the preprocessor.

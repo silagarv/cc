@@ -11,14 +11,34 @@
 vector_of_impl(Conditional, Conditional, conditional)
 vector_of_impl(Include, Include, include)
 
-Conditional conditional_create(Location location)
+Conditional conditional_create(Location location, bool taken)
 {
-    return (Conditional) { location };
+    return (Conditional) { location, taken, false };
 }
 
 Location conditional_location(const Conditional* conditional)
 {
     return conditional->location;
+}
+
+bool conditional_taken(const Conditional* conditional)
+{
+    return conditional->taken;
+}
+
+bool conditional_had_else(const Conditional* conditional)
+{
+    return conditional->had_else;
+}
+
+void conditional_set_taken(Conditional* conditional)
+{
+    conditional->taken = true;
+}
+
+void conditional_set_else(Conditional* conditional)
+{
+    conditional->had_else = true;
 }
 
 // General include handling functions.
@@ -78,9 +98,10 @@ bool include_peek_next(Include* include, Token* token)
 
 // Functions for pushing, popping, and general handling of conditionals
 // TODO: these will remain unimplemented.
-void include_push_conditional(Include* include, Location location)
+void include_push_conditional(Include* include, Location location, bool taken)
 {
-    conditional_vector_push(&include->cond, conditional_create(location));
+    conditional_vector_push(&include->cond, conditional_create(location,
+            taken));
 }
 
 Location include_pop_conditional(Include* include)
@@ -92,4 +113,10 @@ Location include_pop_conditional(Include* include)
 bool include_conditional_empty(const Include* include)
 {
     return conditional_vector_empty(&include->cond);
+}
+
+Conditional* include_get_current_conditional(Include* include)
+{
+    assert(!include_conditional_empty(include) && "need a conditional!");
+    return conditional_vector_back(include_get_conditionals(include));
 }

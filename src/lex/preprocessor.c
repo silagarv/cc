@@ -6,10 +6,8 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
-#include <time.h> // For initialising builtin pp macros.
+#include <time.h>
 
-#include "files/line_map.h"
-#include "lex/header_finder.h"
 #include "util/arena.h"
 #include "util/buffer.h"
 
@@ -19,6 +17,7 @@
 #include "files/filepath.h"
 #include "files/source_manager.h"
 #include "files/location.h"
+#include "files/line_map.h"
 
 #include "lex/identifier_table.h"
 #include "lex/token.h"
@@ -26,6 +25,7 @@
 #include "lex/include_stack.h"
 #include "lex/macro.h"
 #include "lex/directives.h"
+#include "lex/header_finder.h"
 #include "lex/include_stack.h"
 #include "lex/macro_map.h"
 
@@ -569,6 +569,7 @@ bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
     pp->counter = 0;
     preprocessor_initialise_date_time(pp);
     pp->collecting_args = false;
+    pp->fatal_error = true;
 
     // Put our input onto the stack so that we are ready to start lexing tokens
     preprocessor_push_input(pp, starting_file);
@@ -611,6 +612,11 @@ IncludeVector* preprocessor_inputs(Preprocessor* pp)
     return &pp->inputs;
 }
 
+Include* preprocessor_current_input(Preprocessor* pp)
+{
+    return include_vector_back(preprocessor_inputs(pp));
+}
+
 unsigned int preprocessor_include_depth(const Preprocessor* pp)
 {
     size_t size = include_vector_size(&pp->inputs);
@@ -643,6 +649,16 @@ MacroExpander* preprocessor_expander(Preprocessor* pp)
 bool preprocessor_collecting_args(const Preprocessor* pp)
 {
     return pp->collecting_args;
+}
+
+bool preprocessor_fatal_error(const Preprocessor* pp)
+{
+    return pp->fatal_error;
+}
+
+void preprocessor_set_fatal_error(Preprocessor* pp)
+{
+    pp->fatal_error = true;
 }
 
 // TODO: eventually if I want to implement pragma once, or the multiple include
@@ -1128,7 +1144,8 @@ TokenStream preprocessor_expand_function_macro(Preprocessor* pp,
             Token stringified = preprocessor_stringify_macro_arg(pp, arg,
                     location, token_get_location(&param));
 
-            // Finally, simply 
+            // Finally, simply  just push the token to the result list and
+            // increase the results count.
             token_list_push_back(&result, stringified);
             count++;
             continue;
@@ -1494,9 +1511,8 @@ bool preprocessor_get_next(Preprocessor* pp, Token* token)
     // are popped from the stack and we discard the EOF token acidentally.
     if (!preprocessor_has_input(pp))
     {
-        Token eof = {0};
-        token_set_type(&eof, TOK_EOF);
-        *token = eof;
+        token_set_type(token, TOK_EOF);
+        // FIXME: 
         return false;
     }
 
@@ -1528,9 +1544,12 @@ bool preprocessor_get_next(Preprocessor* pp, Token* token)
     {
         preprocessor_parse_directive(pp, token);
 
-        // Handle the cases where we fail to parse a directive
+        // If we got an EOF token after parsing a directive we should abort 
+        // lexing as that means we got an include like directive that fully
+        // failed to include anything at all.
         if (token_is_type(token, TOK_EOF))
         {
+            assert(preprocessor_fatal_error(pp) && "EOF but not fatal?");
             return false;
         }
         

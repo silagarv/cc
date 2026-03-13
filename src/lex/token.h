@@ -256,6 +256,7 @@ struct Identifier* token_get_identifier(const Token* token);
 void token_classify_identifier(Token* token);
 void token_classify_pp_identifier(Token* token);
 bool token_is_identifier_like(const Token* token);
+bool token_is_directive_start(const Token* token);
 
 String token_get_literal_node(const Token* token);
 size_t token_get_length(Token* tok);

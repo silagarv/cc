@@ -19,7 +19,8 @@
 // outside of it's scope in my opinion.
 typedef struct Conditional {
     Location location; // The location of the `if` in this conditional.
-    // TODO: will need to figure out what info is actually needed...
+    bool taken; // Have we taken one of the paths of the conditional yet?
+    bool had_else; // Have we seen an 'else' branch in the conditional yet?
 } Conditional;
 
 vector_of_decl(Conditional, Conditional, conditional);
@@ -43,8 +44,13 @@ typedef struct Include {
 
 vector_of_decl(Include, Include, include);
 
-Conditional conditional_create(Location location);
+Conditional conditional_create(Location location, bool taken);
 Location conditional_location(const Conditional* conditional);
+bool conditional_taken(const Conditional* conditional);
+bool conditional_had_else(const Conditional* conditional);
+
+void conditional_set_taken(Conditional* conditional);
+void conditional_set_else(Conditional* conditional);
 
 // General include handling functions.
 Include include_create(DiagnosticManager* dm, LangOptions* opts,
@@ -62,8 +68,9 @@ bool include_peek_next(Include* include, Token* token);
 
 // Functions for pushing, popping, and general handling of conditionals
 // TODO: these will remain unimplemented.
-void include_push_conditional(Include* include, Location location);
+void include_push_conditional(Include* include, Location location, bool taken);
 Location include_pop_conditional(Include* include);
 bool include_conditional_empty(const Include* include);
+Conditional* include_get_current_conditional(Include* include);
 
 #endif /* INCLUDE_STACK_H */
