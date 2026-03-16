@@ -30,6 +30,7 @@
 #include "lex/macro_map.h"
 
 #define PREPROCESSOR_MAX_DEPTH 200
+#define PREPROCESSOR_COUNTER_MAX INT_MAX
 
 // Structure which represents the tokens used in the argument to a macro 
 // invocation. This struct does not own the tokens, rather these tokens are 
@@ -231,6 +232,7 @@ void macro_expander_push(MacroExpander* expander, Macro* macro, MacroArgs* args,
         Location location, Preprocessor* pp)
 {
     assert(!macro_disabled(macro) && "macro is currently expanding!");
+    assert(!macro_pragma(macro) && "unhandled _Pragma???");
 
     // Before we go and push the macro we should check that the macro is not
     // empty. If it is empty we can simply return. This act's like we pushed,
@@ -669,7 +671,7 @@ bool preprocessor_try_find_include(Preprocessor* pp, Filepath* path,
 {
     // First get the current include and the source file that is relavent to
     // it. This is so that we can use the current file path as needed from it.
-    Include* curr_file = include_vector_back(&pp->inputs);
+    Include* curr_file = preprocessor_current_input(pp);
     SourceFile* curr_sf = include_get_source(curr_file);
     Filepath* curr_path = source_file_get_name(curr_sf);
 
@@ -948,16 +950,6 @@ TokenStream preprocessor_expand_counter(Preprocessor* pp, Location location)
     return preprocessor_expand_unsigned(pp, location, value);
 }
 
-// TODO: how should we handle this since the preprocessor handles some pragmas
-// TODO: but it does not handle other pragmas, this might be a bit tricky...?
-TokenStream preprocessor_expand_pragma(Preprocessor* pp, Location location)
-{
-    // TODO: need to properly parse the pragma. It appears we do proper 
-    // TODO: expansion of the tokens once we know we have a pragma token 
-    panic("_Pragma handling unimplemented");
-    return token_stream_create_empty();
-}
-
 TokenStream preprocessor_expand_builtin_macro(Preprocessor* pp,
         const Macro* macro, Location location)
 {
@@ -986,10 +978,7 @@ TokenStream preprocessor_expand_builtin_macro(Preprocessor* pp,
     {
         return preprocessor_expand_counter(pp, location);
     }
-    else if (identifier == pp->id__Pragma)
-    {
-        return preprocessor_expand_pragma(pp, location);
-    }
+    assert(identifier != pp->id__Pragma && "pragma should've been handled");
 
     panic("unreachable; unhandled builtin macro type");
     return token_stream_create_empty();
@@ -1435,12 +1424,26 @@ bool preprocessor_get_macro_arguments(Preprocessor* pp, Token* macro_tok,
     return !fatal_error;
 }
 
+bool preprocessor_handle_pragma_operator(Preprocessor* pp, Token* token)
+{
+    assert(token_get_identifier(token) == pp->id__Pragma && "not _Pragma?");
+    panic("_Pragma is currently unimplemented");
+    return true;
+}
+
 bool preprocessor_start_expansion(Preprocessor* pp, Token* token)
 {
     Identifier* name = token_get_identifier(token);
     Macro* macro = macro_map_get_macro(&pp->macros, name);
     assert(macro != NULL && !macro_disabled(macro) && "need an alive macro!");
-   
+    
+    // If we have a pragma builtin then we will need to handle that seperately
+    if (macro_pragma(macro))
+    {
+        preprocessor_handle_pragma_operator(pp, token);
+        return true;
+    }
+
     // If we have a function like expansion then let's now go and collect the
     // arguments for it. Note that args may still be NULL after in some 
     // particular situations so is not a good way to detect if that failed or
@@ -1512,7 +1515,6 @@ bool preprocessor_get_next(Preprocessor* pp, Token* token)
     if (!preprocessor_has_input(pp))
     {
         token_set_type(token, TOK_EOF);
-        // FIXME: 
         return false;
     }
 
@@ -1539,7 +1541,7 @@ bool preprocessor_get_next(Preprocessor* pp, Token* token)
     // next token. Even if we are caching our token then we will need to
     // handle this directive to get to our next token. So handle it.
     // FIXME: Is this okay for long chains at the start of a file when this
-    // FIXME: isn't getting deleted by tail recursion
+    // FIXME: isn't getting deleted by tail recursion?
     if (preprocessor_directive_start(pp, token))
     {
         preprocessor_parse_directive(pp, token);

@@ -4,17 +4,15 @@
 #include <stddef.h>
 #include <stdio.h>
 
-#include "driver/warning.h"
-#include "files/filepath.h"
-#include "files/source_manager.h"
-#include "lex/include_stack.h"
-#include "lex/lexer.h"
 #include "util/arena.h"
 #include "util/buffer.h"
 #include "util/ptr_set.h"
 
+#include "driver/warning.h"
 #include "driver/diagnostic.h"
 
+#include "files/filepath.h"
+#include "files/source_manager.h"
 #include "files/location.h"
 
 #include "lex/identifier_table.h"
@@ -22,12 +20,13 @@
 #include "lex/macro_map.h"
 #include "lex/token.h"
 #include "lex/preprocessor.h"
-#include "util/str.h"
+#include "lex/include_stack.h"
+#include "lex/lexer.h"
+#include "lex/pp_expression.h"
 
 bool preprocessor_directive_start(Preprocessor* pp, Token* token)
 {
-    return token_is_type(token, TOK_HASH) 
-            && token_has_flag(token, TOK_FLAG_BOL);
+    return token_is_directive_start(token);
 }
 
 void preprocessor_eat_to_eod(Preprocessor* pp, Token* token)
@@ -450,9 +449,12 @@ void preprocessor_handle_define(Preprocessor* pp, Token* token)
     // Now that we know we have the possibility to have a valid macro we should
     // go and parse the macro's parameters and macro body. If this fails that
     // means that we should not try to proprerly define the macro.
+    // FIXME: I would like to use the macromap's allocator here instead
     Macro* macro = macro_create(preprocessor_allocator(pp), name, loc, NULL,
             0, false, NULL, 0, false, false);
 
+    // Try to parse the macro parameters and body ignoring the macro entirely
+    // if anything fails. This emulations GCC and Clang
     if (!preprocessor_parse_macro_params_and_body(pp, token, macro))
     {
         return;
@@ -626,6 +628,7 @@ void preprocessor_handle_include(Preprocessor* pp, Token* token)
         diagnostic_fatal_error_at(pp->dm, token_get_location(token),
                 "'%s' file not found", filepath_get_cstr(&path));
 
+        // Set that we have a fatal error so we can't continue
         preprocessor_set_fatal_error(pp);
         token_set_type(token, TOK_EOF);
         return;
@@ -639,6 +642,7 @@ void preprocessor_handle_include(Preprocessor* pp, Token* token)
         diagnostic_fatal_error_at(pp->dm, token_get_location(token), "#include "
                 "nested too deeply");
 
+        // Set that we have a fatal error so we can't continue
         preprocessor_set_fatal_error(pp);
         token_set_type(token, TOK_EOF);
         return;
@@ -666,6 +670,10 @@ void preprocessor_handle_embed(Preprocessor* pp, Token* token)
 // Also note that we don't want to randomly be popping this include off of the
 // preprocessors stack so we should be careful to not use the preprocessing 
 // functions for that.
+// Additionally, this function only processes one skipped block at a time. When
+// we encounter an unnested conditional then we call the parse_directive 
+// function so that can properly evaluate the conditional. This may result
+// in multiple calls of this function to stack up.
 void preprocessor_skip_conditional_block(Preprocessor* pp, Include* include)
 {
     // Make sure to disable our lexer diagnostics here.
@@ -680,6 +688,7 @@ void preprocessor_skip_conditional_block(Preprocessor* pp, Include* include)
     // TODO: we return from directive parsing mode we relex EOF, and pop all
     // TODO: our conditionals.
     Token tmp_token;
+    size_t nest = 0;
     while (true)
     {
         // Peek the next token telling us information about it
@@ -694,7 +703,7 @@ void preprocessor_skip_conditional_block(Preprocessor* pp, Include* include)
 
         // If we get a hash token then we need to investigate what directive we
         // are going to get.
-        if (!token_is_directive_start(&tmp_token))
+        if (!preprocessor_directive_start(pp, &tmp_token))
         {
             include_get_next(include, &tmp_token);
             continue;
@@ -703,6 +712,8 @@ void preprocessor_skip_conditional_block(Preprocessor* pp, Include* include)
         // Otherwise we should check the directive type that we have. So start
         // by eating the hash and peeking the next token to see if it is 
         // something we should investigate.
+        preprocessor_enter_directive(pp);
+
         Token hash_token = tmp_token;
         include_get_next(include, &tmp_token); // Eat '#'
         include_peek_next(include, &tmp_token); // Peek the next.
@@ -714,20 +725,84 @@ void preprocessor_skip_conditional_block(Preprocessor* pp, Include* include)
             continue;
         }
 
-        Identifier* id = token_get_identifier(&tmp_token);
-        switch (identifier_get_pp_keyword(id))
+        // Get the keyword from the identifier and act based on the type of
+        // condition it is but only if it was relavent.
+        Identifier* directive = token_get_identifier(&tmp_token);
+        TokenType pp_keyword = identifier_get_pp_keyword(directive);
+        switch (pp_keyword)
         {
-            // All our interesting cases here. These cause a possible change in
-            // what we will need to do. Note that some of these are not 
-            // implemented yet but will eventually be.
+            // We are only interested in any conditional directives here. Note 
+            // that for all of the directives that require either a macro name
+            // or some kind of expression
+            case TOK_PP_if:
+            case TOK_PP_ifdef:
+            case TOK_PP_ifndef:
+            {
+                // Handle any open conditionals here but do not process the 
+                // directives since Clang and GCC do not. Instead we just trust
+                // that the directives were okay.
+                Location location = token_get_location(&tmp_token);
+                include_push_conditional(include, location, false);
+                nest++;
+
+                preprocessor_eat_to_eod(pp, &tmp_token);
+                continue;
+            }
+
             case TOK_PP_elif:
-            case TOK_PP_else:
             case TOK_PP_elifdef:
             case TOK_PP_elifndef:
-            case TOK_PP_endif:
-                break;
+            case TOK_PP_else:
+            {
+                // If this was our unnested endif then we are done as we get 
+                // the handling directive loop to handle any directives which
+                // could actually be of consequence to us.
+                if (nest == 0)
+                {
+                    break;
+                }
 
-            // everything else if not interesting
+                // get the current conditional from the include so we know if
+                // we have seen the else before
+                Conditional* cond = include_get_current_conditional(include);
+
+                // If we had the else than error about getting this directive
+                // after the else like Clang and GCC do.
+                if (conditional_had_else(cond))
+                {
+                    diagnostic_error_at(pp->dm, token_get_location(&tmp_token),
+                            "#%s after #else", identifier_cstr(directive));
+                }
+
+                // If we were the else we want to make sure we handled any
+                // invalid orderings of these that may show up.
+                if (pp_keyword == TOK_PP_else)
+                {
+                    conditional_set_else(cond);
+                }
+
+                preprocessor_eat_to_eod(pp, &tmp_token);
+                continue;
+            }
+
+            case TOK_PP_endif:
+            {
+                // If this was our unnested endif then we are done.
+                if (nest == 0)
+                {
+                    break;
+                }
+                
+                // Otherwise this was a nested endif and we should pop it
+                // off of our conditional stack
+                include_pop_conditional(include);
+                nest--;
+
+                preprocessor_eat_to_eod(pp, &tmp_token);
+                continue;
+            }
+
+            // everything else is not interesting and should be ignored.
             default:
                 continue;
         }
@@ -744,19 +819,47 @@ void preprocessor_skip_conditional_block(Preprocessor* pp, Include* include)
     lexer_enable_diagnostics(include_get_lexer(include),
             preprocessor_diagnostics(pp));
 
-    // If we didn't get an EOF token then we should have a directive of interest
+    // If we didn't get an EOF token then we should have a directive
     if (!token_is_type(&tmp_token, TOK_EOF))
     {
-        assert(token_is_directive_start(&tmp_token) && "not a directive?");
+        assert(preprocessor_directive_start(pp, &tmp_token) && "directive?");
         preprocessor_parse_directive(pp, &tmp_token);
     }
 }
 
 void preprocessor_handle_if(Preprocessor* pp, Token* token)
 {
-    diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
-            "#if is valid but not implemented");
-    preprocessor_eat_to_eod(pp, token);
+    // Save the if location for us so that we can push an include with a correct
+    // location in the future.
+    Location if_loc = token_get_location(token);
+    
+    // Now we will want to go attempt to evaluate the preprocessor directive
+    // expression and return the sucess or failure of this. If we fail to parse
+    // the expression, no recovery is performed so we will have to eat to EOD
+    PPValue value = {0};
+    if (!preprocessor_parse_expression(pp, token, &value))
+    {
+        preprocessor_eat_to_eod(pp, token);
+    }
+
+    // Now no matter if we suceeded or not we need to handle the #if branch here
+    // If we did not succeed parsing consider the value to be '0'
+    // Get the current include and it's stack of conditionals
+    Include* current = preprocessor_current_input(pp);
+    ConditionalVector* conditionals = include_get_conditionals(current);
+    if (!pp_value_get_success(&value) || pp_value_get_value(&value) == 0)
+    {
+        conditional_vector_push(conditionals, conditional_create(if_loc,
+                /*branch taken*/false));
+        preprocessor_skip_conditional_block(pp, current);
+        return;
+    }
+    else
+    {
+        conditional_vector_push(conditionals, conditional_create(if_loc,
+                /*branch taken*/true));
+        return;
+    }
 }
 
 void preprocessor_handle_ifdef_type(Preprocessor* pp, Token* token, bool ifdef)
@@ -871,12 +974,17 @@ void preprocessor_handle_else(Preprocessor* pp, Token* token)
     // take the branch or not.
     Conditional* conditional = include_get_current_conditional(include);
 
+    // Also remember if the conditional had else as we are going to update it
+    // now no matter what happens
+    bool had_else = conditional_had_else(conditional);
+    conditional_set_else(conditional);
+
     // If we previously had an else directive then error about that. Also skip
     // the block like clang seems to do.
-    if (conditional_had_else(conditional))
+    if (had_else)
     {
-        diagnostic_error_at(pp->dm, token_get_location(token),
-                "#else after #else");
+        Location location = token_get_location(token);
+        diagnostic_error_at(pp->dm, location, "#else after #else");
         preprocessor_skip_conditional_block(pp, include);
         return;
     }
@@ -887,10 +995,6 @@ void preprocessor_handle_else(Preprocessor* pp, Token* token)
         preprocessor_skip_conditional_block(pp, include);
         return;
     }
-
-    // Otherwise we will just take the else block as is. Make sure to notify
-    // the conditional that we had the else.
-    conditional_set_else(conditional);
 }
 
 void preprocessor_handle_endif(Preprocessor* pp, Token* token)
