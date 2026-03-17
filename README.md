@@ -31,7 +31,7 @@ To building, run 'make' in the cc directory and it wll output an executable name
     - Improve diagnostics by giving macro expanded tokens a sensible location (currently it defaults to the location of the macro token)
     - Eventually implement the 'multiple include' optimisation
     - Preprocessor should probably properly propogate spacing information
-    - Implement preprocessor conditional expressions using a recursive descent parser which evaluates as it parses.
+    - Fix the expresison parser to be more clean and to use Pratt parsing properly instead of it's current awkward state
 - Parser & semantic
     - Fix every occurance of getting an identifier from a token so that they use the token_get_identifier instead of getting directly from the token
 - Declaration parsing

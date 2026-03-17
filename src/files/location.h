@@ -2,7 +2,6 @@
 #define LOCATION_H
 
 #include "util/vec.h"
-#include <locale.h>
 #include <stdint.h>
 #include <limits.h>
 #include <stdbool.h>

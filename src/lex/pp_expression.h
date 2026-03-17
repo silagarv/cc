@@ -6,6 +6,7 @@
 #include "lex/token.h"
 #include "lex/preprocessor.h"
 
+// FIXME: include a location in the value???
 // A simple structure to represent a preprocessing value and if the 
 // preprocessing value is valid to use.
 typedef struct PPValue {

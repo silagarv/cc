@@ -832,6 +832,9 @@ void preprocessor_handle_if(Preprocessor* pp, Token* token)
     // Save the if location for us so that we can push an include with a correct
     // location in the future.
     Location if_loc = token_get_location(token);
+
+    // We want to get the next macro expanded token here
+    preprocessor_advance_token(pp, token);
     
     // Now we will want to go attempt to evaluate the preprocessor directive
     // expression and return the sucess or failure of this. If we fail to parse
@@ -841,6 +844,7 @@ void preprocessor_handle_if(Preprocessor* pp, Token* token)
     {
         preprocessor_eat_to_eod(pp, token);
     }
+    assert(token_is_type(token, TOK_PP_EOD) && "not at EOD?");
 
     // Now no matter if we suceeded or not we need to handle the #if branch here
     // If we did not succeed parsing consider the value to be '0'
@@ -852,13 +856,11 @@ void preprocessor_handle_if(Preprocessor* pp, Token* token)
         conditional_vector_push(conditionals, conditional_create(if_loc,
                 /*branch taken*/false));
         preprocessor_skip_conditional_block(pp, current);
-        return;
     }
     else
     {
         conditional_vector_push(conditionals, conditional_create(if_loc,
                 /*branch taken*/true));
-        return;
     }
 }
 
@@ -952,9 +954,35 @@ void preprocessor_handle_elifndef(Preprocessor* pp, Token* token)
 
 void preprocessor_handle_elif(Preprocessor* pp, Token* token)
 {
-    diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
-            "#elif is valid but not implemented");
-    preprocessor_eat_to_eod(pp, token);
+    // Save the if location for us so that we can push an include with a correct
+    // location in the future.
+    Location elif_loc = token_get_location(token);
+
+    // We want to get the next macro expanded token here
+    preprocessor_advance_token(pp, token);
+    
+    // Now we will want to go attempt to evaluate the preprocessor directive
+    // expression and return the sucess or failure of this. If we fail to parse
+    // the expression, no recovery is performed so we will have to eat to EOD
+    PPValue value = {0};
+    if (!preprocessor_parse_expression(pp, token, &value))
+    {
+        preprocessor_eat_to_eod(pp, token);
+    }
+    assert(token_is_type(token, TOK_PP_EOD) && "not at EOD?");
+
+    // If we failed the parsing, or the value was 0, or we have already taken
+    // a branch skip the block that we just got.
+    Include* current = preprocessor_current_input(pp);
+    ConditionalVector* conditionals = include_get_conditionals(current);
+    if (!pp_value_get_success(&value) || pp_value_get_value(&value) == 0
+            || conditional_taken(conditional_vector_back(conditionals)))
+    {
+        preprocessor_skip_conditional_block(pp, current);
+    }
+
+    // Otherwise we have nothing left to do so just 'enter' the block we got
+    // and handle it as needed.
 }
 
 void preprocessor_handle_else(Preprocessor* pp, Token* token)
