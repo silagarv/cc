@@ -691,8 +691,8 @@ void preprocessor_skip_conditional_block(Preprocessor* pp, Include* include)
     size_t nest = 0;
     while (true)
     {
-        // Peek the next token telling us information about it
-        include_peek_next(include, &tmp_token);
+        // Get the next token from the include
+        include_get_next(include, &tmp_token);
 
         // If we get an eof token we are done since we should not keep eating
         // at this point.
@@ -705,7 +705,6 @@ void preprocessor_skip_conditional_block(Preprocessor* pp, Include* include)
         // are going to get.
         if (!preprocessor_directive_start(pp, &tmp_token))
         {
-            include_get_next(include, &tmp_token);
             continue;
         }
 
@@ -715,7 +714,6 @@ void preprocessor_skip_conditional_block(Preprocessor* pp, Include* include)
         preprocessor_enter_directive(pp);
 
         Token hash_token = tmp_token;
-        include_get_next(include, &tmp_token); // Eat '#'
         include_peek_next(include, &tmp_token); // Peek the next.
 
         // Not interesting if it's not a directive at all or some kind of 

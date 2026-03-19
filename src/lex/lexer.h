@@ -11,8 +11,6 @@
 
 #include "lex/token.h"
 #include "lex/identifier_table.h"
-#include "util/buffer.h"
-#include <stddef.h>
 
 typedef struct Lexer {
     DiagnosticManager* dm;

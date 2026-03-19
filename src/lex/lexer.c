@@ -867,11 +867,12 @@ static bool lex_end_of_file(Lexer* lexer, Token* token, char* tok_start)
     // Set the token type to be the EOF token.
     token_set_type(token, TOK_EOF);
     
-    // Reset the lexer position back to the token start to allow for unlimited
-    // EOF tokens to be sent. This is a bit of a hack to support fully 
-    // unterminated conditionals in the directive handling.
-    // FIXME: not a great hack here.
-    set_position(lexer, tok_start);
+    // Reset the lexer position back to the end of the bufer to allow for 
+    // multiple eof tokens to be sent. This helps our skipping lexing be faster.
+    assert(lexer->current_ptr >= lexer->buffer_end
+            && *lexer->buffer_end == '\0');
+    lexer->current_ptr = (char*) lexer->buffer_end;
+
     return false;
 }
 
