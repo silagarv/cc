@@ -27,11 +27,10 @@ To building, run 'make' in the cc directory and it wll output an executable name
         - 1) save alot of memory
         - 2) make the implementation more simple in alot of places
         - 3) increase how easy it is to 'just construct' a lexer on the stack and use it instead of having to pretty much keep the PP in the call stack
-    - Implement token concatenation and argument stringification
     - Improve diagnostics by giving macro expanded tokens a sensible location (currently it defaults to the location of the macro token)
     - Eventually implement the 'multiple include' optimisation
     - Preprocessor should probably properly propogate spacing information
-    - Fix the expresison parser to be more clean and to use Pratt parsing properly instead of it's current awkward state
+    - Fix the expresison parser
 - Parser & semantic
     - Fix every occurance of getting an identifier from a token so that they use the token_get_identifier instead of getting directly from the token
 - Declaration parsing
@@ -58,5 +57,4 @@ To building, run 'make' in the cc directory and it wll output an executable name
 
 ## Later TODO
 - Fully featured command-line driver
-- Preprocessor support
 - Multiple target support

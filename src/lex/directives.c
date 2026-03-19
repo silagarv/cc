@@ -980,9 +980,12 @@ void preprocessor_handle_elif(Preprocessor* pp, Token* token)
     {
         preprocessor_skip_conditional_block(pp, current);
     }
-
-    // Otherwise we have nothing left to do so just 'enter' the block we got
-    // and handle it as needed.
+    else
+    {
+        // Otherwise we have nothing left to do so just 'enter' the block we got
+        // and handle it as needed.
+        conditional_set_taken(conditional_vector_back(conditionals));
+    }
 }
 
 void preprocessor_handle_else(Preprocessor* pp, Token* token)

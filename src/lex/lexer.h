@@ -69,7 +69,9 @@ void lexer_read_diagnostic_string(Lexer* lexer, Buffer* buffer);
 // Other lexer functions to help us with preprocessing primarily. These allow
 // for us to get the spelling for tokens which is particularly useful for things
 // like preprocessing.
-// TODO: will need to create a lexer from a sourcefile and give it an offset to
-// TODO: start at...
+void lexer_token_spelling(SourceManager* sm, LangOptions* opts, Token token,
+        Buffer* buffer);
+void lexer_token_stringify(SourceManager* sm, LangOptions* opts, Token token,
+        Buffer* buffer);
 
 #endif /* LEXER_H */

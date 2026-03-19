@@ -121,9 +121,10 @@ void preprocessor_delete(Preprocessor* pp);
 // purposes like the handling of directives and such. Should not be used by 
 // the parser for any purpose at all.
 DiagnosticManager* preprocessor_diagnostics(Preprocessor* pp);
-
+LangOptions* preprocessor_lang(Preprocessor* pp);
 SourceManager* preprocessor_source_manager(Preprocessor* pp);
-
+IdentifierTable* preprocessor_idents(Preprocessor* pp);
+Arena* preprocessor_literals(Preprocessor* pp);
 Arena* preprocessor_allocator(Preprocessor* pp);
 
 IncludeVector* preprocessor_inputs(Preprocessor* pp);

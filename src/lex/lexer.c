@@ -294,6 +294,14 @@ static Location get_ending_location(const Lexer* lexer)
     return get_location_from(lexer, lexer->current_ptr) - 1;
 }
 
+static void seek_to_location(Lexer* lexer, Location location)
+{
+    assert(location >= lexer->start_loc && "not in lexer?");
+
+    Location diff = location - lexer->start_loc;
+    lexer->current_ptr += diff;
+}
+
 static void reset_token(Token* token)
 {
     *token = (Token) {0};
@@ -1589,5 +1597,56 @@ void lexer_read_diagnostic_string(Lexer* lexer, Buffer* buffer)
                 break;
         }
         consume_char(lexer);
+    }
+}
+
+// FIXME: this function and the one below will eventually fail for tokens which
+// FIXME: are macros. This is not good.
+void lexer_token_spelling(SourceManager* sm, LangOptions* opts, Token token,
+        Buffer* buffer)
+{
+    Location location = token_get_location(&token);
+    SourceFile* source = source_manager_from_location(sm, location);
+
+    Lexer lexer;
+    lexer_create(&lexer, NULL, opts, NULL, NULL, source);
+
+    seek_to_location(&lexer, location);
+    assert(get_curr_location(&lexer) == location && "not at location?");
+
+    Location end_location = token_get_end(&token);
+    while (get_curr_location(&lexer) <= end_location)
+    {
+        // Get the next char from the lexer.Then we just add to the buffer.
+        char c = get_next_char(&lexer);
+        buffer_add_char(buffer, c);   
+    }
+}
+
+// FIXME: This should not escape a '\' if it is not coming from a string?
+void lexer_token_stringify(SourceManager* sm, LangOptions* opts, Token token,
+        Buffer* buffer)
+{   
+    Location location = token_get_location(&token);
+    SourceFile* source = source_manager_from_location(sm, location);
+
+    Lexer lexer;
+    lexer_create(&lexer, NULL, opts, NULL, NULL, source);
+
+    seek_to_location(&lexer, location);
+    assert(get_curr_location(&lexer) == location && "not at location?");
+
+    Location end_location = token_get_end(&token);
+    while (get_curr_location(&lexer) <= end_location)
+    {
+        // Get the next char from the lexer. If it as '\\' or a '"' then we 
+        // should escape it. Then we just add the char to the buffer.
+        char c = get_next_char(&lexer);
+
+        if (c == '\\' || c == '"')
+        {
+            buffer_add_char(buffer, '\\');
+        }
+        buffer_add_char(buffer, c);   
     }
 }

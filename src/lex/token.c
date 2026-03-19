@@ -50,6 +50,11 @@ Location token_get_location(const Token* token)
     return token->loc;
 }
 
+Location token_get_end(const Token* token)
+{
+    return token->end;
+}
+
 bool token_is_type(const Token* token, TokenType type)
 {
     return token->type == type;
@@ -461,6 +466,11 @@ TokenListEntry* token_list_entry_next(const TokenListEntry* entry)
     return entry->next;
 }
 
+void token_list_entry_set_next(TokenListEntry* entry, TokenListEntry* next)
+{
+    entry->next = next;
+}
+
 Token token_list_entry_token(const TokenListEntry* entry)
 {
     return entry->tok;
@@ -548,6 +558,38 @@ Token token_list_pop_front(TokenList* list)
 
     // Finally return the token that we have
     return token_list_entry_token(entry);
+}
+
+// TODO: possibly replace this function with something else as this is quite a
+// TODO: slow function as it has to traverse the entire list.
+Token token_list_pop_back(TokenList* list)
+{
+    assert(!token_list_empty(list));
+    TokenListEntry* target = list->tail;
+    assert(token_list_entry_next(target) == NULL && "has a next?");
+    
+    // Base case the tail is the target
+    if (list->head == target)
+    {
+        list->head = NULL;
+        list->tail = NULL;
+        return token_list_entry_token(target);
+    }
+    
+    // Otherwise we will need to loop until we reach the target
+    TokenListEntry* entry;
+    for (entry = list->head;
+            token_list_entry_next(entry) != target;
+            entry = token_list_entry_next(entry))
+    {
+        ; // Nothing to do.
+    }
+
+    // Now set the entry's next field to be null
+    token_list_entry_set_next(entry, NULL);
+
+    // Finally, return the target token.
+    return token_list_entry_token(target);
 }
 
 void token_list_push_back(TokenList* list, Token tok)

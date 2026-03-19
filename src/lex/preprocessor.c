@@ -284,7 +284,108 @@ void macro_expander_pop_arg(MacroExpander* expander)
     expander->expansion = macro_expansion_prev(expander->expansion);
 }
 
-bool macro_expander_next(MacroExpander* expander, Token* token)
+// If a paste error occurs, we should return the token unmodified with the next
+// token as the one we want to lex (i.e. remove the hash inbetween). We will not
+// modify the current token unless we know it is okay to do so.
+// FIXME: in long token pasting operations, this function will create ALOT of 
+// FIXME: different SourceFile* that are only used once... This is not ideal...
+// TODO: We should also include the location of the macro invocation probably...
+void macro_expander_paste_tokens(MacroExpander* expander, Token* token,
+        Preprocessor* pp)
+{
+    Token lhs;
+    bool had_paste = false;
+    do
+    {
+        lhs = *token;
+
+        Token maybe_paste = macro_expansion_peek(expander->expansion);
+        if (!token_is_type(&maybe_paste, TOK_HASH_HASH))
+        {
+            break;
+        }
+
+        had_paste = true;
+
+        // Then consume the '##' since even if this fails we DO NOT want it 
+        // anymore. Note that if the thing after the paste was empty we should
+        // have removed this token already...
+        macro_expansion_consume(expander->expansion);
+        assert(!macro_expansion_finished(expander->expansion) && "finished?!!");
+
+        // Then get our rhs token that we want to paste into this one.
+        Token rhs = macro_expansion_peek(expander->expansion);
+
+        // Get the approximate size of the buffer
+        size_t size = token_get_length(&lhs) + token_get_length(&rhs);
+
+        // Then put the spelling's into a buffer.
+        Buffer buffer = buffer_new_size(size + 2); /*'\n' '\0'*/
+        lexer_token_spelling(preprocessor_source_manager(pp), NULL, lhs,
+                &buffer);
+        lexer_token_spelling(preprocessor_source_manager(pp), NULL, rhs,
+                &buffer);
+        buffer_add_char(&buffer, '\n');
+        buffer_make_cstr(&buffer);
+        // printf("%s\n", buffer_get_ptr(&buffer));
+
+        // Also save the raw buffer data for diagnostics.
+        char* raw_ptr = buffer_get_ptr(&buffer);
+        size_t raw_len = buffer_get_len(&buffer) - 1; /* remove '\n' */
+
+        // Now that we have our buffer we can create an anonymous buffer for 
+        // this attempted paste operation.
+        SourceManager* sm = preprocessor_source_manager(pp);
+        SourceFile* tmp_file = source_manager_create_anonomous_buffer(sm,
+                buffer, LOCATION_INVALID);
+        
+        // Then create a lexer and try to lex a token and see if it is followed
+        // by an eof token or not. Also, we will handle the creation of a 
+        // comment token in this buffer. (Lexer itslef should not emit diags)
+        Lexer tmp_lexer;
+        lexer_create(&tmp_lexer, NULL, preprocessor_lang(pp),
+                preprocessor_literals(pp), preprocessor_idents(pp), tmp_file);
+
+        Token tmp;
+        lexer_get_next(&tmp_lexer, &tmp);
+
+        // If we are EOF on the first token we got some kind of comment so error
+        if (token_is_type(&tmp, TOK_EOF))
+        {
+            diagnostic_error_at(preprocessor_diagnostics(pp),
+                    token_get_location(&tmp), "pasting formed '%.*s' an "
+                    "invalid preprocessing token", (int) raw_len, raw_ptr);
+            break;
+        }
+
+        // Then the next token we want is the EOF token. If we do not get eof
+        // this time then we also have a pasting error. So report this.
+        Token eof;
+        lexer_get_next(&tmp_lexer, &eof);
+        if (!token_is_type(&eof, TOK_EOF))
+        {
+            diagnostic_error_at(preprocessor_diagnostics(pp),
+                    token_get_location(&eof), "pasting formed '%.*s' an "
+                    "invalid preprocessing token", (int) raw_len, raw_ptr);
+            break;
+        }
+
+        // Since we now know this is a valid token we can consume the token that
+        // we originally had only peeked.
+        macro_expansion_consume(expander->expansion);
+
+        // Then if we are here we are all good for now. Set the current token
+        // to this one. (Here we ideally want to set the location to smth 
+        // different but currently cannot since it wont find the right token.)
+        *token = tmp;
+    }
+    while (!macro_expansion_finished(expander->expansion));
+    assert(had_paste && "didn't try to paste tokens??");
+    // printf("%s\n", token_type_get_name(token->type));
+}
+
+bool macro_expander_next(MacroExpander* expander, Token* token,
+        Preprocessor* pp)
 {
     assert(macro_expander_expanding(expander) && "not expanding a macro?");
 
@@ -307,6 +408,18 @@ bool macro_expander_next(MacroExpander* expander, Token* token)
 
     // Otherwise simply consume the token
     *token = macro_expansion_consume(expander->expansion);
+
+    // Now here we should detect and handle token concatenation... We should not
+    // handle the pasting of tokens, if the current expansion is an argument
+    if (!macro_expansion_arg(expander->expansion)
+            && !macro_expansion_finished(expander->expansion))
+    {
+        Token peek_token = macro_expansion_peek(expander->expansion);
+        if (token_is_type(&peek_token, TOK_HASH_HASH))
+        {
+            macro_expander_paste_tokens(expander, token, pp);
+        }
+    }
 
     // Then we will always want to pop at this point if we have an argument type
     // expansion. Note that I think it may work without this? But I do not want
@@ -492,7 +605,7 @@ static void preprocessor_push_builtins(Preprocessor* pp)
 
     // STDC defines
     buffer_add_define_one(&predefs, "__STDC__");
-    buffer_add_define_value(&predefs, "__STDC_VERSION__", "199901L"); 
+    buffer_add_define_value(&predefs, "__STDC_VERSION__", "199901L");
 
     // Endian defines
     buffer_add_define_value(&predefs, "__BYTE_ORDER__",
@@ -518,8 +631,7 @@ static void preprocessor_push_builtins(Preprocessor* pp)
     buffer_add_define_one(&predefs, "__x86_64");
     buffer_add_define_one(&predefs, "__x86_64__");
 
-    // Special stuff for ignoring attributes :$
-    buffer_add_define_value(&predefs, "__attribute__(x)", "");
+    buffer_add_define_value(&predefs, "__WORDSIZE", "64"); 
 
     // Now turn this buffer into a source file for us to use.
     SourceFile* source = source_manager_create_builtin_buffer(pp->sm, predefs);
@@ -599,9 +711,24 @@ DiagnosticManager* preprocessor_diagnostics(Preprocessor* pp)
     return pp->dm;
 }
 
+LangOptions* preprocessor_lang(Preprocessor* pp)
+{
+    return pp->lang;
+}
+
 SourceManager* preprocessor_source_manager(Preprocessor* pp)
 {
     return pp->sm;
+}
+
+IdentifierTable* preprocessor_idents(Preprocessor* pp)
+{
+    return pp->identifiers;
+}
+
+Arena* preprocessor_literals(Preprocessor* pp)
+{
+    return &pp->literal_arena;
 }
 
 Arena* preprocessor_allocator(Preprocessor* pp)
@@ -749,7 +876,7 @@ bool preprocessor_next_unexpanded_token(Preprocessor* pp, Token* token)
     if (macro_expander_expanding(&pp->expander))
     {
         // True means we were able to get a token so just pass this on
-        if (macro_expander_next(&pp->expander, token))
+        if (macro_expander_next(&pp->expander, token, pp))
         {
             return true;
         }
@@ -813,8 +940,7 @@ bool preprocessor_should_expand(Preprocessor* pp, Token* token)
     // longer available for further replacement...`
     if (macro_disabled(macro))
     {
-        // FIXME: should check that this does not break anything in an 
-        // FIXME: unexpected ways...
+        // FIXME: Ensure that this is correct
         token_set_flag(token, TOK_FLAG_NOEXPAND);
         return false;
     }
@@ -984,6 +1110,27 @@ TokenStream preprocessor_expand_builtin_macro(Preprocessor* pp,
     return token_stream_create_empty();
 }
 
+void preprocessor_add_raw_argument_tokens(Preprocessor* pp, TokenList* result,
+        size_t* count, MacroArgs arg)
+{
+    TokenStream arg_stream = macro_args_get_stream(&arg);
+    while (!token_stream_end(&arg_stream))
+    {
+        Token tmp = token_stream_consume(&arg_stream);
+
+        // The we need to check that none of these tokens were a '##' since 
+        // those should not cause token pasting when coming from expanding a 
+        // macro arg.
+        if (token_is_type(&tmp, TOK_HASH_HASH))
+        {
+            token_set_type(&tmp, TOK_UNKNOWN);
+        }
+
+        token_list_push_back(result, tmp);
+        (*count)++;
+    }
+}
+
 void preprocessor_push_macro_arg(Preprocessor* pp, MacroArgs arg,
         Location location)
 {
@@ -1023,6 +1170,14 @@ bool preprocessor_expand_macro_arg(Preprocessor* pp, TokenList* result,
             break;
         }
 
+        // The we need to check that none of these tokens were a '##' since 
+        // those should not cause token pasting when coming from expanding a 
+        // macro arg.
+        if (token_is_type(&tmp, TOK_HASH_HASH))
+        {
+            token_set_type(&tmp, TOK_UNKNOWN);
+        }
+
         // Add the token to the list and increase the current count of tokens
         token_list_push_back(result, tmp);
         (*count)++;
@@ -1043,10 +1198,25 @@ Token preprocessor_stringify_macro_arg(Preprocessor* pp, MacroArgs arg,
     // buffer. Finally, add a trailing " character.
     Buffer arg_buff = buffer_new();
     buffer_add_char(&arg_buff, '"');
-    // TODO: make a call to a function for the lexer to stringify the tokens
-    // TODO: Note that we cannot make assumptions about where the macr arg 
-    // TODO: tokens can come from so we may need alot of inputs into the 
-    // TODO: function
+
+    // For each of our tokens we will want to stringify it and make sure that
+    // it ends up in it's string form in the buffer.
+    for (size_t i = 0; i < num_tokens; i++)
+    {
+        Token token = tokens[i];
+
+        // If the token has a leading space and IS NOT the first token then add
+        // a space into the buffer
+        if (i != 0 && token_has_flag(&token, TOK_FLAG_WHITESPACE))
+        {
+            buffer_add_char(&arg_buff, ' ');
+        }
+
+        // Next go and get the spelling of the token added into the buffer
+        lexer_token_stringify(pp->sm, pp->lang, token, &arg_buff);
+    }
+
+    // Finally, add our closing '"' character in to terminate the string
     buffer_add_char(&arg_buff, '"');
     buffer_make_cstr(&arg_buff);
 
@@ -1067,9 +1237,35 @@ Token preprocessor_stringify_macro_arg(Preprocessor* pp, MacroArgs arg,
     lexer_get_next(&tmp_lex, &eof_tok);
     assert(token_is_type(&eof_tok, TOK_EOF) && "didn't get the EOF token");
 
-    // FIXME: fix the tokens location when we do this and have that facility
-    // FIXME: available.
+    // Finally, return the token back to the caller as we have successfully 
+    // created a string token.
     return string_tok;
+}
+
+bool preprocessor_has_concat_before(const TokenStream* state)
+{
+    size_t idx = token_stream_cursor(state);
+    // This works since we have already advanced the stream and the first token
+    // cannot be a ## anyways
+    if (idx == 0 || idx == 1)
+    {
+        return false;
+    }
+
+    Token tok = token_stream_get(state, idx - 2);
+    return token_is_type(&tok, TOK_HASH_HASH);
+}
+
+// NOTE: we are technically on the '##' if we are calling this function
+bool preprocessor_has_concat_after(const TokenStream* state)
+{
+    if (token_stream_end(state))
+    {
+        return false;
+    }
+
+    Token tok = token_stream_peek(state);
+    return token_is_type(&tok, TOK_HASH_HASH);
 }
 
 // The algorithm for replacing the arguemtns and expanding function like macros
@@ -1108,14 +1304,7 @@ TokenStream preprocessor_expand_function_macro(Preprocessor* pp,
 
     TokenStream replacement = macro_get_stream(macro);
     while (!token_stream_end(&replacement))
-    {
-        // FIXME: stringification and concatenation handling needed.
-        // TODO: for stringification we need to do that first. And then 
-        // TODO: concatenation sometimes needs to be removed if the LHS or the
-        // TODO: RHS expands to and empty thing. But concatenation is handled
-        // TODO: at a later stage. But we still need to potentially skip 
-        // TODO: expanding an argument if we find them
-        
+    {        
         Token tok = token_stream_consume(&replacement);
 
         // If this token is a hash then it is followed by a macro parameter.
@@ -1151,11 +1340,108 @@ TokenStream preprocessor_expand_function_macro(Preprocessor* pp,
             continue;
         }
 
-        // FIXME: here is where we should care about if we have a '##' after, or
-        // FIXME: before the macro argument list, so we should have this here.
-        // NOTE: for this we will also really need to care about if the macro
-        // NOTE: argument is empty or not since we will effectively have to
-        // NOTE: delete the '##' token if the LHS or the RHS is empty...
+        // Get the following for helping us construct our token concatenation
+        // stuff below. we need to handle the concat before case in the event
+        // of repeated token concatenation. e.g. x ## y ## z
+        bool concat_before = preprocessor_has_concat_before(&replacement);
+        bool concat_after = preprocessor_has_concat_after(&replacement);
+
+        // Then if we have a concat before or after we SHOULD NOT expand the
+        // macro arg as specified above. This will have some special handling to
+        // delete the paste operator as needed. Note that we know we are 
+        // currently on a preprocessor argument.
+
+        // If the concatenation is after, we should add all of the current
+        // tokens to the stream unexpanded, then check if we should add the
+        // hash too. To know if we should add the hash we check we have an
+        // empty macro argument after the hash. And then if after the hash
+        // is non-empty then add the hash.
+        if (concat_after)
+        {
+            MacroArgs arg = args[param];
+            bool arg_empty = (macro_arg_num_tokens(&arg) == 0);
+
+            // Okay now add the tokens for this argument into the result. There
+            // is no issue doing this if the arg is empty...
+            preprocessor_add_raw_argument_tokens(pp, &result, &count,
+                    arg);
+
+            // Now we need to check if the token after is empty or not. If it is
+            // a non-param it would be empty, otherwise, we need to check if it
+            // is an empty param. get the token after the '##' note that we are 
+            // on the '##' right now. (as in the cursor is)
+            size_t cursor = token_stream_cursor(&replacement);
+            Token after = token_stream_get(&replacement, cursor + 1);
+
+            bool after_empty = false;
+            Identifier* after_name = token_get_identifier(&after);
+            size_t after_param;
+            bool is_after_param = after_name != NULL
+                    ? macro_get_param_num(macro, after_name, &after_param)
+                    : false;
+            MacroArgs after_arg;
+            
+            // only need to modify the value if we got an argument after.
+            if (is_after_param)
+            {
+                // Only add the hash if the argument is non-empty
+                after_arg = args[after_param];
+                after_empty = (macro_arg_num_tokens(&after_arg) == 0);
+            }
+
+            // Consume the '##' and then add it if required
+            Token hh = token_stream_consume(&replacement);
+            assert(token_is_type(&hh, TOK_HASH_HASH) && "not '##'??");
+
+            // Only add the hash if this argument isn't empty && the token after
+            // is not an empty token.
+            if (!arg_empty && !after_empty)
+            {
+                token_list_push_back(&result, hh);
+                count++;
+            }
+
+            // Make sure we don't go to the below.
+            continue;
+        }
+
+        // If the concatenation is before, we will need to check if we got 
+        // empty arguments after. We know we don't have to check the token
+        // before the hash otherwise, the concat_after code would have removed
+        // the hash already...
+        // FIXME: is this too strange or possible even incorrect?
+        if (concat_before)
+        {
+            MacroArgs arg = args[param];
+            bool arg_empty = (macro_arg_num_tokens(&arg) == 0);
+
+            // If this arg is empty and we put a hashhash on the result pop it 
+            // off. Note: this can be triggered by a non-empty lhs, but an empty
+            // rhs.
+            if (arg_empty && !token_list_empty(&result))
+            {
+                assert(count != 0 && "not empty but 0 count?");
+                Token peek = token_list_peek_back(&result);
+                if (token_is_type(&peek, TOK_HASH_HASH))
+                {
+                    // FIXME: removing the last token from the token list is
+                    // FIXME: the best bet for fixing this but it would be
+                    // FIXME: good to eventually create a better (faster) 
+                    // FIXME: solution as this is currently a linear time 
+                    // FIXME: operation
+                    token_list_pop_back(&result);
+                    count--;
+                }
+            }
+
+            // Now, add the raw arguments. Note this will have no effect if
+            // they are empty.
+            preprocessor_add_raw_argument_tokens(pp, &result, &count,
+                    args[param]);
+
+            // Make sure we don't go to the below.
+            continue;
+        }
 
         // Otherwise we need to macro expand the macros replacement list. Also
         // keep track of if we got tokens or not.
@@ -1468,7 +1754,7 @@ bool preprocessor_is_expanding(Preprocessor* pp)
 
 bool preprocessor_expand_next(Preprocessor* pp, Token* token)
 {
-    bool ret = macro_expander_next(&pp->expander, token);
+    bool ret = macro_expander_next(&pp->expander, token, pp);
     
     // If we did not get a token from the expander our macro expansion stack
     // was exhausted. Return false to indicate this
