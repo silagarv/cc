@@ -715,8 +715,8 @@ static Expression* parse_numeric_expression(Parser* parser)
     Location loc = consume(parser);
 
     LiteralValue value = {0};
-    bool success = parse_preprocessing_number(&value, parser->dm,
-            &number_tok);
+    bool success = parse_preprocessing_number(&value, parser->dm, parser->pp.sm,
+            parser->lang, number_tok);
     
     return semantic_checker_handle_number_expression(&parser->sc,
             loc, value, success);
@@ -732,7 +732,8 @@ static Expression* parse_character_expression(Parser* parser)
     Location loc = consume(parser);
 
     CharValue value = {0};
-    bool success = parse_char_literal(&value, parser->dm, char_token);
+    bool success = parse_char_literal(&value, parser->dm, parser->pp.sm,
+            parser->lang, char_token);
     
     return semantic_checker_handle_char_expression(&parser->sc,
             token_get_location(&char_token), value, success);
@@ -764,8 +765,7 @@ static Expression* parse_string_expression(Parser* parser, bool unevaluated)
     TokenList strings = token_list(arena_new_default());
     do
     {
-        Token string = *current_token(parser);
-        token_list_push_back(&strings, string);
+        token_list_push_back(&strings, *current_token(parser));
         consume(parser);
     }
     while (is_string_like_token(parser));
@@ -773,7 +773,8 @@ static Expression* parse_string_expression(Parser* parser, bool unevaluated)
     // Attempt the conversion using the information we have here
     StringLiteral string;
     bool conversion = parse_string_literal(ast_get_allocator(parser->ast),
-            &string, parser->dm, parser->lang, &strings, unevaluated);
+            &string, parser->dm, parser->pp.sm, parser->lang, &strings,
+            unevaluated);
 
     // Make sure to free our token list since we are done with it
     token_list_free(&strings);

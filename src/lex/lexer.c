@@ -33,14 +33,13 @@
 #define STRING_START_SIZE (10)
 
 void lexer_create(Lexer* lexer, DiagnosticManager* dm, LangOptions* opts,
-        Arena* literal_arena, IdentifierTable* identifiers, SourceFile* source)
+        IdentifierTable* identifiers, SourceFile* source)
 {
     const FileBuffer* fb = source_file_get_buffer(source);
     *lexer = (Lexer)
     {
         .dm = dm,
         .lang = opts,
-        .literal_arena = literal_arena,
         .identifiers = identifiers,
         .buffer_start = file_buffer_get_start(fb),
         .buffer_end = file_buffer_get_end(fb),
@@ -144,11 +143,9 @@ static char get_char_and_size_raw(const char* curr_ptr, const char* end_ptr,
         size_t* peek)
 {
     char current = curr_ptr[*peek];
-
     if (is_simple_char(current))
     {
         *peek += 1;
-
         return current;
     }
     
@@ -158,10 +155,9 @@ static char get_char_and_size_raw(const char* curr_ptr, const char* end_ptr,
 static char get_char_and_size_slow_raw(const char* curr_ptr,
         const char* end_ptr, size_t* peek, char curr)
 {
-    assert(!is_simple_char(curr));
+    assert(!is_simple_char(curr) && "simple char?");
 
-    const char next = curr_ptr[*peek + 1];
-
+    char next = curr_ptr[*peek + 1];
     if (curr == '\\' && next == '\n')
     {
         *peek += 2;
@@ -180,10 +176,9 @@ static char get_char_and_size_slow_raw(const char* curr_ptr,
 
     if (curr == '?' && next == '?')
     {
-        const char trigraph = get_trigraph(curr_ptr[*peek + 2]);
-        const bool has_trigraph = (trigraph != '\0');
+        char trigraph = get_trigraph(curr_ptr[*peek + 2]);
 
-        if (!has_trigraph)
+        if (!trigraph)
         {
             *peek += 1;
             return '?';
@@ -191,13 +186,12 @@ static char get_char_and_size_slow_raw(const char* curr_ptr,
 
         // In the future we may want to diagnose the use of a trigraph in souce
         // but for now we will just leave this here.
-
         if (trigraph == '\\' && curr_ptr[*peek + 3] == '\n') 
         {
             *peek += 4;
             return get_char_and_size_raw(curr_ptr, end_ptr, peek);
         } 
-        else 
+        else
         {
             *peek += 3;
             return trigraph;
@@ -276,6 +270,11 @@ static char peek_char(Lexer* lexer)
 static bool at_eof(Lexer* lexer)
 {
     return lexer->current_ptr >= lexer->buffer_end;
+}
+
+static bool would_be_eof(Lexer* lexer, size_t peek)
+{
+    return lexer->current_ptr + peek >= lexer->buffer_end;
 }
 
 // Get the current position
@@ -359,23 +358,6 @@ static void skip_block_comment(Lexer* lexer, Location start_loc)
         consume_char(lexer);
     }
     while (true);
-}
-
-static TokenData lexer_create_literal_node(Lexer* lexer, Buffer* buffer)
-{
-    // Mode the buffers data into the memory and delete the buffer
-    LiteralNode* node = arena_malloc(lexer->literal_arena,
-            sizeof(LiteralNode));
-    char* value = arena_malloc(lexer->literal_arena,
-            buffer_get_len(buffer) + 1);
-    memcpy(value, buffer_get_ptr(buffer), buffer_get_len(buffer) + 1);
-    size_t len = buffer_get_len(buffer);
-
-    // Don't forget to free the buffers memory
-    buffer_free(buffer);
-
-    node->value = (String) { value, len };
-    return (TokenData) { .literal = node };
 }
 
 // Try to lex a UCN, we assume the calling functions already saw a '\' so we 
@@ -486,353 +468,372 @@ static bool try_lex_ucn(Lexer* lexer, Location slash_loc, Buffer* buffer,
     return true;
 }
 
-static bool lex_number(Lexer* lexer, Token* token, char* start)
+bool lexer_try_get_ucn(Lexer* lexer, utf32* value, bool commit, bool no_warn)
 {
-    token->type = TOK_NUMBER;
+    assert(get_curr_char(lexer) == '\\' && "not a slash?");
 
-    // Reset the position to the start and create a buffer for us to build
-    set_position(lexer, start);
+    size_t peek = 0;
+    get_char_and_size(lexer, &peek); // Skip the slash.
 
-    Buffer number = buffer_new_size(NUMBER_START_SIZE);
+    char current = get_char_and_size(lexer, &peek);
 
-    // TODO: note that numbers can contain ucn's so will need to handle that
-    // eventually
-    while (true)
+    if (current != 'u' && current != 'U')
     {
-        char* save_pos = get_position(lexer);
-        char current = get_next_char(lexer);
-
-        if (is_identifier(current) || current == '.')
-        {
-            buffer_add_char(&number, current);
-
-            if (current == 'e' || current == 'E' || current == 'p' 
-                    || current == 'P')
-            {
-                current = get_curr_char(lexer);
-                if (current == '-' || current == '+')
-                {
-                    buffer_add_char(&number, current);
-                    consume_char(lexer);
-                }
-            }
-
-            continue;
-        }
-
-        if (current == '\\')
-        {
-            Location slash_loc = get_location_from(lexer, save_pos);
-            utf32 value;
-            if (!try_lex_ucn(lexer, slash_loc, &number, false, &value))
-            {
-                set_position(lexer, save_pos);
-                break;
-            }
-
-            continue;
-        }
-
-        // Restore the lexers save position if we get to the end of the number
-        set_position(lexer, save_pos);
-        break;
+        return false;
     }
 
-    // Finish the number construction
-    buffer_make_cstr(&number);
-    token->data = lexer_create_literal_node(lexer, &number);
+     // Now we should also check if we are in c89 mode and reject the potential
+    // ucn. Note that clang doesn't actually check the ammount of digits is
+    // what it should be
+    if (!lang_opts_c99(lexer->lang))
+    {
+        if (!no_warn && diagnose(lexer))
+        {
+            diagnostic_warning_at(lexer->dm, get_curr_location(lexer), Wunicode,
+                    "universal character names are only valid in C99; treating "
+                    "as '\\' followed by identifier");
+        }
+        return false;
+    }
+
+    // Now get the required digits and try to see if we have that many also keep
+    // track of the current value of the UCN
+    utf32 tmp_value = 0;
+    size_t required = current == 'U' ? 8 : 4;
+    for (size_t i = 0; i < required; i++)
+    {
+        current = get_char_and_size(lexer, &peek);
+        if (!is_hexadecimal(current))
+        {
+            if (!no_warn && diagnose(lexer))
+            {
+                diagnostic_warning_at(lexer->dm, get_curr_location(lexer),
+                        Wunicode, "incomplete universal character name; "
+                        "treating as '\\' followed by identifier");
+            }
+            return false;
+        }
+
+        tmp_value *= 16;
+        tmp_value += convert_hexadecimal(current);
+    }
+
+    // Okay we have got to this point and know that we have a valid ucn. If we
+    // should commit do so now and if we should put the value in the buffer also
+    // do so now
+    if (commit)
+    {
+        seek(lexer, peek);
+    }
+
+    if (value)
+    {
+        *value = tmp_value;
+    }
 
     return true;
 }
 
-static bool lex_identifier(Lexer* lexer, Token* token, char* start)
+bool lexer_number(Lexer* lexer, Token* token)
 {
-    token->type = TOK_IDENTIFIER;
-
-    // Reset the position to the start and create a buffer for us to build
-    set_position(lexer, start);
-
-    Buffer identifier = buffer_new_size(IDENTIFIER_START_SIZE);
-
-    // TODO: handle universal characters
     while (true)
     {
-        char* save_pos = get_position(lexer);
-        char current = get_next_char(lexer);
-        
-        // Simple identifier like character
-        if (is_identifier(current))
-        {
-            buffer_add_char(&identifier, current);
-            continue;
-        }
+        size_t peek = 0;
+        char current = get_char_and_size(lexer, &peek);
 
-        // Possible universal character but we need to check for it and if it is
-        // then we can continue
-        if (current == '\\')
+        // Handle any identifier chars or dots here whilst also handling 
+        // exponentiation stuff.
+        if (is_identifier(current) || current == '.')
         {
-            utf32 value;
-            Location slash_loc = get_location_from(lexer, save_pos);
-            if (!try_lex_ucn(lexer, slash_loc, &identifier, true, &value))
+            // We we get an 'E' or 'P' then check if the next character is a 
+            // plus or minus. If it is, then commit to the plus or minus.
+            if (current == 'e' || current == 'E' || current == 'p'
+                    || current == 'P')
             {
-                set_position(lexer, save_pos);
-                break;
+                size_t new_peek = peek;
+                current = get_char_and_size(lexer, &new_peek);
+                if (current == '-' || current == '+')
+                {
+                    peek = new_peek;
+                }
             }
 
-            continue;
+            seek(lexer, peek);
+            continue;            
         }
 
-        // Reset the position of the lexer in order to rewind the fact that we
-        // got that character
-        set_position(lexer, save_pos);
+        // Handle a possible ucn in a number. We should definitely commit to it
+        // here if we get it too. Note that we don't really care about the
+        // value of the UCN anyways.
+        if (current == '\\')
+        {
+            if (lexer_try_get_ucn(lexer, /*value=*/NULL, /*commit=*/true,
+                    /*no_warn=*/true))
+            {
+                continue;
+            }
+        }
+
+        // Wasn't an identifier char or a UCN
         break;
     }
 
-    // Finish building the identifier and create the token data.
-    // TODO: we wan't to improve this to not allocate / deallocate alot so we
-    // may in the future reuse this buffer would be nice
-    buffer_make_cstr(&identifier);
+    // Finally, after we are done setup some important information in the token
+    token_set_type(token, TOK_NUMBER);
+    token_set_end(token, get_ending_location(lexer));
 
-    String string = string_from_buffer(&identifier);
-    token->data.identifier = identifier_table_lookup(lexer->identifiers,
-            &string);
-    string_free(&string);
+    // Then we will want to get the Identifier* for this token. Then don't 
+    // forget to classify the token.
+    return true;
+}
 
-    // Finally, classify the identifier in the token before passing the token
-    // on to the preprocessor.
+void lexer_get_identifier_spelling(Lexer* lexer, Token* token, char* buffer)
+{
+    // Save the current position of the lexer.
+    char* save_pos = get_position(lexer);
+
+    // Since the token is currently storing the raw pointer to it's start
+    set_position(lexer, token->data.raw);
+
+    // Then keep getting the characters until we get to the end.
+    size_t pos = 0;
+    while (get_curr_location(lexer) <= token_get_end(token))
+    {
+        buffer[pos++] = get_next_char(lexer);
+    }
+    assert(get_position(lexer) == save_pos && "didn't restore position?");
+
+    // Then finally terminate the buffer.
+    buffer[pos] = '\0';
+}
+
+Identifier* lexer_lookup_identifier(Lexer* lexer, Token* token)
+{
+    // Start by getting the length of the token
+    size_t length = token_get_length(token);
+
+    // FIXME: should we create some kind of small buffer type for this. I think
+    // FIXME: it would be good since we could easily reuse in on our numbers
+    // FIXME: and other stuff to reduce memory allocations there too!
+    // Create a union which will hold our data based on the length we're given
+    union {
+        char stack[64];
+        Buffer heap;
+    } buffer;
+
+    // >= to since we need to store the null terminator.
+    if (length >= 64)
+    {
+        buffer.heap = buffer_new_size(length + 1); // + 1 for null terminator
+    }
+
+    // Then get the pointer we are going to get the spelling of the identifier
+    // through.
+    char* ptr = length < 64 ? buffer.stack : buffer_get_ptr(&buffer.heap);
+    lexer_get_identifier_spelling(lexer, token, ptr);
+
+    // Then all we need to do is a simple lookup using our identifier table.
+    Identifier* id = identifier_table_get(lexer->identifiers, ptr);
+
+    // Then don't forget to free the heap buffer if we ended up using that to
+    // get our identifier.
+    if (length >= 64)
+    {
+        buffer_free(&buffer.heap);
+    }
+
+    // Finally, return the identifier that we found.
+    return id;    
+}
+
+bool lexer_identifier(Lexer* lexer, Token* token)
+{
+    // Keep going until we reach the end of the identifier
+    while (true)
+    {
+        size_t size = 0;
+        char current = get_char_and_size(lexer, &size);
+
+        // ASCII identifiers
+        if (is_identifier(current))
+        {
+            seek(lexer, size);
+            continue;
+        }
+
+        // If it's not an ASCII identifier and we have a backslash try to get a
+        // UCN in that case.
+        if (current == '\\')
+        {
+            utf32 value;
+            if (lexer_try_get_ucn(lexer, &value, /*commit*/true,
+                    /*no_warn*/true))
+            {
+                continue;
+            }
+        }
+
+        if (!is_ascii(current))
+        {
+            // TODO: unicode identifiers?
+        }
+        
+        // Did not get an idnetifier char or a UCN so we are definitely done.
+        break;
+    }
+
+    // Finally, after we are done setup some important information in the token
+    token_set_type(token, TOK_IDENTIFIER);
+    token_set_end(token, get_ending_location(lexer));
+
+    // Then we will want to get the Identifier* for this token. Then don't 
+    // forget to classify the token.
+    token->data.identifier = lexer_lookup_identifier(lexer, token);
     token_classify_identifier(token);
     return true;
 }
 
-static char get_starting_delimiter(TokenType type)
+bool lexer_header_name(Lexer* lexer, Token* token)
 {
-    switch (type)
+    assert(lexer->can_lex_header && "can't lex a header right now?");
+
+    // Here it is a bit simple since we don't need to escape characters here.
+    while (true)
     {
-        case TOK_STRING:
-        case TOK_WIDE_STRING:
-        case TOK_UTF8_STRING:
-        case TOK_UTF16_STRING:
-        case TOK_UTF32_STRING:
-            return '"';
+        size_t peek = 0;
+        char current = get_char_and_size(lexer, &peek);
 
-        case TOK_CHARACTER:
-        case TOK_WIDE_CHARACTER:
-        case TOK_UTF8_CHARACTER:
-        case TOK_UTF16_CHARACTER:
-        case TOK_UTF32_CHARACTER:
-            return '\'';
-
-        case TOK_PP_HEADER_NAME:
-            return '<';
-
-        default:
-            panic("unreachable");
-            return '\0';
-    }
-}
-
-static char get_ending_delimiter(TokenType type)
-{
-    switch (type)
-    {
-        case TOK_STRING:
-        case TOK_WIDE_STRING:
-        case TOK_UTF8_STRING:
-        case TOK_UTF16_STRING:
-        case TOK_UTF32_STRING:
-            return '"';
-
-        case TOK_CHARACTER:
-        case TOK_WIDE_CHARACTER:
-        case TOK_UTF8_CHARACTER:
-        case TOK_UTF16_CHARACTER:
-        case TOK_UTF32_CHARACTER:
-            return '\'';
-
-        case TOK_PP_HEADER_NAME:
-            return '>';
-
-        default:
-            panic("unreachable");
-            return '\0';
-    }
-}
-
-static bool is_character_like(TokenType type)
-{
-    switch (type) 
-    {
-        case TOK_CHARACTER:
-        case TOK_WIDE_CHARACTER:
-        case TOK_UTF8_CHARACTER:
-        case TOK_UTF16_CHARACTER:
-        case TOK_UTF32_CHARACTER:
-            return true;
-
-        default:
-            return false;
-    }
-}
-
-static bool is_wide(TokenType type)
-{
-    switch (type)
-    {
-        // String types
-        case TOK_WIDE_STRING:
-        case TOK_UTF8_STRING:
-        case TOK_UTF16_STRING:
-        case TOK_UTF32_STRING:
-
-        // Character types
-        case TOK_WIDE_CHARACTER:
-        case TOK_UTF8_CHARACTER:
-        case TOK_UTF16_CHARACTER:
-        case TOK_UTF32_CHARACTER:
-            return true;
-
-        default:
-            return false;
-    }
-}
-
-static char* get_string_literal_prefix(TokenType type)
-{
-    switch (type)
-    {
-        case TOK_STRING:
-        case TOK_CHARACTER:
-            return "";
-
-        case TOK_WIDE_STRING:
-        case TOK_WIDE_CHARACTER:
-            return "L";
-
-        case TOK_UTF8_STRING:
-        case TOK_UTF8_CHARACTER:
-            return "u8";
-
-        case TOK_UTF16_STRING:
-        case TOK_UTF16_CHARACTER:
-            return "u";
-
-        case TOK_UTF32_STRING:
-        case TOK_UTF32_CHARACTER:
-            return "U";
-
-        // Special case here.
-        case TOK_PP_HEADER_NAME:
-            return "";
-
-        default:
-            panic("unknown string literal type");
-            return NULL;
-    }
-}
-
-static bool lex_string_like_literal(Lexer* lexer, Token* token, TokenType type)
-{
-    token->type = type;
-
-    const char ending_delim = get_ending_delimiter(type);
-
-    Buffer string = buffer_from_format("%s", get_string_literal_prefix(type));
-    buffer_add_char(&string, get_starting_delimiter(type));
-
-    bool had_char = false;
-    char* save_pos = get_position(lexer);
-    char current = get_next_char(lexer);
-    while (current != ending_delim)
-    {
-        // Escaped character get the next character but dont add just yet...
-        if (current == '\\' && type != TOK_PP_HEADER_NAME)
+        if ((current == '\r' || current == '\n')
+                || (current == '\0' && at_eof(lexer)))
         {
-            buffer_add_char(&string, '\\');
-            save_pos = get_position(lexer);
-            current = get_next_char(lexer);
-        }
-
-        // Below are two bad cases. The first one is that we got a newline in
-        // the string. I.e. an unterminated string. We just end the token here
-        // the next one is that we got end of file during the string.
-        if ((current == '\r' || current == '\n'
-                || (current == '\0' && at_eof(lexer))) && diagnose(lexer))
-        {
-            // FIXME: special case of <FILENAME> token this is a bit janky but
-            // FIXME: works pretty much the same as Clang and GCC
-            if (type != TOK_PP_HEADER_NAME)
+            if (diagnose(lexer))
             {
-                token->type = TOK_UNKNOWN;
-                diagnostic_warning_at(lexer->dm, token->loc, Winvalid_pp_token,
-                        "missing terminating '%c' character", ending_delim);
-            }
-            else
-            {
-                // Here we need to fix the lexer so it will exit directive mode
-                // on the same line it started on and also produce a diagnostic
-                // at a sensible location for us.
-                set_position(lexer, save_pos);
                 diagnostic_error_at(lexer->dm, get_curr_location(lexer),
                         "expected '>'");
             }
-            goto finish_string;
+            break;
         }
 
-        // Finally add the char and get the next one
-        buffer_add_char(&string, current);
-        save_pos = get_position(lexer);
-        current = get_next_char(lexer);
+        seek(lexer, peek);
 
+        // If we had the closing delimited we are done.
+        if (current == '>')
+        {
+            break;
+        }
+    }
+
+    // Set the token type and get the ending location for the token
+    token_set_type(token, TOK_PP_HEADER_NAME);
+    token_set_end(token, get_ending_location(lexer));
+
+    // Also make sure that we can't lex any more header
+    lexer->can_lex_header = false;
+    return true;
+}
+
+bool lexer_string_literal(Lexer* lexer, Token* token, TokenType type)
+{
+    bool had_char = false;
+    bool error = false;
+
+    // Keep going until we reach the end of the character literal
+    while (true)
+    {
+        char current = get_next_char(lexer);
+
+        // We have reached the end of the character literal so end.
+        if (current == '"')
+        {
+            break;
+        }
+
+        // If we get an escape character take the opportunity to escape it.
+        if (current == '\\')
+        {
+            current = get_next_char(lexer);
+        }
+
+        // Check if we are at the end of the line or at the end of the file then
+        // we are in an error state. This is not good.
+        if ((current == '\r' || current == '\n')
+                || (current == '\0' && at_eof(lexer)))
+        {
+            if (diagnose(lexer))
+            {
+                diagnostic_warning_at(lexer->dm, token->loc, Winvalid_pp_token,
+                        "missing terminating '\"' character");
+            }
+            error = true;
+            break;
+        }
+
+        // Make sure to set if we've had a character or not.
         had_char = true;
     }
 
-    // This should only be added when we get a well formed string literal
-    buffer_add_char(&string, ending_delim);
-
-    // Finish building the string
-finish_string:
-    buffer_make_cstr(&string);
-
-    // Invalid character constants since they have nothing in them...
-    if (is_character_like(type) && !had_char
-            && !token_is_type(token, TOK_UNKNOWN) && diagnose(lexer))
-    {
-        diagnostic_warning_at(lexer->dm, token->loc, Winvalid_pp_token,
-                "empty character constant");
-        token->type = TOK_UNKNOWN;
-    }
-
-    token->data = lexer_create_literal_node(lexer, &string);
+    // Finally, after we are done setup some important information in the token
+    token_set_type(token, !error ? type : TOK_UNKNOWN);
+    token_set_end(token, get_ending_location(lexer));
 
     return true;
 }
 
-static bool lex_string_literal(Lexer* lexer, Token* token)
+bool lexer_char_literal(Lexer* lexer, Token* token, TokenType type)
 {
-    return lex_string_like_literal(lexer, token, TOK_STRING);
-}
+    bool had_char = false;
+    bool error = false;
 
-static bool lex_wide_string_literal(Lexer* lexer, Token* token)
-{
-    return lex_string_like_literal(lexer, token, TOK_WIDE_STRING);
-}
+    // Keep going until we reach the end of the character literal
+    while (true)
+    {
+        char current = get_next_char(lexer);
 
-static bool lex_character_literal(Lexer* lexer, Token* token)
-{
-    return lex_string_like_literal(lexer, token, TOK_CHARACTER);
-}
+        // We have reached the end of the character literal so end.
+        if (current == '\'')
+        {
+            break;
+        }
 
-static bool lex_wide_character_literal(Lexer* lexer, Token* token)
-{
-    return lex_string_like_literal(lexer, token, TOK_WIDE_CHARACTER);
-}
+        // If we get an escape character take the opportunity to escape it.
+        if (current == '\\')
+        {
+            current = get_next_char(lexer);
+        }
 
-static bool lex_header_name(Lexer* lexer, Token* token)
-{
-    assert(lexer->can_lex_header && "can't lex a header right now?");
-    bool ret = lex_string_like_literal(lexer, token, TOK_PP_HEADER_NAME);
-    lexer->can_lex_header = false;
-    return ret;
+        // Check if we are at the end of the line or at the end of the file then
+        // we are in an error state. This is not good.
+        if ((current == '\r' || current == '\n')
+                || (current == '\0' && at_eof(lexer)))
+        {
+            if (diagnose(lexer))
+            {
+                diagnostic_warning_at(lexer->dm, token->loc, Winvalid_pp_token,
+                        "missing terminating ' character");
+            }
+            error = true;
+            break;
+        }
+
+        // Make sure to set if we've had a character or not.
+        had_char = true;
+    }
+
+    // Before finishing off our token check for any final errors that we may
+    // have gotten which for here is just checking that we don't have an empty
+    // character constant.
+    if (!error && !had_char && diagnose(lexer))
+    {
+        diagnostic_warning_at(lexer->dm, token_get_location(token),
+                Winvalid_pp_token, "empty character constant");
+        error = true;
+    }
+
+    // Finally, after we are done setup some important information in the token
+    token_set_type(token, !error ? type : TOK_UNKNOWN);
+    token_set_end(token, get_ending_location(lexer));
+
+    return true;
 }
 
 static bool lex_end_of_file(Lexer* lexer, Token* token, char* tok_start)
@@ -908,7 +909,7 @@ retry_lexing:;
     token_set_flag(token,
             lexer->start_of_line ? TOK_FLAG_BOL : TOK_FLAG_NONE);
 
-    token->data = (TokenData) {0};
+    token->data.raw = token_start;
 
     // Set it to false even if it was true before before
     lexer->start_of_line = false;
@@ -991,8 +992,7 @@ retry_lexing:;
         // Number cases
         case '0': case '1': case '2': case '3': case '4':
         case '5': case '6': case '7': case '8': case '9':
-            lex_number(lexer, token, token_start);
-            break;
+            return lexer_number(lexer, token);
         
         // Look for the 'L' prefix for string and character literals
         case 'L':
@@ -1000,43 +1000,37 @@ retry_lexing:;
             if (curr == '"')
             {
                 consume_char(lexer);
-
-                lex_string_like_literal(lexer, token, TOK_WIDE_STRING);
-                break;
+                return lexer_string_literal(lexer, token, TOK_WIDE_STRING);
             }
             else if (curr == '\'')
             {
                 consume_char(lexer);
-
-                lex_string_like_literal(lexer, token, TOK_WIDE_CHARACTER);
-                break;
+                return lexer_char_literal(lexer, token, TOK_WIDE_CHARACTER);
             }
-            goto identifier;
+
+            return lexer_identifier(lexer, token);
 
         // Look for the 'U' prefix but only if we are in the correct language
         // modes.
         case 'U':
             if (!lang_opts_c11(lexer->lang))
             {
-                goto identifier;
+                return lexer_identifier(lexer, token);
             }
 
             curr = get_curr_char(lexer);
             if (curr == '"')
             {
                 consume_char(lexer);
-
-                lex_string_like_literal(lexer, token, TOK_UTF32_STRING);
-                break;
+                return lexer_string_literal(lexer, token, TOK_UTF32_STRING);
             }
             else if (curr == '\'')
             {
                 consume_char(lexer);
-
-                lex_string_like_literal(lexer, token, TOK_UTF32_CHARACTER);
-                break;
+                return lexer_char_literal(lexer, token, TOK_UTF32_CHARACTER);
             }
-            goto identifier;
+
+            return lexer_identifier(lexer, token);
             
         // Look for the 'u' or 'u8' encoding prefix but only if we are in the
         // correct language modes that allow for this. Note that u8 characters
@@ -1045,7 +1039,7 @@ retry_lexing:;
         {
             if (!lang_opts_c11(lexer->lang))
             {
-                goto identifier;
+                return lexer_identifier(lexer, token);
             }
 
             bool u8 = false;
@@ -1057,26 +1051,21 @@ retry_lexing:;
                 u8 = true;
 
                 consume_char(lexer);
-                
                 curr = get_curr_char(lexer);
             }
 
             if (curr == '"')
             {
                 consume_char(lexer);
-
-                lex_string_like_literal(lexer, token, 
+                return lexer_string_literal(lexer, token,
                         u8 ? TOK_UTF8_STRING : TOK_UTF16_STRING);
-                break;
             }
             else if (curr == '\''
                     && (!u8 || (u8 && lang_opts_c23(lexer->lang))))
             {
                 consume_char(lexer);
-
-                lex_string_like_literal(lexer, token, 
+                return lexer_char_literal(lexer, token,
                         u8 ? TOK_UTF8_CHARACTER : TOK_UTF16_CHARACTER);
-                break;
             }
         }
 
@@ -1091,25 +1080,21 @@ retry_lexing:;
         case 'o': case 'p': case 'q': case 'r': case 's': case 't':    /*'u'*/
         case 'v': case 'w': case 'x': case 'y': case 'z':
         case '_':
-        identifier:
-            lex_identifier(lexer, token, token_start);
-            break;
+            return lexer_identifier(lexer, token);
 
         // String and character literals
         case '"':
-            lex_string_like_literal(lexer, token, TOK_STRING);
-            break;
+            return lexer_string_literal(lexer, token, TOK_STRING);
 
         case '\'':
-            lex_string_like_literal(lexer, token, TOK_CHARACTER);
-            break;
+            return lexer_char_literal(lexer, token, TOK_CHARACTER);
         
         case '.':
             curr = get_curr_char(lexer);
 
             if (is_numeric(curr))
             {
-                return lex_number(lexer, token, token_start);
+                return lexer_number(lexer, token);
             }
             else if (curr == '.' && peek_char(lexer) == '.')
             {
@@ -1371,7 +1356,7 @@ retry_lexing:;
         case '<':
             if (lexer->can_lex_header)
             {
-                return lex_header_name(lexer, token);
+                return lexer_header_name(lexer, token);
             }
 
             curr = get_curr_char(lexer);
@@ -1486,13 +1471,14 @@ retry_lexing:;
 
         case '\\':
         {
-            utf32 value;
-            Location slash_loc = get_location_from(lexer, token_start);
-            if (try_lex_ucn(lexer, slash_loc, NULL, true, &value))
-            {
-                lex_identifier(lexer, token, token_start);
-                break;
-            }
+            // TODO: enable us to start an identifier with a UCN
+            // utf32 value;
+            // Location slash_loc = get_location_from(lexer, token_start);
+            // if (try_lex_ucn(lexer, slash_loc, NULL, true, &value))
+            // {
+            //     lex_identifier(lexer, token);
+            //     break;
+            // }
 
             // RESET TO '\\' FOR NOW ONLY TO CREATE AN UNKNOWN TOKEN TYPE
             curr = '\\';
@@ -1515,16 +1501,13 @@ retry_lexing:;
                 panic("non ascii characters are currenlty not implemented");
             }
 
+            // Otherwise we just have a purely unknown token.
             token->type = TOK_UNKNOWN;
-
-            Buffer unknown = buffer_from_format("%c", curr);
-            token->data = lexer_create_literal_node(lexer, &unknown);
             break;
     }
 
     // Here we need to get the final location of the token
     token->end = get_ending_location(lexer);
-
     return true;
 }
 
@@ -1534,8 +1517,6 @@ bool lexer_get_next(Lexer* lexer, Token* token)
     return lex_internal(lexer, token);
 }
 
-// TODO: the comment describing this function says it disables diagnostics but
-// TODO: this is not currently try. Figure our how we want to do this.
 bool lexer_peek_next(Lexer* lexer, Token* token)
 {
     // Save our lexer's state and disable diagnostics
@@ -1562,6 +1543,31 @@ bool lexer_peek_next(Lexer* lexer, Token* token)
     
     // Finally, properly return the token to the user.
     return ret;
+}
+
+void lexer_skip_to_end_of_line(Lexer* lexer)
+{
+    // FIXME: for now we won't seek past newlines.
+    while (true)
+    {
+        size_t peek = 0;
+        char curr = get_char_and_size(lexer, &peek);
+
+        // If we are at the end of the line then break.
+        if (curr == '\r' || curr == '\n')
+        {
+            return;
+        }
+        
+        // Also if we are at the end of the file then break at well.
+        if (curr == '\0' && would_be_eof(lexer, peek))
+        {
+            return;
+        }
+
+        // Otherwise 'eat' the char that we would have gotten.
+        seek(lexer, peek);
+    }
 }
 
 void lexer_read_diagnostic_string(Lexer* lexer, Buffer* buffer)
@@ -1610,7 +1616,7 @@ void lexer_token_spelling(SourceManager* sm, LangOptions* opts, Token token,
     SourceFile* source = source_manager_from_location(sm, location);
 
     Lexer lexer;
-    lexer_create(&lexer, NULL, opts, NULL, NULL, source);
+    lexer_create(&lexer, NULL, opts, NULL, source);
 
     seek_to_location(&lexer, location);
     assert(get_curr_location(&lexer) == location && "not at location?");
@@ -1632,7 +1638,7 @@ void lexer_token_stringify(SourceManager* sm, LangOptions* opts, Token token,
     SourceFile* source = source_manager_from_location(sm, location);
 
     Lexer lexer;
-    lexer_create(&lexer, NULL, opts, NULL, NULL, source);
+    lexer_create(&lexer, /*dm*/NULL, opts, /*idents*/NULL, source);
 
     seek_to_location(&lexer, location);
     assert(get_curr_location(&lexer) == location && "not at location?");

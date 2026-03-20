@@ -486,12 +486,12 @@ void preprocessor_handle_undef(Preprocessor* pp, Token* token)
     macro_map_do_undefine(macros, dm, name, loc);
 }
 
-bool preprocessor_copy_path(Preprocessor* pp, String str, Location location,
-        TokenType type, Filepath* path)
+bool preprocessor_copy_path(Preprocessor* pp, const Buffer* str,
+        Location location, TokenType type, Filepath* path)
 {
     // Decompose into pointer and length pairs.
-    const char* ptr = string_get_ptr(&str);
-    size_t len = string_get_len(&str);
+    const char* ptr = buffer_get_ptr(str);
+    size_t len = buffer_get_len(str);
 
     // We then need to check those for validity of being able to copy into the
     // path. If they are not valid then we return false but cannot issue a 
@@ -527,7 +527,7 @@ bool preprocessor_copy_path(Preprocessor* pp, String str, Location location,
     if (printed > FILEPATH_LEN)
     {
         diagnostic_fatal_error_at(pp->dm, location, "cannot include %s: file "
-                "name too long", string_get_ptr(&str));
+                "name too long", buffer_get_ptr(str));
         return false;
     }
 
@@ -538,32 +538,87 @@ bool preprocessor_copy_path(Preprocessor* pp, String str, Location location,
 bool preprocessor_copy_path_simple(Preprocessor* pp, Token* token,
         Filepath* path)
 {
-    if (!preprocessor_copy_path(pp, token_get_literal_node(token),
-            token_get_location(token), token_get_type(token), path))
+    // Create a buffer and dump the token spelling into the buffer.
+    Buffer buffer = buffer_new_size(token_get_length(token) + 1);
+    lexer_token_spelling(pp->sm, pp->lang, *token, &buffer);
+    buffer_make_cstr(&buffer);
+
+    // Then attempt to copy the path given in the buffer into the filepath
+    bool okay = preprocessor_copy_path(pp, &buffer, token_get_location(token),
+            token_get_type(token), path);
+
+    // Finally, free the buffer
+    buffer_free(&buffer);
+    
+    // If we aren't okay do not continue attempting to handle this include
+    // process and simply abort it.
+    if (!okay)
     {
         token_set_type(token, TOK_EOF);
-        return false;
     }
 
-    return true;
+    return okay;
 }
 
 bool preprocessor_try_combine_tokens_for_header(Preprocessor* pp, Token* token,
         Filepath* path)
 {
-    diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
-            "concatenation of tokens to try to form a header is unimplemented");
-    // FIXME: implement
+    assert(token_is_type(token, TOK_LT) && "not a '<'??");
 
-    // TODO: use a buffer and print the current tokens spelling into the buffer
-    // TODO: and that kind of thing...
-    Buffer buffer = buffer_new();
+    // First create a buffer that we will use to store to hopefully lex the 
+    // header name from. Start by putting the current tokens spelling in the
+    // buffer.
+    Buffer buffer = buffer_new_size(32);
+    lexer_token_spelling(pp->sm, pp->lang, *token, &buffer);
 
-    // FIXME: will probably just create a new buffer then go and lex a header
-    // FIXME: name???
-    buffer_free(&buffer);
+    bool error = false;
+    do
+    {
+        preprocessor_advance_token(pp, token);
+        
+        // if the token had a space before add that over
+        if (token_has_flag(token, TOK_FLAG_WHITESPACE))
+        {
+            buffer_add_char(&buffer, ' ');
+        }
+        lexer_token_spelling(pp->sm, pp->lang, *token, &buffer);
+        assert(!token_is_type(token, TOK_EOF) && "EOF in directive");
 
-    return false;
+        if (token_is_type(token, TOK_PP_EOD))
+        {
+            diagnostic_error_at(pp->dm, token_get_location(token),
+                    "expected '>'");
+            error = true;
+            break;
+        }
+    }
+    while (!token_is_type(token, TOK_GT));
+
+    // Make sure the buffer is terminated for when we want to use it.
+    buffer_make_cstr(&buffer);
+
+    // If we had an error free the buffer and return false since we won't want
+    // to turn the buffer into a SourceFile to lex from.
+    if (error)
+    {
+        buffer_free(&buffer);
+        return false;
+    }
+
+    // Otherwise if we had no error, then create a new sourcefile and the try
+    // to lex a header token from it.
+    SourceFile* tmp = source_manager_create_anonomous_buffer(pp->sm, buffer,
+            LOCATION_INVALID);
+    Lexer lexer;
+    lexer_create(&lexer, pp->dm, pp->lang, pp->identifiers, tmp);
+    lexer_set_header(&lexer);
+    
+    lexer_get_next(&lexer, token);
+    assert(token_is_type(token, TOK_PP_HEADER_NAME));
+
+    // Finally, we have something we can try to get the path from, go ahead and
+    // attempt this.
+    return preprocessor_copy_path_simple(pp, token, path);
 }
 
 bool preprocessor_get_filename(Preprocessor* pp, Token* token, Filepath* path,
@@ -587,7 +642,7 @@ bool preprocessor_get_filename(Preprocessor* pp, Token* token, Filepath* path,
     }
     else if (token_is_type(token, TOK_LT))
     {
-        // FIXME: Clang and GCC both done handle `<<` investigate this?
+        // FIXME: Clang and GCC both don't handle `<<` should we do the same?
         *angled = true;
         return preprocessor_try_combine_tokens_for_header(pp, token, path);
     }
@@ -705,12 +760,14 @@ void preprocessor_skip_conditional_block(Preprocessor* pp, Include* include)
         // are going to get.
         if (!preprocessor_directive_start(pp, &tmp_token))
         {
+            include_skip_to_end_of_line(include);
             continue;
         }
 
         // Otherwise we should check the directive type that we have. So start
         // by eating the hash and peeking the next token to see if it is 
-        // something we should investigate.
+        // something we should investigate. We also have to re-enable identifier
+        // lookup so we are able to know which directive we got.
         preprocessor_enter_directive(pp);
 
         Token hash_token = tmp_token;
@@ -800,8 +857,11 @@ void preprocessor_skip_conditional_block(Preprocessor* pp, Include* include)
                 continue;
             }
 
-            // everything else is not interesting and should be ignored.
+            // everything else is not interesting and should be ignored. Note,
+            // we seem to need the preprocessor_eat_to_eof part to ensure that
+            // we correctly have our lexer flags set.
             default:
+                preprocessor_eat_to_eod(pp, &tmp_token);
                 continue;
         }
 
@@ -813,7 +873,8 @@ void preprocessor_skip_conditional_block(Preprocessor* pp, Include* include)
         break;
     }
     
-    // Make sure to reenabe lexer diagnostics before doing anything
+    // Make sure to reenabe lexer diagnostics and identifier lookup before doing
+    // anything as without them we will get unexpected things happening
     lexer_enable_diagnostics(include_get_lexer(include),
             preprocessor_diagnostics(pp));
 

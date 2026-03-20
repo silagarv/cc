@@ -46,12 +46,6 @@ typedef struct Preprocessor {
     // The table we are storing all of our identifiers in.
     IdentifierTable* identifiers;
 
-    // The arena that holds all of the data for our literal nodes. This includes
-    // strings, characters, and numbers etc... This is given as a pointer to
-    // each of our lexers, and should only be destroyed at the end of 
-    // preprocessing.
-    Arena literal_arena;
-
     // The header finder used to search for headers within the source
     HeaderFinder hf;
 
@@ -124,7 +118,6 @@ DiagnosticManager* preprocessor_diagnostics(Preprocessor* pp);
 LangOptions* preprocessor_lang(Preprocessor* pp);
 SourceManager* preprocessor_source_manager(Preprocessor* pp);
 IdentifierTable* preprocessor_idents(Preprocessor* pp);
-Arena* preprocessor_literals(Preprocessor* pp);
 Arena* preprocessor_allocator(Preprocessor* pp);
 
 IncludeVector* preprocessor_inputs(Preprocessor* pp);

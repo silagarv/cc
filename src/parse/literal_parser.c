@@ -12,6 +12,8 @@
 
 #include "driver/lang.h"
 #include "driver/warning.h"
+#include "files/source_manager.h"
+#include "lex/lexer.h"
 #include "lex/unicode.h"
 #include "parse/ast_allocator.h"
 #include "util/buffer.h"
@@ -865,29 +867,45 @@ static ValueType determine_value_type(const char* string, size_t len)
     return VALUE_INTEGER_TYPE;
 } 
 
+// FIXME: eventually I don't want to have to create the buffer at all, just
+// FIXME: use the lexer itself to also get more accurate locations too
 bool parse_preprocessing_number(LiteralValue* value, DiagnosticManager* dm,
-        const Token* token)
+        SourceManager* sm, LangOptions* opts, Token token)
 {
-    assert(token_is_type(token, TOK_NUMBER));
+    assert(token_is_type(&token, TOK_NUMBER));
 
-    const Location location = token->loc;
-
-    const LiteralNode* literal = token->data.literal;
-    const char* string = literal->value.ptr;
-    size_t len = literal->value.len;
+    // First we want to get the token into a buffer so we can use the characters
+    // in it to convert to a number, also add  an extra character so we can add
+    // the null terminator in.
+    Buffer buffer = buffer_new_size(token_get_length(&token) + 1);
+    lexer_token_spelling(sm, opts, token, &buffer);
+    buffer_make_cstr(&buffer);
+    
+    // Extract all the information we need from the token and from the buffer.
+    Location location = token_get_location(&token);
+    const char* string = buffer_get_ptr(&buffer);
+    size_t len = buffer_get_len(&buffer);
 
     // First before we actually parse anything we need to figure out if we got
     // a float or a integer literal as it could be either. Then we can try
     // the conversion. We need to do this since we could go either way at this
     // point... Then we also need to redo character and string conversion sadly
+    bool ret;
     if (determine_value_type(string, len) == VALUE_FLOATING_TYPE)
     {
-        return parse_float_literal(value, dm, location, string, len);
+        ret = parse_float_literal(value, dm, location, string, len);
     }
     else
     {
-        return parse_integer_literal(value, dm, location, string, len);
+        ret = parse_integer_literal(value, dm, location, string, len);
     }
+
+    // Before we can return from this function we will also need to free the
+    // buffer we have just created.
+    buffer_free(&buffer);
+
+    // Finally, return the correct value from the buffer.
+    return ret;
 }
 
 static utf32 decode_escape_sequence_new(DiagnosticManager* dm, Location loc,
@@ -914,7 +932,7 @@ static utf32 decode_escape_sequence_new(DiagnosticManager* dm, Location loc,
 
         // All of our simple escapes.
         case '\'': result = '\''; break;
-        case '"':  result = '\"'; break;
+        case '\"':  result = '\"'; break;
         case '?':  result = '\?'; break;
         case '\\': result = '\\'; break;
         case 'a':  result = '\a'; break;
@@ -1265,31 +1283,38 @@ static uint64_t decode_escape_sequence(const char* raw, size_t len, size_t* pos,
 }
 
 bool parse_char_literal(CharValue* value, DiagnosticManager* dm,
-        const Token token)
+        SourceManager* sm, LangOptions* opts, Token token)
 {
     assert(token_is_character(&token));
 
     bool wide = token_is_type(&token, TOK_WIDE_CHARACTER);
 
-    // Get the location and raw literal data for conversion
-    const Location loc = token.loc;
+    // First we want to get the token into a buffer so we can use the characters
+    // in it to convert to a number, also add  an extra character so we can add
+    // the null terminator in.
+    Buffer buffer = buffer_new_size(token_get_length(&token) + 1);
+    lexer_token_spelling(sm, opts, token, &buffer);
+    buffer_make_cstr(&buffer);
 
-    String literal = token_get_literal_node(&token);
-    char* raw = literal.ptr;
-    size_t len = literal.len;
+    // Get the location and raw literal data for conversion
+    Location loc = token_get_location(&token);
+    const char* string = buffer_get_ptr(&buffer);
+    size_t len = buffer_get_len(&buffer);
+
+    // printf("character literal: %s\n", string);
 
     size_t pos = 0;
 
     // Some sanity checks for what we are about to convert
-    assert(wide ? raw[0] == 'L' : true);
+    assert(wide ? string[0] == 'L' : true);
 
     if (wide)
     {
         pos++;
     }
 
-    assert(raw[pos] == '\'');
-    assert(raw[len - 1] == '\'');
+    assert(string[pos] == '\'');
+    assert(string[len - 1] == '\'');
 
     // Skip over the '\'' to ensure we don't get it
     pos++;
@@ -1300,12 +1325,12 @@ bool parse_char_literal(CharValue* value, DiagnosticManager* dm,
     bool fatal_error = false;
     do
     {
-        uint64_t current = raw[pos++];
+        uint64_t current = string[pos++];
 
         if (current == '\\')
         {
             EscapeSequenceResult result;
-            current = decode_escape_sequence(raw, len - 1, &pos, wide, dm, loc,
+            current = decode_escape_sequence(string, len - 1, &pos, wide, dm, loc,
                     &result);
 
             // Only fully fail if we cannot decode the escape at all. But set
@@ -1328,6 +1353,9 @@ bool parse_char_literal(CharValue* value, DiagnosticManager* dm,
         num_digits++;
     }
     while (pos < len - 1);
+
+    // Then at the end make sure we free the buffer that we get
+    buffer_free(&buffer);
 
     if (!wide && num_digits > 1)
     {
@@ -1526,8 +1554,8 @@ bool parse_single_string_literal(const String* string, DiagnosticManager* dm,
 }
 
 bool parse_string_literal(AstAllocator* allocator, StringLiteral* value,
-        DiagnosticManager* dm, LangOptions* lang, const TokenList* tokens,
-        bool unevaluated)
+        DiagnosticManager* dm, SourceManager* sm, LangOptions* lang,
+        const TokenList* tokens, bool unevaluated)
 {
     // CharType type = CHAR_TYPE_CHAR;
     size_t upper_bound = 0; // upper bound of final string literal length
@@ -1595,18 +1623,47 @@ bool parse_string_literal(AstAllocator* allocator, StringLiteral* value,
     size_t buffer_pos = 0;
 
     // Now we want to perform all of our string literal evaluation
+    bool error = false;
     for (TokenListEntry* current = start;
             current != NULL;
             current = token_list_entry_next(current))
     {
         Token t = token_list_entry_token(current);
-        String literal = token_get_literal_node(&t);
+
+        // Now we want to get the buffer that we will use from the token
+        Buffer string_buffer = buffer_new_size(token_get_length(&t) + 1);
+        lexer_token_spelling(sm, lang, t, &string_buffer);
+        buffer_make_cstr(&string_buffer);
+
+        // FIXME: will need to change the function below and this here one day
+        // Create the string struct on the stack that we want to use.
+        String literal = (String)
+        {
+            buffer_get_ptr(&string_buffer),
+            buffer_get_len(&string_buffer)
+        };
+
         if (!parse_single_string_literal(&literal, dm, token_get_location(&t),
                 lang, char_type, buffer, &buffer_pos, alloc_size, element_size,
                 unevaluated))
         {
-            return false;
+            error = true;
         }
+
+        // Make sure we free the buffer we are going to use.
+        buffer_free(&string_buffer);
+
+        // Then, only if we get an error should we break.
+        if (error)
+        {
+            break;
+        }
+    }
+
+    // If we had an error, do not try to return anything here, fail.
+    if (error)
+    {
+        return false;
     }
 
     // Finally add the null terminating character onto the end

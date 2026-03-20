@@ -197,8 +197,8 @@ typedef struct LiteralNode {
 
 // From TokenData we should always be able to retrieve the token spelling back
 typedef union TokenData {
-    struct Identifier* identifier;
-    LiteralNode* literal;
+    struct Identifier* identifier; // The identifier this token corrosponds to
+    char* raw; // The raw start of the token.
 } TokenData;
 
 // Different flags for our token to store
@@ -248,6 +248,7 @@ TokenType token_get_type(const Token* token);
 void token_set_location(Token* token, Location location);
 Location token_get_location(const Token* token);
 Location token_get_end(const Token* token);
+void token_set_end(Token* token, Location location);
 bool token_is_type(const Token* token, TokenType type);
 bool token_is_literal(const Token* token);
 bool token_is_string(const Token* token);

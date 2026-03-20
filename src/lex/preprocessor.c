@@ -344,7 +344,7 @@ void macro_expander_paste_tokens(MacroExpander* expander, Token* token,
         // comment token in this buffer. (Lexer itslef should not emit diags)
         Lexer tmp_lexer;
         lexer_create(&tmp_lexer, NULL, preprocessor_lang(pp),
-                preprocessor_literals(pp), preprocessor_idents(pp), tmp_file);
+                preprocessor_idents(pp), tmp_file);
 
         Token tmp;
         lexer_get_next(&tmp_lexer, &tmp);
@@ -466,8 +466,8 @@ void preprocessor_push_input(Preprocessor* pp, SourceFile* file)
             && "didn't do a check for an input depth thats too deep!");
 
     // Simply create the include and push it only the preprocessor.
-    Include include = include_create(pp->dm, pp->lang, &pp->literal_arena,
-            pp->identifiers, file, NULL);
+    Include include = include_create(pp->dm, pp->lang, pp->identifiers, file,
+            NULL);
     include_vector_push(&pp->inputs, include);
 }
 
@@ -663,7 +663,6 @@ bool preprocessor_create(Preprocessor* pp, DiagnosticManager* dm,
     pp->sm = sm;
     pp->identifiers = ids;
 
-    pp->literal_arena = arena_new_default();
     pp->pp_allocator = arena_new_default();
 
     pp->hf = header_finder_create();
@@ -702,7 +701,6 @@ void preprocessor_delete(Preprocessor* pp)
     include_vector_free_ptr(&pp->inputs, include_delete);
     token_list_free(&pp->cache); // Free first since some tokens use other arena
     header_finder_delete(&pp->hf);
-    arena_delete(&pp->literal_arena);
     arena_delete(&pp->pp_allocator);
 }
 
@@ -724,11 +722,6 @@ SourceManager* preprocessor_source_manager(Preprocessor* pp)
 IdentifierTable* preprocessor_idents(Preprocessor* pp)
 {
     return pp->identifiers;
-}
-
-Arena* preprocessor_literals(Preprocessor* pp)
-{
-    return &pp->literal_arena;
 }
 
 Arena* preprocessor_allocator(Preprocessor* pp)
@@ -972,8 +965,7 @@ TokenStream preprocessor_expand_token_from_file(Preprocessor* pp,
     // read all of the tokens from the source (should be a single token here)
     // Note: in theory we should never get a tokens that can be expanded again
     Lexer lexer;
-    lexer_create(&lexer, pp->dm, pp->lang, &pp->literal_arena, pp->identifiers,
-            source);
+    lexer_create(&lexer, pp->dm, pp->lang, pp->identifiers, source);
 
     // Next lex the number token and the theoretical EOF token from the lexer
     // we just created.
@@ -1225,8 +1217,7 @@ Token preprocessor_stringify_macro_arg(Preprocessor* pp, MacroArgs arg,
     SourceFile* string = source_manager_create_anonomous_buffer(pp->sm,
             arg_buff, param_loc);
     Lexer tmp_lex;
-    lexer_create(&tmp_lex, /*dm*/NULL, pp->lang, &pp->literal_arena,
-            pp->identifiers, string);
+    lexer_create(&tmp_lex, /*dm*/NULL, pp->lang, pp->identifiers, string);
 
     // Lex the single string token from it.
     Token string_tok;

@@ -54,8 +54,7 @@ void conditional_set_else(Conditional* conditional);
 
 // General include handling functions.
 Include include_create(DiagnosticManager* dm, LangOptions* opts,
-        Arena* literals, IdentifierTable* names, SourceFile* source,
-        DirectoryEntry* entry);
+        IdentifierTable* names, SourceFile* source, DirectoryEntry* entry);
 void include_delete(Include* include);
 
 SourceFile* include_get_source(Include* include);
@@ -65,6 +64,7 @@ ConditionalVector* include_get_conditionals(Include* include);
 
 bool include_get_next(Include* include, Token* token);
 bool include_peek_next(Include* include, Token* token);
+void include_skip_to_end_of_line(Include* include);
 
 // Functions for pushing, popping, and general handling of conditionals
 // TODO: these will remain unimplemented.

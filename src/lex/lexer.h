@@ -1,8 +1,6 @@
 #ifndef LEXER_H
 #define LEXER_H
 
-#include "util/arena.h"
-
 #include "driver/diagnostic.h"
 #include "driver/lang.h"
 
@@ -15,7 +13,6 @@
 typedef struct Lexer {
     DiagnosticManager* dm;
     LangOptions* lang;
-    Arena* literal_arena;
     IdentifierTable* identifiers;
 
     const char* buffer_start;
@@ -36,7 +33,7 @@ typedef struct Lexer {
 
 // Create a lexer on the stack, no heap allocations needed for it at all.
 void lexer_create(Lexer* lexer, DiagnosticManager* dm, LangOptions* opts,
-        Arena* literal_arena, IdentifierTable* identifiers, SourceFile* source);
+        IdentifierTable* identifiers, SourceFile* source);
 void lexer_set_directive(Lexer* lexer);
 void lexer_set_header(Lexer* lexer);
 
@@ -55,6 +52,11 @@ bool lexer_get_next(Lexer* lexer, Token* tok);
 // lookup or some form of memory allocation. However, this is typically minimal
 // and this function should be used sparingly anyways.
 bool lexer_peek_next(Lexer* lexer, Token* token);
+
+// Special function used by the preprocessor when skipping unused conditional
+// blocks. This helps to try to speed up the preprocessor and use less memory
+// when skipping.
+void lexer_skip_to_end_of_line(Lexer* lexer);
 
 // Specialised function getting the rest of the line and putting it in a buffer
 // that we can used. This function is mainly used for warning diagnostics to get

@@ -117,14 +117,11 @@ size_t string_literal_char_size(const StringLiteral* string);
 CharType string_literal_char_type(const StringLiteral* string);
 
 bool parse_preprocessing_number(LiteralValue* value, DiagnosticManager* dm,
-        const Token* token);
+        SourceManager* sm, LangOptions* opts, Token token);
 bool parse_char_literal(CharValue* value, DiagnosticManager* dm,
-        const Token token);
-// bool parse_string_literal(AstAllocator* allocator, StringLiteral* value,
-//         DiagnosticManager* dm, TokenVector tokens, LocationVector locs,
-//         bool wide);
+        SourceManager* sm, LangOptions* opts, Token token);
 bool parse_string_literal(AstAllocator* allocator, StringLiteral* value,
-        DiagnosticManager* dm, LangOptions* lang, const TokenList* tokens,
-        bool unevaluated);
+        DiagnosticManager* dm, SourceManager* sm, LangOptions* lang,
+        const TokenList* tokens, bool unevaluated);
 
 #endif /* LITERAL_PARSER_H */

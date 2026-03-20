@@ -55,6 +55,11 @@ Location token_get_end(const Token* token)
     return token->end;
 }
 
+void token_set_end(Token* token, Location location)
+{
+    token->end = location;
+}
+
 bool token_is_type(const Token* token, TokenType type)
 {
     return token->type == type;
@@ -285,11 +290,6 @@ bool token_is_directive_start(const Token* token)
             && token_has_flag(token, TOK_FLAG_BOL);
 }
 
-String token_get_literal_node(const Token* token)
-{
-    return token->data.literal->value;
-}
-
 const char* token_type_get_name(TokenType type)
 {
     // DO NOT ADD DEFAULT CASE HERE to trigger -Wswitch if anything added
@@ -439,24 +439,7 @@ bool tokens_equal(const Token* tok1, const Token* tok2)
 
 static size_t token_get_real_length(const Token* token)
 {
-    assert(token_is_identifier(token) || token_is_literal(token));
-    
-    String* string;
-    if (token_is_identifier(token))
-    {
-        Identifier* node = token->data.identifier;
-
-        string = identifier_get_string(node);
-    }
-    else
-    {
-        assert(token_is_literal(token));
-
-        LiteralNode* node = token->data.literal;
-
-        string = &node->value;
-    }
-    return string_get_len(string);
+    return token_get_length((Token*) token);
 }
 
 // Tokenlist stuff

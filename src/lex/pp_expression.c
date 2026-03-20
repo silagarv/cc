@@ -133,7 +133,8 @@ bool preprocessor_parse_primary_expression(Preprocessor* pp, Token* token,
             // First parse the number in general and then we will handle if we
             // have a floating point number or if we have an integer constant
             LiteralValue int_value;
-            if (!parse_preprocessing_number(&int_value, pp->dm, token))
+            if (!parse_preprocessing_number(&int_value, pp->dm, pp->sm,
+                    pp->lang, *token))
             {
                 value->success = false;
                 break;
@@ -161,7 +162,8 @@ bool preprocessor_parse_primary_expression(Preprocessor* pp, Token* token,
         case TOK_WIDE_CHARACTER:
         {
             CharValue char_value;
-            if (!parse_char_literal(&char_value, pp->dm, *token))
+            if (!parse_char_literal(&char_value, pp->dm, pp->sm, pp->lang,
+                    *token))
             {
                 value->success = false;
                 break;

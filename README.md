@@ -23,15 +23,12 @@ To building, run 'make' in the cc directory and it wll output an executable name
     - Make the driver more friendly to being extended so that we are more easily able to extend it to add args as we want and do have to do silly things
     - Maybe create an argparser and use that for parsing???
 - Preprocessor
-    - EVENTUALLY, it would be nice if the lexer could avoid using a literal arena to store all created literals as this would
-        - 1) save alot of memory
-        - 2) make the implementation more simple in alot of places
-        - 3) increase how easy it is to 'just construct' a lexer on the stack and use it instead of having to pretty much keep the PP in the call stack
     - Improve diagnostics by giving macro expanded tokens a sensible location (currently it defaults to the location of the macro token)
     - Eventually implement the 'multiple include' optimisation
     - Preprocessor should probably properly propogate spacing information
     - Fix the expresison parser
 - Parser & semantic
+    - 12E+f -> should trigger an error but doesn't
     - Fix every occurance of getting an identifier from a token so that they use the token_get_identifier instead of getting directly from the token
 - Declaration parsing
     - also include a second list in struct / union decl's for all decls inside it as currently the canonical decl is used even in situations where it is not the current decl. Also the lcoations for the decls can be quite wrong as a result.

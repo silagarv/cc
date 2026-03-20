@@ -43,14 +43,13 @@ void conditional_set_else(Conditional* conditional)
 
 // General include handling functions.
 Include include_create(DiagnosticManager* dm, LangOptions* opts,
-        Arena* literals, IdentifierTable* names, SourceFile* source,
-        DirectoryEntry* entry)
+        IdentifierTable* names, SourceFile* source, DirectoryEntry* entry)
 {
     // Create the include given that we already have everything else.
     Include include = {0};
     include.sf = source;
     include.search_path = entry;
-    lexer_create(&include.lexer, dm, opts, literals, names, source);
+    lexer_create(&include.lexer, dm, opts, names, source);
     include.cond = conditional_vector();
     return include;
 }
@@ -94,6 +93,12 @@ bool include_peek_next(Include* include, Token* token)
 {
     assert(include != NULL && token != NULL && "need both input and token!");
     return lexer_peek_next(&include->lexer, token);
+}
+
+void include_skip_to_end_of_line(Include* include)
+{
+    assert(include != NULL && "include is NULL");
+    lexer_skip_to_end_of_line(&include->lexer);
 }
 
 // Functions for pushing, popping, and general handling of conditionals

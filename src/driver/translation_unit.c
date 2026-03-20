@@ -110,10 +110,10 @@ int translation_unit_process(TranslationUnit* tu)
     }
 
     // Now we can attempt to do code generation with the translation unit
-    if (translation_unit_codegen(tu) == false)
-    {
-        return EXIT_FAILURE;
-    }
+    // if (translation_unit_codegen(tu) == false)
+    // {
+    //     return EXIT_FAILURE;
+    // }
 
     // Now we need to see if the -S option was specified
     if (tu->options->dump_assembly)
