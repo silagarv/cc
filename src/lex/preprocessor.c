@@ -1119,8 +1119,9 @@ void preprocessor_add_raw_argument_tokens(Preprocessor* pp, TokenList* result,
         }
 
         token_list_push_back(result, tmp);
-        (*count)++;
     }
+
+    *count += token_stream_length(&arg_stream);
 }
 
 void preprocessor_push_macro_arg(Preprocessor* pp, MacroArgs arg,
@@ -1172,7 +1173,7 @@ bool preprocessor_expand_macro_arg(Preprocessor* pp, TokenList* result,
 
         // Add the token to the list and increase the current count of tokens
         token_list_push_back(result, tmp);
-        (*count)++;
+        *count += 1;
     }
 
     // If they are not equal that means we got tokens when we expanded :)
@@ -1295,7 +1296,7 @@ TokenStream preprocessor_expand_function_macro(Preprocessor* pp,
 
     TokenStream replacement = macro_get_stream(macro);
     while (!token_stream_end(&replacement))
-    {        
+    {     
         Token tok = token_stream_consume(&replacement);
 
         // If this token is a hash then it is followed by a macro parameter.
@@ -1433,6 +1434,7 @@ TokenStream preprocessor_expand_function_macro(Preprocessor* pp,
             // Make sure we don't go to the below.
             continue;
         }
+        assert(!concat_before && !concat_after && "no concat allowed!");
 
         // Otherwise we need to macro expand the macros replacement list. Also
         // keep track of if we got tokens or not.

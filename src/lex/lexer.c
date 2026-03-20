@@ -1643,6 +1643,7 @@ void lexer_token_stringify(SourceManager* sm, LangOptions* opts, Token token,
     seek_to_location(&lexer, location);
     assert(get_curr_location(&lexer) == location && "not at location?");
 
+    bool is_literal = token_is_string(&token) || token_is_character(&token);
     Location end_location = token_get_end(&token);
     while (get_curr_location(&lexer) <= end_location)
     {
@@ -1650,7 +1651,8 @@ void lexer_token_stringify(SourceManager* sm, LangOptions* opts, Token token,
         // should escape it. Then we just add the char to the buffer.
         char c = get_next_char(&lexer);
 
-        if (c == '\\' || c == '"')
+        // Only escape the character if we need to
+        if ((c == '\\' || c == '"') && is_literal)
         {
             buffer_add_char(buffer, '\\');
         }

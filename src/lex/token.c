@@ -548,18 +548,19 @@ Token token_list_pop_front(TokenList* list)
 Token token_list_pop_back(TokenList* list)
 {
     assert(!token_list_empty(list));
-    TokenListEntry* target = list->tail;
-    assert(token_list_entry_next(target) == NULL && "has a next?");
+    assert(token_list_entry_next(list->tail) == NULL && "has a next?");
     
     // Base case the tail is the target
-    if (list->head == target)
+    if (list->head == list->tail)
     {
+        TokenListEntry* saved = list->tail;
         list->head = NULL;
         list->tail = NULL;
-        return token_list_entry_token(target);
+        return token_list_entry_token(saved);
     }
     
     // Otherwise we will need to loop until we reach the target
+    TokenListEntry* target = list->tail;
     TokenListEntry* entry;
     for (entry = list->head;
             token_list_entry_next(entry) != target;
@@ -568,8 +569,10 @@ Token token_list_pop_back(TokenList* list)
         ; // Nothing to do.
     }
 
-    // Now set the entry's next field to be null
+    // Now set the entry's next field to be null. And also set the list's tail
+    // to be the entry.
     token_list_entry_set_next(entry, NULL);
+    list->tail = entry;
 
     // Finally, return the target token.
     return token_list_entry_token(target);
@@ -584,7 +587,8 @@ void token_list_push_back(TokenList* list, Token tok)
     }
     else
     {
-        assert(list->tail != NULL);
+        assert(list->tail != NULL && "NULL tail?");
+        assert(list->tail->next == NULL && "tail's next isn't NULL");
         list->tail->next = entry;
     }
     list->tail = entry;
@@ -601,6 +605,24 @@ TokenListEntry* token_list_iter(const TokenList* list)
     return list->head;
 }
 
+size_t token_list_get_len(const TokenList* list)
+{
+    if (list->head == NULL)
+    {
+        return 0;
+    }
+
+    size_t len = 0;
+    for (TokenListEntry* entry = list->head;
+            entry != NULL;
+            entry = token_list_entry_next(entry))
+    {
+        len++;
+    }
+    
+    return len;
+}
+
 Token* token_list_flatten(Arena* arena, TokenList* list, size_t count)
 {
     assert(arena && list && "need these to flatten the list");
@@ -615,7 +637,7 @@ Token* token_list_flatten(Arena* arena, TokenList* list, size_t count)
     Token* tokens = arena_malloc(arena, sizeof(Token) * count);
     for (size_t i = 0; i < count; i++)
     {
-        assert(!token_list_empty(list) && "incorrect token count!");
+        assert(!token_list_empty(list) && "ran out of tokens");
         tokens[i] = token_list_pop_front(list);
     }
     assert(token_list_empty(list) && "incorrect token count");

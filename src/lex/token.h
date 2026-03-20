@@ -281,6 +281,7 @@ Token token_list_pop_back(TokenList* list);
 void token_list_push_back(TokenList* list, Token tok);
 Token token_list_peek_back(const TokenList* list);
 TokenListEntry* token_list_iter(const TokenList* list);
+size_t token_list_get_len(const TokenList* list);
 
 // Desctructively move all of the tokens in the list (should be the same size)
 // as the count, into an array of allocated tokens (by arena) for the purposes
