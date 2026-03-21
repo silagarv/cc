@@ -2,8 +2,10 @@
 
 #include <assert.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 
+#include "lex/char_help.h"
 #include "util/arena.h"
 #include "util/buffer.h"
 #include "util/ptr_set.h"
@@ -1105,11 +1107,167 @@ void preprocessor_handle_endif(Preprocessor* pp, Token* token)
     include_pop_conditional(include);
 }
 
+bool preprocessor_is_simple_integer(Preprocessor* pp, const Buffer* buffer)
+{
+    const char* ptr = buffer_get_ptr(buffer);
+    size_t len = buffer_get_len(buffer);
+
+    for (size_t i = 0; i < len; i++)
+    {
+        if (!is_decimal(ptr[i]))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+uint32_t preprocessor_convert_simple_integer(Preprocessor* pp, Location loc,
+        const Buffer* buffer)
+{
+    const char* ptr = buffer_get_ptr(buffer);
+    size_t len = buffer_get_len(buffer);
+
+    // First we should skip any digits which are 0's as #line directive 
+    // interprets all numbers given to is as a decimal. If all digits are 0's
+    // then we will skip all 0's which is fine since the value would have been
+    // 0 anyways
+    size_t pos = 0;
+    while (ptr[pos] == '0')
+    {
+        pos++;
+    }
+
+    // Then if our position is not 0, then we should warn that we are not 
+    // interpreting as an octal number.
+    if (pos != 0)
+    {
+        diagnostic_warning_at(pp->dm, loc, Wother, "#line directive interprets "
+                "number as decimal, not octal");
+    }
+
+    // Then we should go through the rest of the digits and determine the value
+    // for the number.
+    uint32_t value = 0;
+    for (; pos < len; pos++)
+    {
+        value *= 10;
+        value += convert_decimal(ptr[pos]);
+    }
+
+    return value;
+}
+
+bool preprocessor_handle_simple_integer(Preprocessor* pp, Token* token,
+        uint32_t* value)
+{
+    Location loc = token_get_location(token);
+
+    // First need to make sure that we actually got a number if not error and 
+    // indicate failure.
+    if (!token_is_type(token, TOK_NUMBER))
+    {
+        diagnostic_error_at(pp->dm, loc, "#line directive requires a positive "
+                "integer argument");
+        return false;
+    }
+    
+    // Otherwise we will need to get the token's literal in a buffer so that we
+    // can check that we got a simple integer argument.
+    Buffer number = buffer_new_size(token_get_length(token) + 1);
+    lexer_token_spelling(pp->sm, pp->lang, *token, &number);
+    buffer_make_cstr(&number);
+
+    // Then check if it is a simple number and only convert if it is.
+    bool converted = false;
+    if (!preprocessor_is_simple_integer(pp, &number))
+    {
+        diagnostic_error_at(pp->dm, loc, "#line directive requires a simple "
+                "digit sequence");
+    }
+    else
+    {
+        converted = true;
+        *value = preprocessor_convert_simple_integer(pp, loc, &number);
+    }
+
+    // Then ensure that we free the buffer so we don't leak and then return if
+    // we sucessfully got our number or not.
+    buffer_free(&number);
+    return converted;
+}
+
+bool preprocessor_handle_line_path(Preprocessor* pp, Token* token,
+        Filepath* path)
+{
+    if (!token_is_type(token, TOK_STRING))
+    {
+        diagnostic_error_at(pp->dm, token_get_location(token), "invalid "
+                "filename for #line directive");
+        return false;
+    }
+
+    // We must also ensure that the string is not longer then FILEPATH_LEN as
+    // this would likely cause a segfault if we don't check. But to do this we
+    // should have the token in a buffer so we can get it's real length.
+    Buffer path_buffer = buffer_new_size(token_get_length(token) + 1);
+    lexer_token_spelling(pp->sm, pp->lang, *token, &path_buffer);
+    buffer_make_cstr(&path_buffer);
+
+    bool valid = false;
+    if (buffer_get_len(&path_buffer) >= FILEPATH_LEN)
+    {
+        diagnostic_error_at(pp->dm, token_get_location(token), "invalid "
+                "filename for #line directive");
+    }
+    else
+    {
+        valid = true;
+        filepath_from_cstring(buffer_get_ptr(&path_buffer));
+    }
+
+    // Don't forget to free the buffer.
+    buffer_free(&path_buffer);
+    return valid;
+}
+
 void preprocessor_handle_line(Preprocessor* pp, Token* token)
 {
-    diagnostic_warning_at(pp->dm, token_get_location(token), Wunimplemented,
+    // A line directive is quite simple and only allows up to 2 tokens after.
+    // Note that all the tokens should be expanded by the prepcoessor so we 
+    // should not just get the raw tokens.
+    Location line_loc = token_get_location(token);
+
+    // Hopefully advance to the number given and handle it as appropriate.
+    preprocessor_advance_token(pp, token);
+
+    uint32_t number;
+    if (!preprocessor_handle_simple_integer(pp, token, &number))
+    {
+        preprocessor_eat_to_eod(pp, token);
+        return;
+    }
+
+    // Hopefully advance to the string token we got otherwise handling it as 
+    // appropriate. Note that it should only be a simple string literal here.
+    preprocessor_advance_token(pp, token);
+
+    Filepath path;
+    if (!preprocessor_handle_line_path(pp, token, &path))
+    {
+        preprocessor_eat_to_eod(pp, token);
+        return;
+    }
+    
+    // Otherwise we have got all of our line directive, warn about naught tokens
+    preprocessor_expect_directive_end(pp, "line");
+
+    // Finally, we can not actually handle the line directive properly with the
+    // given parameters. So do so here, and then we are done.
+    // preprocessor_do_line_directive(...);
+    diagnostic_warning_at(pp->dm, line_loc, Wunimplemented,
             "#line is valid but not implemented");
-    preprocessor_eat_to_eod(pp, token);
 }
 
 void preprocessor_handle_diagnostic(Preprocessor* pp, Token* token, bool warn)

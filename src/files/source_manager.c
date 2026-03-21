@@ -5,14 +5,13 @@
 #include <stdlib.h>
 #include <assert.h>
 
-#include "files/line_table.h"
-#include "util/panic.h"
 #include "util/vec.h"
 #include "util/xmalloc.h"
 
 #include "files/location.h"
 #include "files/filepath.h"
 #include "files/file_manager.h"
+#include "files/line_table.h"
 #include "files/line_map.h"
 
 // Instantiate the vector implementation with all of the function definition.
@@ -178,30 +177,37 @@ SourceFile* source_manager_from_id(SourceManager* sm, SourceFileId id)
     return source_file_vector_get(&sm->sources, (size_t) id);
 }
 
-// Look up the source file from a given location
+int source_file_compare(const Location* key, const SourceFile** member)
+{
+    const SourceFile* file = *member;
+    const LocationRange* range = &file->line_map.range;
+    return location_range_compare(key, range);
+}
+
+// Look up the source file from a given location. We first try to optomise to
+// see if the location if in the main file as we assume the possibility of most
+// errors being in the main file.
+// FIXME: this is sill possibly a little too slow. Can we speed this up at all?
 SourceFile* source_manager_from_location(SourceManager* sm, Location loc)
 {
-    assert(location_is_file(loc));
+    assert(location_is_file(loc) && "not a file location");
+    assert(loc <= sm->next_source_location && "location too high!");
 
-    if (loc > sm->next_source_location)
+    SourceFile* main = sm->main_file;
+    if (main != NULL)
     {
-        panic("Location given higher than maximum");
-
-        return NULL;
-    }
-
-    // TODO: convert to a binary search from O(n) search
-    for (size_t i = 0; i < source_file_vector_size(&sm->sources); i++) 
-    {
-        SourceFile* file = source_file_vector_get(&sm->sources, i);
-        LocationRange range = file->line_map.range;
-        if (location_range_contains(&range, loc))
+        if (!source_file_compare(&loc, (const SourceFile**) &main))
         {
-            return source_file_vector_get(&sm->sources, i);
+            return main;
         }
     }
 
-    panic("unreachable");
-    return NULL;
+    // Use bsearch to hopefully find the source file we are after quite quickly
+    SourceFile** file = bsearch(&loc, source_file_vector_front(&sm->sources),
+            source_file_vector_size(&sm->sources), sizeof(SourceFile*),
+            (int (*)(const void*, const void*)) source_file_compare);
+
+    assert(file != NULL && "failed to find file");
+    return *file;
 }
 

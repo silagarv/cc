@@ -43,4 +43,7 @@ bool location_is_macro(Location loc);
 // Check if a location range contains a specific location
 bool location_range_contains(const LocationRange* range, Location loc);
 
+// Comparison function for location ranges
+int location_range_compare(const Location* loc, const LocationRange* range);
+
 #endif /* LOCATION_H */

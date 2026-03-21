@@ -2,7 +2,7 @@
 
 #include "util/vec.h"
 
-#include <stdlib.h>
+#include <assert.h>
 
 vector_of_impl(Location, Location, location)
 vector_of_impl(LocationRange, LocationRange, location_range)
@@ -28,3 +28,21 @@ bool location_range_contains(const LocationRange* range, Location loc)
 {
     return (loc >= range->start && loc < range->end);
 }
+
+int location_range_compare(const Location* loc, const LocationRange* range)
+{
+    Location used_loc = *loc;
+    if (location_range_contains(range, used_loc))
+    {
+        return 0;
+    }
+
+    if (used_loc < range->start)
+    {
+        return -1;
+    }
+
+    assert(used_loc >= range->end && "Must be true...");
+    return 1;
+}
+

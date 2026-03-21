@@ -920,7 +920,9 @@ retry_lexing:;
     // not be noticeable on small files but on longer files it might definitely
     // add up
 
-    // Here we will do our actual lexing
+    // Here we will do our actual lexing. Create a peeking variable initially 
+    // set to 0 since we will only peek on char's which can have a second option
+    size_t peek = 0;
     char curr = get_next_char(lexer);
     switch (curr)
     {
@@ -996,15 +998,15 @@ retry_lexing:;
         
         // Look for the 'L' prefix for string and character literals
         case 'L':
-            curr = get_curr_char(lexer);
+            curr = get_char_and_size(lexer, &peek);
             if (curr == '"')
             {
-                consume_char(lexer);
+                seek(lexer, peek);
                 return lexer_string_literal(lexer, token, TOK_WIDE_STRING);
             }
             else if (curr == '\'')
             {
-                consume_char(lexer);
+                seek(lexer, peek);
                 return lexer_char_literal(lexer, token, TOK_WIDE_CHARACTER);
             }
 
@@ -1018,15 +1020,15 @@ retry_lexing:;
                 return lexer_identifier(lexer, token);
             }
 
-            curr = get_curr_char(lexer);
+            curr = get_char_and_size(lexer, &peek);
             if (curr == '"')
             {
-                consume_char(lexer);
+                seek(lexer, peek);
                 return lexer_string_literal(lexer, token, TOK_UTF32_STRING);
             }
             else if (curr == '\'')
             {
-                consume_char(lexer);
+                seek(lexer, peek);
                 return lexer_char_literal(lexer, token, TOK_UTF32_CHARACTER);
             }
 
@@ -1043,27 +1045,25 @@ retry_lexing:;
             }
 
             bool u8 = false;
-            curr = get_curr_char(lexer);
+            curr = get_char_and_size(lexer, &peek);
 
             // First check for the possibility of having a u8
             if (curr == '8')
             {
                 u8 = true;
-
-                consume_char(lexer);
-                curr = get_curr_char(lexer);
+                curr = get_char_and_size(lexer, &peek);
             }
 
             if (curr == '"')
             {
-                consume_char(lexer);
+                seek(lexer, peek);
                 return lexer_string_literal(lexer, token,
                         u8 ? TOK_UTF8_STRING : TOK_UTF16_STRING);
             }
             else if (curr == '\''
                     && (!u8 || (u8 && lang_opts_c23(lexer->lang))))
             {
-                consume_char(lexer);
+                seek(lexer, peek);
                 return lexer_char_literal(lexer, token,
                         u8 ? TOK_UTF8_CHARACTER : TOK_UTF16_CHARACTER);
             }
@@ -1090,18 +1090,16 @@ retry_lexing:;
             return lexer_char_literal(lexer, token, TOK_CHARACTER);
         
         case '.':
-            curr = get_curr_char(lexer);
+            curr = get_char_and_size(lexer, &peek);
 
             if (is_numeric(curr))
             {
                 return lexer_number(lexer, token);
             }
-            else if (curr == '.' && peek_char(lexer) == '.')
+            else if (curr == '.' && get_char_and_size(lexer, &peek) == '.')
             {
                 token->type = TOK_ELIPSIS;
-
-                consume_char(lexer);
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else
             {
@@ -1110,11 +1108,11 @@ retry_lexing:;
             break;
 
         case '/':
-            curr = get_curr_char(lexer);
+            curr = get_char_and_size(lexer, &peek);
 
             if (curr == '/')
             {
-                consume_char(lexer);
+                seek(lexer, peek);
 
                 if (!lang_opts_c99(lexer->lang) && !lexer->err_line_comment
                         && diagnose(lexer))
@@ -1133,19 +1131,17 @@ retry_lexing:;
             }
             else if (curr == '*')
             {
-                consume_char(lexer);
+                seek(lexer, peek);
 
                 skip_block_comment(lexer, token->loc);
 
                 whitespace = true;
-
                 goto retry_lexing;
             }
             else if (curr == '=')
             {
                 token->type = TOK_SLASH_EQUAL;
-
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else
             {
@@ -1154,12 +1150,11 @@ retry_lexing:;
             break;
 
         case '*':
-            curr = get_curr_char(lexer);
+            curr = get_char_and_size(lexer, &peek);
             if (curr == '=')
             {
                 token->type = TOK_STAR_EQUAL;
-
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else
             {
@@ -1168,40 +1163,34 @@ retry_lexing:;
             break;
         
         case '%':
-            curr = get_curr_char(lexer);
+            curr = get_char_and_size(lexer, &peek);
             if (curr == '=')
             {
                 token->type = TOK_PERCENT_EQUAL;
-
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else if (curr == '>')
             {
                 token->type = TOK_RCURLY;
-
                 token_set_flag(token, TOK_FLAG_DIGRAPH);
-
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else if (curr == ':')
             {
                 /* Here we either got %: or %:%: */
+                seek(lexer, peek);
+                peek = 0;
 
-                consume_char(lexer);
-
-                if (get_curr_char(lexer) == '%' && peek_char(lexer) == ':')
+                if (get_char_and_size(lexer, &peek) == '%'
+                        && get_char_and_size(lexer, &peek) == ':')
                 {
                     token->type = TOK_HASH_HASH;
-
                     token_set_flag(token, TOK_FLAG_DIGRAPH);
-
-                    consume_char(lexer);
-                    consume_char(lexer);
+                    seek(lexer, peek);
                 }
                 else
                 {
                     token->type = TOK_HASH;
-
                     token_set_flag(token, TOK_FLAG_DIGRAPH);
                 }
             }
@@ -1212,18 +1201,16 @@ retry_lexing:;
             break;
 
         case '+':
-            curr = get_curr_char(lexer);
+            curr = get_char_and_size(lexer, &peek);
             if (curr == '+')
             {
                 token->type = TOK_PLUS_PLUS;
-
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else if (curr == '=')
             {
                 token->type = TOK_PLUS_EQUAL;
-
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else
             {
@@ -1232,24 +1219,21 @@ retry_lexing:;
             break;
 
         case '-':
-            curr = get_curr_char(lexer);
+            curr = get_char_and_size(lexer, &peek);
             if (curr == '-')
             {
                 token->type = TOK_MINUS_MINUS;
-
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else if (curr == '>')
             {
                 token->type = TOK_ARROW;
-
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else if (curr == '=')
             {
                 token->type = TOK_MINUS_EQUAL;
-
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else
             {
@@ -1258,18 +1242,16 @@ retry_lexing:;
             break;
 
         case '|':
-            curr = get_curr_char(lexer);
+            curr = get_char_and_size(lexer, &peek);
             if (curr == '|')
             {
                 token->type = TOK_OR_OR;
-
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else if (curr == '=')
             {
                 token->type = TOK_OR_EQUAL;
-
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else
             {
@@ -1278,18 +1260,16 @@ retry_lexing:;
             break;
 
         case '&':
-            curr = get_curr_char(lexer);
+            curr = get_char_and_size(lexer, &peek);
             if (curr == '&')
             {
                 token->type = TOK_AND_AND;
-
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else if (curr == '=')
             {
                 token->type = TOK_AND_EQUAL;
-
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else
             {
@@ -1298,12 +1278,11 @@ retry_lexing:;
             break;
 
         case '^':
-            curr = get_curr_char(lexer);
+            curr = get_char_and_size(lexer, &peek);
             if (curr == '=')
             {
                 token->type = TOK_XOR_EQUAL;
-                
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else
             {
@@ -1312,12 +1291,11 @@ retry_lexing:;
             break;
 
         case '=':
-            curr = get_curr_char(lexer);
+            curr = get_char_and_size(lexer, &peek);
             if (curr == '=')
             {
                 token->type = TOK_EQUAL_EQUAL;
-
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else
             {
@@ -1326,12 +1304,11 @@ retry_lexing:;
             break;
 
         case '!':
-            curr = get_curr_char(lexer);
+            curr = get_char_and_size(lexer, &peek);
             if (curr == '=')
             {
                 token->type = TOK_NOT_EQUAL;
-
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else
             {
@@ -1340,7 +1317,7 @@ retry_lexing:;
             break;
 
         case '#':
-            curr = get_curr_char(lexer);
+            curr = get_char_and_size(lexer, &peek);
             if (curr == '#')
             {
                 token->type = TOK_HASH_HASH;
@@ -1359,17 +1336,17 @@ retry_lexing:;
                 return lexer_header_name(lexer, token);
             }
 
-            curr = get_curr_char(lexer);
+            curr = get_char_and_size(lexer, &peek);
             if (curr == '<')
             {
-                consume_char(lexer);
+                seek(lexer, peek);
+                peek = 0;
 
-                curr = get_curr_char(lexer);
+                curr = get_char_and_size(lexer, &peek);
                 if (curr == '=')
                 {
                     token->type = TOK_LT_LT_EQUAL;
-
-                    consume_char(lexer);
+                    seek(lexer, peek);
                 }
                 else
                 {
@@ -1379,24 +1356,19 @@ retry_lexing:;
             else if (curr == '=')
             {
                 token->type = TOK_LT_EQUAL;
-
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else if (curr == ':')
             {
                 token->type = TOK_LBRACKET;
-
                 token_set_flag(token, TOK_FLAG_DIGRAPH);
-
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else if (curr == '%')
             {
                 token->type = TOK_LCURLY;
-
                 token_set_flag(token, TOK_FLAG_DIGRAPH);
-
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else
             {
@@ -1405,17 +1377,17 @@ retry_lexing:;
             break;
 
         case '>':
-            curr = get_curr_char(lexer);
+            curr = get_char_and_size(lexer, &peek);
             if (curr == '>')
             {
-                consume_char(lexer);
+                seek(lexer, peek);
+                peek = 0;
 
-                curr = get_curr_char(lexer);
+                curr = get_char_and_size(lexer, &peek);
                 if (curr == '=')
                 {
                     token->type = TOK_GT_GT_EQUAL;
-
-                    consume_char(lexer);
+                    seek(lexer, peek);
                 }
                 else
                 {
@@ -1425,8 +1397,7 @@ retry_lexing:;
             else if (curr == '=')
             {
                 token->type = TOK_GT_EQUAL;
-
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else
             {
@@ -1435,21 +1406,18 @@ retry_lexing:;
             break;
 
         case ':': 
-            curr = get_curr_char(lexer);
+            curr = get_char_and_size(lexer, &peek);
 
             if (curr == ':')
             {
                 token->type = TOK_COLON_COLON;
-
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else if (curr == '>')
             {
                 token->type = TOK_RBRACKET;
-
                 token_set_flag(token, TOK_FLAG_DIGRAPH);
-
-                consume_char(lexer);
+                seek(lexer, peek);
             } 
             else
             {
@@ -1652,7 +1620,7 @@ void lexer_token_stringify(SourceManager* sm, LangOptions* opts, Token token,
         char c = get_next_char(&lexer);
 
         // Only escape the character if we need to
-        if ((c == '\\' || c == '"') && is_literal)
+        if (is_literal && (c == '\\' || c == '"'))
         {
             buffer_add_char(buffer, '\\');
         }

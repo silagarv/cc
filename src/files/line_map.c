@@ -112,40 +112,17 @@ void  line_map_delete(LineMap* map)
     location_range_vector_free(&map->ranges, NULL);
 }
 
-// According to man bsearch the first argument to compare function is expected
-// to be the key, and the second arument is expected to be an array memeber.
-// Thank you whoever created bsearch for this foresight
-static int location_range_compare(const void* loc, const void* loc_range)
-{
-    const Location location = *(Location*) loc;
-    const LocationRange* range = loc_range;
-
-    if (location_range_contains(range, location))
-    {
-        return 0;
-    }
-
-    if (location < range->start)
-    {
-        return -1;
-    }
-
-    assert(location >= range->end && "Must be true...");
-
-    return 1;
-}
-
 LocationRange* line_map_get_location_range(const LineMap* map, Location loc)
 {
     assert(location_range_contains(&map->range, loc));
 
     LocationRange* range = bsearch(&loc, map->ranges.data, 
             location_range_vector_size(&map->ranges), 
-            sizeof(LocationRange), location_range_compare);
+            sizeof(LocationRange),
+            (int (*)(const void*, const void*)) location_range_compare);
 
     assert(range && "Location range contains location but bsearch failed");
-
-   return range;
+    return range;
 }
 
 ResolvedLocation line_map_resolve_location(const LineMap* map, Location loc)
