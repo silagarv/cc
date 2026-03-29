@@ -1331,6 +1331,39 @@ void preprocessor_parse_directive(Preprocessor* pp, Token* token)
     // Now get the directive token from the preprocessor.
     preprocessor_next_lexer_token(pp, token);
 
+    // Check if we are currently collecting macro args and either warn or error
+    // based on the type of pp directive that we get. If it is an include or
+    // and embed then we should error since this is a really strange construct
+    // anyways which both GCC and Clang treat differently. We will go Clang's 
+    // way and skip the directive entirely.
+    if (pp->collecting_args)
+    {
+        if (token_is_identifier_like(token))
+        {
+            Identifier* directive = token_get_identifier(token);
+            TokenType type = identifier_get_pp_keyword(directive);
+            switch (type)
+            {
+                case TOK_PP_include:
+                case TOK_PP_embed:
+                    diagnostic_error_at(pp->dm, token_get_location(token),
+                            "embedding a #%s directive within macro arguments "
+                            "is not supported", type == TOK_PP_include
+                            ? "include" : "embed");
+                    preprocessor_eat_to_eod(pp, token);
+                    return;
+
+                default:
+                    break;
+            }
+
+        }
+
+        diagnostic_warning_at(pp->dm, token_get_location(token),
+                Wembedded_directive, "embedding a directive within macro "
+                "arguments has undefined behavior");
+    }
+
     // We got the null directive. # \n
     if (token_is_type(token, TOK_PP_EOD))
     {

@@ -28,6 +28,6 @@ bool filepath_is_absolute(const Filepath* path);
 bool filepath_is_directory(const Filepath* path);
 
 // Filepath routines which attempt to use real paths
-bool filepath_get_real(const Filepath* input, Filepath* output);
+// bool filepath_get_real(const Filepath* input, Filepath* output);
 
 #endif /* FILEPATH_H */

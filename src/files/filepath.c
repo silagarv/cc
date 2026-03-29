@@ -58,8 +58,8 @@ bool filepath_is_directory(const Filepath* path)
     return false;
 }
 
-bool filepath_get_real(const Filepath* input, Filepath* output)
-{
-    char* path = realpath(input->path, output->path);
-    return path != NULL;
-}
+// bool filepath_get_real(const Filepath* input, Filepath* output)
+// {
+//     char* path = realpath(input->path, output->path);
+//     return path != NULL;
+// }

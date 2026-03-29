@@ -472,8 +472,31 @@ bool lexer_number(Lexer* lexer, Token* token)
     return true;
 }
 
+void lexer_get_identifier_spelling_slow(Lexer* lexer, char* buffer, size_t len)
+{
+    // TODO: implement this function. Probably using a fast / slow pointer 
+    // TODO: technique
+    for (size_t i = 0; i < len; i++)
+    {
+        // Skip any clearly non-ucn characters.
+        if (buffer[i] != '\\')
+        {
+            continue;
+        }
+        
+        // We got a UCN, we will need to convert it's characters to a unicode
+        // codepoint, and then put this codepoint into the buffer that we got.
+        // Note that we would not have got here if there were any errors in 
+        // lexing the UCN so we are safe to assume that there are no erros to
+        // handle at this point in time.
+        
+    }
+}
+
 void lexer_get_identifier_spelling(Lexer* lexer, Token* token, char* buffer)
 {
+    bool got_slash = false;
+
     // Save the current position of the lexer.
     char* save_pos = get_position(lexer);
 
@@ -484,12 +507,24 @@ void lexer_get_identifier_spelling(Lexer* lexer, Token* token, char* buffer)
     size_t pos = 0;
     while (get_curr_location(lexer) <= token_get_end(token))
     {
-        buffer[pos++] = get_next_char(lexer);
+        char c = get_next_char(lexer);
+        if (c == '\\')
+        {
+            got_slash = true;
+        }
+
+        buffer[pos++] = c;
     }
     assert(get_position(lexer) == save_pos && "didn't restore position?");
 
     // Then finally terminate the buffer.
     buffer[pos] = '\0';
+
+    // Then if we got a slash we will want to go and fix up any UCN that we got
+    if (got_slash)
+    {
+        lexer_get_identifier_spelling_slow(lexer, buffer, pos);
+    }
 }
 
 Identifier* lexer_lookup_identifier(Lexer* lexer, Token* token)

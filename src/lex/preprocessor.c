@@ -17,7 +17,6 @@
 #include "files/filepath.h"
 #include "files/source_manager.h"
 #include "files/location.h"
-#include "files/line_map.h"
 
 #include "lex/identifier_table.h"
 #include "lex/token.h"
@@ -603,6 +602,7 @@ static void preprocessor_push_builtins(Preprocessor* pp)
     // Create buffer add defines and turn it into a filebuffer
     Buffer predefs = buffer_new();
 
+    // FIXME: do standard defines properly...
     // STDC defines
     buffer_add_define_one(&predefs, "__STDC__");
     buffer_add_define_value(&predefs, "__STDC_VERSION__", "199901L");
@@ -834,6 +834,8 @@ void preprocessor_read_diagnostic_string(Preprocessor* pp, Buffer* buffer)
     lexer_read_diagnostic_string(lexer, buffer);
 }
 
+// TODO: Move this function somewhere that makes more sence? It is currently in
+// TODO: kind of a weird spot to put it in...
 // Lex the next token from the preprocessor's stack of lexer and handle popping
 // all of the lexers off the stack as needed. Note that this does no handling
 // of macros or any expansion work and simply just uses the lexer information
@@ -854,10 +856,32 @@ bool preprocessor_next_lexer_token(Preprocessor* pp, Token* token)
         
         // If we still have input we should not claim that we are at EOF instead
         // tail recurse and attempt to get a token again.
-        if(preprocessor_has_input(pp))
+        if (preprocessor_has_input(pp))
         {
             return preprocessor_next_lexer_token(pp, token);
         }
+    }
+
+    // FIXME: check that this is what we should be doing
+    // Check if we have got a preprocessing directive here. Preprocessing
+    // directives can only occur when there is a hash as the first token
+    // on that line. If we have one, parse it and then try again to get the
+    // next token. Even if we are caching our token then we will need to
+    // handle this directive to get to our next token. So handle it.
+    if (preprocessor_directive_start(pp, token))
+    {
+        preprocessor_parse_directive(pp, token);
+
+        // If we got an EOF token after parsing a directive we should abort 
+        // lexing as that means we got an include like directive that fully
+        // failed to include anything at all.
+        if (token_is_type(token, TOK_EOF))
+        {
+            assert(preprocessor_fatal_error(pp) && "EOF but not fatal?");
+            return false;
+        }
+        
+        return preprocessor_next_lexer_token(pp, token);
     }
 
     return ret;
@@ -1438,6 +1462,7 @@ TokenStream preprocessor_expand_function_macro(Preprocessor* pp,
     return token_stream_create(tokens, count);
 }
 
+// FIXME: remove this function?
 void preprocessor_push_macro_expansion(Preprocessor* pp, Token* token,
         Macro* macro, MacroArgs* args)
 {
@@ -1548,6 +1573,9 @@ MacroArgs* preprocessor_collect_macro_arguments(Preprocessor* pp,
 bool preprocessor_get_macro_arguments(Preprocessor* pp, Token* macro_tok,
         Macro* macro, MacroArgs** args)
 {
+    // Set a flag on PP to indicate we are expanding arguments..
+    pp->collecting_args = true;
+
     Token tmp_tok;
     preprocessor_next_unexpanded_token(pp, &tmp_tok);
     assert(token_is_type(&tmp_tok, TOK_LPAREN) && "should have got an '('???");
@@ -1680,6 +1708,9 @@ bool preprocessor_get_macro_arguments(Preprocessor* pp, Token* macro_tok,
         assert(token_list_empty(&tmp_tokens) && "didn't collect all tokens?");
     }
 
+    // Make sure to reset that we are no longer expanding macro arguments.
+    pp->collecting_args = false;
+
     // Finally, free the token list and get rid of it's memory
     token_list_free(&tmp_tokens);
 
@@ -1724,6 +1755,7 @@ bool preprocessor_start_expansion(Preprocessor* pp, Token* token)
     return true;
 }
 
+// FIXME: remove?
 bool preprocessor_is_expanding(Preprocessor* pp)
 {
     return macro_expander_expanding(&pp->expander);
@@ -1797,29 +1829,6 @@ bool preprocessor_get_next(Preprocessor* pp, Token* token)
     // First lex the token from the current lexer as the next actions we do
     // will be determined by the token we get.
     bool ret = preprocessor_next_lexer_token(pp, token);
-
-    // Check if we have got a preprocessing directive here. Preprocessing
-    // directives can only occur when there is a hash as the first token
-    // on that line. If we have one, parse it and then try again to get the
-    // next token. Even if we are caching our token then we will need to
-    // handle this directive to get to our next token. So handle it.
-    // FIXME: Is this okay for long chains at the start of a file when this
-    // FIXME: isn't getting deleted by tail recursion?
-    if (preprocessor_directive_start(pp, token))
-    {
-        preprocessor_parse_directive(pp, token);
-
-        // If we got an EOF token after parsing a directive we should abort 
-        // lexing as that means we got an include like directive that fully
-        // failed to include anything at all.
-        if (token_is_type(token, TOK_EOF))
-        {
-            assert(preprocessor_fatal_error(pp) && "EOF but not fatal?");
-            return false;
-        }
-        
-        return preprocessor_get_next(pp, token);
-    }
 
     // If we get a token that should be expanded, then go and start the 
     // preprocessor expansion.

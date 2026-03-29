@@ -23,15 +23,6 @@ LFLAGS = -lm
 IFLAGS = -Isrc
 CFLAGS += $(IFLAGS)
 
-# Get our llvm flags for using it and add them to our makefile
-LLVMCFLAGS = $(shell llvm-config --cflags)
-LLVMLDFLAGS = $(shell llvm-config --ldflags)
-LLVMLIBS = $(shell llvm-config --libs)
-
-CFLAGS += $(LLVMCFLAGS)
-LFLAGS += $(LLVMLDFLAGS)
-LFLAGS += $(LLVMLIBS)
-
 .Default_Goal: cc
 
 .PHONY: clean
@@ -88,17 +79,7 @@ PARSE = src/parse/ast_allocator.c \
 	src/parse/parser.c \
 	src/parse/semantic.c
 
-CODEGEN = src/codegen/codegen.c
-
-CODEGEN_LLVM = src/codegen/codegen_llvm/codegen_llvm.c \
-	src/codegen/codegen_llvm/codegen_util.c \
-	src/codegen/codegen_llvm/codegen_expression.c \
-	src/codegen/codegen_llvm/codegen_declaration.c \
-	src/codegen/codegen_llvm/codegen_statement.c
-
-CODEGEN += $(CODEGEN_LLVM)
-
-SRCS = $(UTIL) $(FILES) $(DRIVER) $(LEX) $(PARSE) $(CODEGEN) src/main.c
+SRCS = $(UTIL) $(FILES) $(DRIVER) $(LEX) $(PARSE) src/main.c
 
 BUILDDIR = build
 OBJS = $(patsubst src/%.c, $(BUILDDIR)/%.o, $(SRCS))

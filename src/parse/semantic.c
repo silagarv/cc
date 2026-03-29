@@ -4297,6 +4297,12 @@ Expression* semantic_checker_handle_builtin_identifier(SemanticChecker* sc,
         return semantic_checker_handle_error_expression(sc, location);
     }
 
+    // Otherwise we need to get the function name and turn it into an implicit
+    // expresison which is an array or the strlen(cstr) + 1 with the value of
+    // the string put inside of it.
+    Identifier* name = declaration_get_identifier(sc->function->function);
+    const char* cstr = identifier_cstr(name);
+
     // TODO: need to create a new expression type for this...
     QualifiedType type;
     return semantic_checker_handle_error_expression(sc, location);

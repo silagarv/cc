@@ -2,12 +2,10 @@
 
 #include <stdlib.h>
 
-#include "codegen/codegen.h"
-#include "codegen/codegen_llvm/codegen_llvm.h"
 #include "driver/diagnostic.h"
-
 #include "driver/lang.h"
 #include "driver/options.h"
+
 #include "files/source_manager.h"
 
 #include "lex/identifier_table.h"
@@ -45,9 +43,6 @@ void translation_unit_delete(TranslationUnit* tu)
     source_manager_delete(&tu->sm);
     identifier_table_delete(&tu->ids);
     ast_delete(&tu->ast);
-
-    // TODO: make more backend specific
-    llvm_delete_codegen_result(tu->result);
 }
 
 bool translation_unit_parse(TranslationUnit* tu)
@@ -76,11 +71,7 @@ bool translation_unit_parse(TranslationUnit* tu)
 // TODO: can this even fail?
 bool translation_unit_codegen(TranslationUnit* tu)
 {
-    tu->result = codegen_translation_unit(&tu->main_file,
-            &tu->out_file, &tu->target, tu->dm, tu->options, &tu->ast,
-            llvm_emit_translation_unit);
-
-    return tu->result != NULL;
+    return false;
 }
 
 int translation_unit_process(TranslationUnit* tu)
@@ -109,31 +100,28 @@ int translation_unit_process(TranslationUnit* tu)
         return EXIT_SUCCESS;
     }
 
-    // Now we can attempt to do code generation with the translation unit
-    // if (translation_unit_codegen(tu) == false)
+    // We are done. Nothing more to do here...
+    return EXIT_SUCCESS;
+
+    // // Now we need to see if the -S option was specified
+    // if (tu->options->dump_assembly)
     // {
-    //     return EXIT_FAILURE;
+    //     // Dump the assembly we are about to generate (TODO: we will need a
+    //     // backend specific struct in the CompilerDriver to do this i think)
+    //     return EXIT_SUCCESS;
     // }
 
-    // Now we need to see if the -S option was specified
-    if (tu->options->dump_assembly)
-    {
-        // Dump the assembly we are about to generate (TODO: we will need a
-        // backend specific struct in the CompilerDriver to do this i think)
-        return EXIT_SUCCESS;
-    }
+    // // Okay now we have done the codegeneration we need to take the generated
+    // // llvm and transform it into an object file
 
-    // Okay now we have done the codegeneration we need to take the generated
-    // llvm and transform it into an object file
+    // // Now check if we need to do any linking at all
+    // if (tu->options->compile_only)
+    // {
+    //     return EXIT_SUCCESS;
+    // }
 
-    // Now check if we need to do any linking at all
-    if (tu->options->compile_only)
-    {
-        return EXIT_SUCCESS;
-    }
+    // // Okay, now we have done all the compiling, we just need to do the linking
+    // // TODO: how tf do we do the linking... but we will cross that bridge later
 
-    // Okay, now we have done all the compiling, we just need to do the linking
-    // TODO: how tf do we do the linking... but we will cross that bridge later
-
-    return EXIT_SUCCESS;
+    // return EXIT_SUCCESS;
 }

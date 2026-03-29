@@ -15,9 +15,6 @@
 #include "driver/target.h"
 #include "driver/translation_unit.h"
 
-// TODO: get rid of below include
-#include <llvm-c/Core.h>
-
 // An enum of our compiler actions we can do. Noting that this may grow over 
 // time.
 typedef enum CompilerDriverAction {
@@ -239,8 +236,6 @@ int compiler_driver_invoke(int argc, char** argv)
     compiler_driver_free(&driver);
 
     // TODO: get rid of this eventually, since this is mainly here for testing
-    // purposes to ensure we aren't leaking memory elsewhere.
-    LLVMShutdown();
-    
+    // purposes to ensure we aren't leaking memory elsewhere.    
     return status;
 }
