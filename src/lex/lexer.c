@@ -8,29 +8,22 @@
 #include <assert.h>
 #include <string.h>
 
-#include "driver/diagnostic.h"
-#include "driver/lang.h"
-#include "driver/warning.h"
-#include "files/file_manager.h"
-#include "files/source_manager.h"
-#include "util/arena.h"
 #include "util/panic.h"
 #include "util/panic.h"
 #include "util/buffer.h"
-#include "util/str.h"
+
+#include "driver/diagnostic.h"
+#include "driver/lang.h"
+#include "driver/warning.h"
 
 #include "files/location.h"
+#include "files/file_manager.h"
+#include "files/source_manager.h"
 
 #include "lex/char_help.h"
 #include "lex/unicode.h"
 #include "lex/token.h"
 #include "lex/identifier_table.h"
-
-#define MAX_UCN_LENGTH (8)
-
-#define IDENTIFIER_START_SIZE (10)
-#define NUMBER_START_SIZE (10)
-#define STRING_START_SIZE (10)
 
 void lexer_create(Lexer* lexer, DiagnosticManager* dm, LangOptions* opts,
         IdentifierTable* identifiers, SourceFile* source)
@@ -44,7 +37,7 @@ void lexer_create(Lexer* lexer, DiagnosticManager* dm, LangOptions* opts,
         .buffer_start = file_buffer_get_start(fb),
         .buffer_end = file_buffer_get_end(fb),
         .current_ptr = (char*) file_buffer_get_start(fb),
-        .start_loc = source_file_get_start_location(source),
+        .start_loc = source_file_start_location(source),
         .err_line_comment = false,
         .start_of_line = true,
         .lexing_directive = false,
@@ -358,114 +351,6 @@ static void skip_block_comment(Lexer* lexer, Location start_loc)
         consume_char(lexer);
     }
     while (true);
-}
-
-// Try to lex a UCN, we assume the calling functions already saw a '\' so we 
-// are then doing the next steps. Then we only advance the lexer some steps
-// forward if we determine that we actually have a UCN, AND if we have a buffer
-// to add the universal character name into.
-static bool try_lex_ucn(Lexer* lexer, Location slash_loc, Buffer* buffer,
-        bool identifier, utf32* value)
-{
-    // Now we attempt to try and read the ucn
-    size_t size = 0;
-    char current = get_char_and_size(lexer, &size);
-    if (current != 'u' && current != 'U')
-    {
-        return false;
-    }
-
-    // Now we should also check if we are in c89 mode and reject the potential
-    // ucn. Note that clang doesn't actually check the ammount of digits is
-    // what it should be
-    if (!lang_opts_c99(lexer->lang))
-    {
-        // TODO: this diagnostic can trigger twice in C90 mode for some reason
-        if (buffer == NULL && diagnose(lexer))
-        {
-            // TODO: right warning opt?
-            diagnostic_warning_at(lexer->dm, slash_loc, Wunicode, "universal "
-                    "character names are only valid in C99; treating as '\\' "
-                    "followed by identifier");
-        }
-        return false;
-    }
-
-    // Save the ucn type
-    char ucn_type = current;
-
-    // Now setup our buffers for stuff
-    size_t required_digits = (current == 'U') ? 8 : 4;
-    char ucn_buffer[MAX_UCN_LENGTH] = {0};
-
-    for (size_t num_digits = 0; num_digits < required_digits; num_digits++)
-    {
-        current = get_char_and_size(lexer, &size);
-
-        // If we didn't get a hex digit we can just return and leave early
-        if (!is_hexadecimal(current))
-        {
-            // Again only warn when we aren't trying to put it into an 
-            // identifier since it will do it twice
-            if (buffer == NULL && diagnose(lexer))
-            {
-                diagnostic_warning_at(lexer->dm, slash_loc, Wunicode,
-                        "incomplete universal character name; treating as '\\' "
-                        "followed by identifier");
-            }
-            return false;
-        }
-
-        ucn_buffer[num_digits] = current;
-    }
-
-    // Now we also need to calculate the value of the universal character to
-    // ensure that we get a valid ucn within an identifier
-    *value = 0;
-    for (size_t i = 0; i < required_digits; i++)
-    {
-        *value *= 16;
-        *value += convert_hexadecimal(ucn_buffer[i]);
-    }
-
-    // If were here we know we got the required number of digits so let's add
-    // them to our buffer along with the leading '\u' or '\U' :)
-    // Also, don't forget to eat the UCN if we are here and only if we are 
-    // adding to the buffer as well. Since otherwise we will eat it if we are
-    // simply trying to test for the present of a UCN
-    if (buffer != NULL)
-    {
-        // Check for invalid UCN's here but allow invalid in numbers since we
-        // will not convert then anyways
-        if (identifier && !is_valid_ucn(*value) && diagnose(lexer))
-        {
-            diagnostic_error_at(lexer->dm, slash_loc, "character <U+%0*X> "
-                    "not allowed in an identifier", required_digits, *value);
-        }
-
-        // Non-identifiers should be added this was as well as any invalid 
-        // unicode instead of being ignored
-        if (!identifier || !is_valid_utf32(*value))
-        {
-            // For numbers simply add the UCN to the end of the buffer 
-            // unconverted since that is what GCC and Clang do and do the same
-            // for invalid utf32 since that seems reasonable.
-            buffer_add_char(buffer, '\\');
-            buffer_add_char(buffer, ucn_type);  
-            for (size_t i = 0; i < required_digits; i++)
-            {
-                buffer_add_char(buffer, ucn_buffer[i]);
-            }
-        }
-        else
-        {
-            ucn_add_to_buffer(*value, buffer);
-        }   
-
-        seek(lexer, size);
-    }
-
-    return true;
 }
 
 bool lexer_try_get_ucn(Lexer* lexer, utf32* value, bool commit, bool no_warn)
@@ -1067,9 +952,9 @@ retry_lexing:;
                 return lexer_char_literal(lexer, token,
                         u8 ? TOK_UTF8_CHARACTER : TOK_UTF16_CHARACTER);
             }
-        }
 
-        /* FALLTHROUGH */
+            return lexer_identifier(lexer, token);
+        }
         
         case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G':
         case 'H': case 'I': case 'J': case 'K':    /*'L'*/case 'M': case 'N':
@@ -1082,7 +967,6 @@ retry_lexing:;
         case '_':
             return lexer_identifier(lexer, token);
 
-        // String and character literals
         case '"':
             return lexer_string_literal(lexer, token, TOK_STRING);
 
@@ -1321,8 +1205,7 @@ retry_lexing:;
             if (curr == '#')
             {
                 token->type = TOK_HASH_HASH;
-
-                consume_char(lexer);
+                seek(lexer, peek);
             }
             else
             {
@@ -1405,7 +1288,7 @@ retry_lexing:;
             }
             break;
 
-        case ':': 
+        case ':':
             curr = get_char_and_size(lexer, &peek);
 
             if (curr == ':')

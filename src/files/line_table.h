@@ -9,14 +9,13 @@
 
 #include "files/location.h"
 
-// Structure to hold all of new file names that we have been given in the #line
-// directives. This keeps track of all of the new filenames so that we can save
-// memory and make sure we aren't storing alot of duplicate filenames all over
-// the place.
+#define LINE_OVERRIDE_FILE_ID_INVALID ((LineOverrideFileId) 0)
 
 typedef uint32_t LineOverrideFileId;
+typedef struct LineOverrideFilename LineOverrideFilename;
 
-#define LINE_OVERRIDE_FILE_ID_INVALID ((LineOverrideFileId) 0)
+vector_of_decl(LineOverrideFilename*, LineOverrideFilename,
+        line_override_filename);
 
 // A map of all of the different filenames that we might have. This is meant to
 // be used in the source manager to help avoid any duplication of #line 
@@ -25,6 +24,7 @@ typedef uint32_t LineOverrideFileId;
 typedef struct LineOverrideFilenames {
     LineOverrideFileId next_id; // the next id we are going to give out
     HashMap filenames; // the map of filenames to id's
+    LineOverrideFilenameVector names;
 } LineOverrideFilenames;
 
 // A structure representing a line entry for a #line directive. And any other
@@ -37,6 +37,9 @@ typedef struct LineOverride {
     // invalid location.
     Location location;
 
+    // The ending location of the line override
+    Location ending_loc;
+
     // This is the line number given for the file at the start of the next line.
     uint32_t line_no;
 
@@ -46,14 +49,12 @@ typedef struct LineOverride {
     // increase lookup speed, i.e. we don't have to search back through the
     // whole vector to find the most recent one.
     LineOverrideFileId id;
+
+    // The real line of the line override
+    uint32_t real_line;
 } LineOverride;
 
 vector_of_decl(LineOverride, LineOverride, line_override);
-
-// The structure we will use in order to store our line overrides.
-typedef struct LineOverrideTable {
-    LineOverrideVector overrides; // a list of all the overrides we have
-} LineOverrideTable;
 
 // Check if the id given to a file it is valid.
 bool line_override_file_id_is_valid(LineOverrideFileId id);
@@ -66,23 +67,19 @@ void line_override_filenames_free(LineOverrideFilenames* lofs);
 
 // Get the id asociated with a filepath inserting it if not already in the table
 // otherwise simply getting the id asociated with it.
-LineOverrideFileId line_override_filenames_get(LineOverrideFilenames* lofs,
-        Filepath path);
+LineOverrideFileId line_override_filenames_get(LineOverrideFilenames* lofs, 
+        const Filepath* path);
+Filepath* line_override_filenames_from_id(LineOverrideFilenames* lofs,
+        LineOverrideFileId id);
 
 // Create a new line override
-LineOverride line_override_create(Location loc, uint32_t line_no, 
-        LineOverrideFileId file);
+LineOverride line_override_create(Location loc, Location end, uint32_t line_no, 
+        LineOverrideFileId file, uint32_t real_line);
+Location line_override_location(const LineOverride* override);
+uint32_t line_override_line_no(const LineOverride* override);
+LineOverrideFileId line_override_file_id(const LineOverride* override);
+uint32_t line_override_real_line(const LineOverride* override);
 
-// Create a line override table
-LineOverrideTable line_override_table_create(void);
-
-// Delete a line override table
-void line_override_table_delete(LineOverrideTable* table);
-
-void line_override_table_add_path(Location loc, uint32_t line_no, Filepath* path);
-void line_override_table_add_no_path(Location loc, uint32_t line_no);
-
-// Get the line override from the table that we are looking for.
-LineOverride line_override_table_lookup(const LineOverrideTable* table, Location loc);
+int line_override_compare(const Location* loc, const LineOverride* override);
 
 #endif /* LINE_TABLE_H */

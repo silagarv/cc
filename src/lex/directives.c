@@ -31,16 +31,18 @@ bool preprocessor_directive_start(Preprocessor* pp, Token* token)
     return token_is_directive_start(token);
 }
 
-void preprocessor_eat_to_eod(Preprocessor* pp, Token* token)
+Location preprocessor_eat_to_eod(Preprocessor* pp, Token* token)
 {
     while (!token_is_type(token, TOK_PP_EOD))
     {
         preprocessor_next_lexer_token(pp, token);
         assert(!token_is_type(token, TOK_EOF) && "EOF in directive");
     }
+
+    return token_get_location(token);
 }
 
-void preprocessor_expect_directive_end(Preprocessor* pp, const char* context)
+Location preprocessor_expect_directive_end(Preprocessor* pp, const char* context)
 {
     Token token;
     preprocessor_next_lexer_token(pp, &token);
@@ -48,13 +50,13 @@ void preprocessor_expect_directive_end(Preprocessor* pp, const char* context)
     // If the next token was the end of directive we are ok
     if (token_is_type(&token, TOK_PP_EOD))
     {
-        return;
+        return token_get_location(&token);
     }
 
     // Otherwise warn about the extra tokens that we got.
     diagnostic_warning_at(pp->dm, token_get_location(&token), Wextra_tokens,
             "extra tokens at end of #%s directive", context);
-    preprocessor_eat_to_eod(pp, &token);
+    return preprocessor_eat_to_eod(pp, &token);
 }
 
 // Nice littler helper function to get the name of one of our macro parameters.
@@ -1224,7 +1226,8 @@ bool preprocessor_handle_line_path(Preprocessor* pp, Token* token,
     else
     {
         valid = true;
-        filepath_from_cstring(buffer_get_ptr(&path_buffer));
+        *path = filepath_from_ptr_len(buffer_get_ptr(&path_buffer) + 1,
+                buffer_get_len(&path_buffer) - 2);
     }
 
     // Don't forget to free the buffer.
@@ -1261,13 +1264,12 @@ void preprocessor_handle_line(Preprocessor* pp, Token* token)
     }
     
     // Otherwise we have got all of our line directive, warn about naught tokens
-    preprocessor_expect_directive_end(pp, "line");
+    // and also get the ending location for the line...
+    Location end_loc = preprocessor_expect_directive_end(pp, "line");
 
     // Finally, we can not actually handle the line directive properly with the
     // given parameters. So do so here, and then we are done.
-    // preprocessor_do_line_directive(...);
-    diagnostic_warning_at(pp->dm, line_loc, Wunimplemented,
-            "#line is valid but not implemented");
+    source_manager_do_line(pp->sm, &path, number, end_loc);
 }
 
 void preprocessor_handle_diagnostic(Preprocessor* pp, Token* token, bool warn)

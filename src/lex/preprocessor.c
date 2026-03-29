@@ -1015,27 +1015,17 @@ TokenStream preprocessor_expand_string(Preprocessor* pp, Location location,
 
 TokenStream preprocessor_expand_line(Preprocessor* pp, Location location)
 {
-    // FIXME: add properly handling of resolving of the line number.
-    // TODO: this should be implemented in the SourceManager.c file as currently
-    // TODO: the diagnostic manager does some janky stuff in order to get the 
-    // TODO: current line and column number.
-    SourceFile* source = source_manager_from_location(pp->sm, location);
-    assert(source != NULL && "got a location but no source?");
-    unsigned int line = line_map_resolve_line(&source->line_map, location);
-    return preprocessor_expand_unsigned(pp, location, line);    
+    // Get the source manager to resolve the location and get the line
+    VirtLocation vloc = source_manager_virtual_location(pp->sm, location);
+    return preprocessor_expand_unsigned(pp, location,
+            virtual_location_line(&vloc));    
 }
 
 TokenStream preprocessor_expand_file(Preprocessor* pp, Location location)
 {
-    // Initialise the filepath that we are going to print into.
-    // FIXME: come back and implement this
-    // TODO: like the line will need to do some work in the implementation of
-    // TODO: the source manager so that this will give the correct path name
-    // TODO: this in particular is more when we have a file that has line 
-    // TODO: directives though
-    SourceFile* source = source_manager_from_location(pp->sm, location);
-    assert(source != NULL && "got a location but no source?");
-    Filepath* path = source_file_get_name(source);
+    // Get the source manager to resolve the location and get the filepath 
+    VirtLocation vloc = source_manager_virtual_location(pp->sm, location);
+    const Filepath* path = virtual_location_path(&vloc);
     return preprocessor_expand_string(pp, location, filepath_get_cstr(path));
 }
 
@@ -1124,12 +1114,6 @@ void preprocessor_add_raw_argument_tokens(Preprocessor* pp, TokenList* result,
     *count += token_stream_length(&arg_stream);
 }
 
-void preprocessor_push_macro_arg(Preprocessor* pp, MacroArgs arg,
-        Location location)
-{
-    macro_expander_push_arg(&pp->expander, arg, location);
-}
-
 // Returns true if we expanded to tokens and false otherwise. The only reason
 // that this even returns anything is so that we can more easily handle the 
 // token pasting operator.
@@ -1145,7 +1129,7 @@ bool preprocessor_expand_macro_arg(Preprocessor* pp, TokenList* result,
 
     // Push this macro argument as is to the expansion stack so that we can then
     // go and expand it nice and quickly.
-    preprocessor_push_macro_arg(pp, arg, location);
+    macro_expander_push_arg(&pp->expander, arg, location);
 
     // Then keep grabbing tokens from the stream until we get to the argend 
     // token. This make expanding the arguments nice and simple from our 

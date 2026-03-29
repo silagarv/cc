@@ -2,7 +2,9 @@
 #define PREPROCESSOR_H
 
 #include <stddef.h>
+#include <stdint.h>
 
+#include "files/location.h"
 #include "util/buffer.h"
 #include "util/arena.h"
 

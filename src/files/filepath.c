@@ -26,9 +26,18 @@ Filepath filepath_from_cstring(const char* path)
     return fp;
 }
 
-char* filepath_get_cstr(Filepath* path)
+Filepath filepath_from_ptr_len(const char* path, size_t len)
 {
-    return path->path;
+    Filepath fp;
+    memcpy(fp.path, path, len);
+    fp.path[len] = '\0';
+    fp.len = len;
+    return fp;
+}
+
+char* filepath_get_cstr(const Filepath* path)
+{
+    return (char*) path->path;
 }
 
 bool filepath_is_absolute(const Filepath* path)

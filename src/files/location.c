@@ -23,6 +23,31 @@ bool location_is_macro(Location loc)
     return ((loc & (1U << 31)) != 0);
 }
 
+LocationRange location_range_create(Location start, Location end)
+{
+    return (LocationRange) { start, end };
+}
+
+Location location_range_start(const LocationRange* range)
+{
+    return range->start;
+}
+
+Location location_range_end(const LocationRange* range)
+{
+    return range->end;
+}
+
+void location_range_set_start(LocationRange* range, Location loc)
+{
+    range->start = loc;
+}
+
+void location_range_set_end(LocationRange* range, Location loc)
+{
+    range->end = loc;
+}
+
 // Check if a location range contains a specific location
 bool location_range_contains(const LocationRange* range, Location loc)
 {

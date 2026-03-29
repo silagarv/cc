@@ -19,6 +19,8 @@
 // Additionally the vector code contains checks which will crash program if they
 // fail.
 
+// FIXME: change the panic's to asserts!!!
+
 #define vector_of_decl(T, s_name, f_name) \
 typedef struct s_name ## Vector { \
     T* data; \
@@ -102,7 +104,7 @@ void f_name ## _vector_push(s_name ## Vector* vec, T elem) \
 { \
     if (vec->count == vec->cap) \
     { \
-        vec->cap *= 2; \
+        vec->cap = vec->cap > 0 ? vec->cap * 2 : 1; \
         vec->data = xrealloc(vec->data, sizeof(T) * vec->cap); \
     } \
     \

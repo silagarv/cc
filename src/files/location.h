@@ -40,6 +40,12 @@ bool location_is_file(Location loc);
 // Function to check if a location is a macro location
 bool location_is_macro(Location loc);
 
+LocationRange location_range_create(Location start, Location end);
+Location location_range_start(const LocationRange* range);
+Location location_range_end(const LocationRange* range);
+void location_range_set_start(LocationRange* range, Location loc);
+void location_range_set_end(LocationRange* range, Location loc);
+
 // Check if a location range contains a specific location
 bool location_range_contains(const LocationRange* range, Location loc);
 

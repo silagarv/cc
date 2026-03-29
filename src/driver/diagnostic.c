@@ -11,6 +11,7 @@
 #include "driver/warning.h"
 
 #include "files/file_manager.h"
+#include "files/filepath.h"
 #include "files/line_map.h"
 #include "files/location.h"
 #include "files/source_manager.h"
@@ -357,13 +358,13 @@ static int get_number_length(uint32_t number)
 // A very basic line printer for our diagnostic. Note: this may have to be 
 // ripped out and rewritten once we have macros and a preprocessor 
 void diagnostic_print_snippet(DiagnosticManager* dm, DiagnosticKind kind,
-        SourceFile* file, Location loc, uint32_t line)
+        const SourceFile* file, Location loc, uint32_t line)
 {
     // Now try to get the line to print
     Location start_line = line_map_get_line_start(&file->line_map, loc);
     assert(loc >= start_line);
 
-    Location start_loc = source_file_get_start_location(file);
+    Location start_loc = source_file_start_location(file);
     assert(loc >= start_loc);
     Location start_offset = start_line - start_loc;
 
@@ -477,14 +478,23 @@ static void diagnostic_internal_at(DiagnosticManager* dm, DiagnosticKind kind,
         dm->warning_count++;
     }
 
-    SourceFile* sf = source_manager_from_location(dm->sm, loc);
-    ResolvedLocation resolved = line_map_resolve_location(&sf->line_map, loc);
-    uint32_t line = resolved.line;
-    uint32_t col = resolved.col;
+    // Get and determine the virtual location of the location we're given, and
+    // then using that get all of the needed information from the VirtLocation
+    VirtLocation vloc = source_manager_virtual_location(dm->sm, loc);
+    const SourceFile* sf = virtual_location_file(&vloc);
+    const Filepath* path = virtual_location_path(&vloc);
+    uint32_t line = virtual_location_line(&vloc);
+    uint32_t col = virtual_location_column(&vloc);
+
+    // FIXME: this is currently unused... use it. But we will only want to print
+    // FIXME: the included from thing when we haven't yet printed it??? Not sure
+    // FIXME: how that's meant to function at all. Or we will need to include
+    // FIXME: some kind of state, or some kind of callback to the DM.
+    Location include = virtual_location_include(&vloc);
 
     // Print the initial part
     fprintf(stderr, "%s%s%s:%u:%u: ", dm->colours->white,
-            dm->colours->highlight, sf->file_buffer->path.path, line, col);
+            dm->colours->highlight, filepath_get_cstr(path), line, col);
     fprintf(stderr, "%s%s:%s%s ",
             kind_to_colour(dm, kind),
             kind_to_name(kind),

@@ -13,6 +13,7 @@
 // line table (for #line directives) to determine the accurate and precise
 // location
 typedef struct ResolvedLocation {
+    LocationRange* range;
     uint32_t line;
     uint32_t col;
 } ResolvedLocation;
@@ -26,6 +27,10 @@ typedef struct LineMap {
     LocationRange range; // Overall location range of the file
     LocationRangeVector ranges; // the different ranges in the line map
 } LineMap;
+
+LocationRange* resolved_location_range(ResolvedLocation* loc);
+uint32_t resolved_location_line(ResolvedLocation* loc);
+uint32_t resolved_location_column(ResolvedLocation* loc);
 
 LineMap line_map_create(FileBuffer* file, Location base_location);
 void line_map_delete(LineMap* map);

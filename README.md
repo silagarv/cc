@@ -55,3 +55,4 @@ To building, run 'make' in the cc directory and it wll output an executable name
 ## Later TODO
 - Fully featured command-line driver
 - Multiple target support
+- Make sure vec doesn't allocate when given a 0 size start

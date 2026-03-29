@@ -10,9 +10,23 @@
 #include "files/location.h"
 #include "files/file_manager.h"
 
+LocationRange* resolved_location_range(ResolvedLocation* loc)
+{
+    return loc->range;
+}
+
+uint32_t resolved_location_line(ResolvedLocation* loc)
+{
+    return loc->line;
+}
+
+uint32_t resolved_location_column(ResolvedLocation* loc)
+{
+    return loc->col;
+}
+
 // TODO: track down bug for end of files location for a well formed file which
 // ends with a newline. (It works fine when the file doesn't end with a newline)
-
 
 Location calculate_location(Location base, const char* start, char* curr)
 {
@@ -128,13 +142,15 @@ LocationRange* line_map_get_location_range(const LineMap* map, Location loc)
 ResolvedLocation line_map_resolve_location(const LineMap* map, Location loc)
 {
     LocationRange* range = line_map_get_location_range(map, loc);
-    size_t range_index = range - map->ranges.data;
+    size_t range_index = range - location_range_vector_front(&map->ranges);
+
+    assert(location_range_contains(range, loc) && "doesn't contain range?");
 
     // Convert from 0 based indexing to 1 base indexing
     const uint32_t line = range_index + 1;
-    const uint32_t col = loc - range->start + 1; 
+    const uint32_t col = loc - range->start + 1; // FIXME: will need this soon?
     
-    return (ResolvedLocation) {line, col};
+    return (ResolvedLocation) { range, line, col };
 }
 
 uint32_t line_map_resolve_line(const LineMap* map, Location loc)

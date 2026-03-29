@@ -25,7 +25,7 @@ typedef struct SourceFile {
     Location included_location; // where the file was included from (if needed)
     FileBuffer* file_buffer; // the underlying file that we have
     LineMap line_map; // The line map for this source file
-    LineOverrideTable line_overrides; // The override table
+    LineOverrideVector line_overrides; // The override table
 } SourceFile;
 
 // Create a vector of source file pointers since the id's will always be 
@@ -94,12 +94,23 @@ typedef struct SourceManager {
 // resolve to. This should resolve any #line directives, including the filename
 // and also resolve and line changes as a result of the directives. Should also
 // make sure that the location of the include is resolved too.
-typedef struct VirtualLocation {
-    Filepath* path;
+typedef struct VirtLocation {
+    const SourceFile* sf;
+    const Filepath* path;
     uint32_t line;
-    uint32_t col;
+    uint32_t column;
     Location include_location;
-} VirtualLocation;
+} VirtLocation;
+
+VirtLocation virtual_location_create(const SourceFile* sf, const Filepath* path,
+        uint32_t line, uint32_t column, Location include_location);
+const SourceFile* virtual_location_file(const VirtLocation* location);
+const Filepath* virtual_location_path(const VirtLocation* location);
+uint32_t virtual_location_line(const VirtLocation* location);
+uint32_t virtual_location_column(const VirtLocation* location);
+Location virtual_location_include(const VirtLocation* location);
+
+bool virtual_location_is_include(const VirtLocation* location);
 
 /* SourceFile */
 
@@ -121,7 +132,8 @@ FileBuffer* source_file_get_buffer(const SourceFile* sf);
 // Get the base filename of a source file
 Filepath* source_file_get_name(const SourceFile* sf);
 
-Location source_file_get_start_location(const SourceFile* sf);
+Location source_file_start_location(const SourceFile* sf);
+Location source_file_end_location(const SourceFile* sf);
 
 // Get if a source file was included from another location
 bool source_file_is_include(const SourceFile* sf);
@@ -133,6 +145,10 @@ Location source_file_get_include_location(const SourceFile* sf);
 
 // True if the source file contains the specified location
 bool source_file_contains(const SourceFile* sf, Location location);
+
+const LineMap* source_file_line_map(const SourceFile* sf);
+
+LineOverrideVector* source_file_overrides(const SourceFile* sf);
 
 /* SourceManager */
 
@@ -163,5 +179,11 @@ SourceFile* source_manager_from_id(SourceManager* sm, SourceFileId id);
 
 // Look up the source file from a given location
 SourceFile* source_manager_from_location(SourceManager* sm, Location loc);
+
+// Handle a line directive
+void source_manager_do_line(SourceManager* sm, const Filepath* path,
+            uint32_t number, Location start_loc);
+
+VirtLocation source_manager_virtual_location(SourceManager* sm, Location loc);
 
 #endif /* SOURCE_MANAGER_H */
