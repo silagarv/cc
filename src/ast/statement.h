@@ -44,6 +44,7 @@ typedef struct StatementBase {
     Statement* next;
 } StatementBase;
 
+// FIXME: change to statement_kind for consistency with decl's!!
 StatementType statement_type(const Statement* stmt);
 Statement* statement_next(const Statement* stmt);
 void statement_base_set_next(Statement* stmt, Statement* next);
@@ -281,7 +282,7 @@ typedef struct StatementBreak {
 } StatementBreak;
 
 Statement* statement_create_break(AstAllocator* ast, Location break_loc,
-    Location semi);
+        Location semi);
 Location statement_break_break(const Statement* stmt);
 Location statement_break_semi(const Statement* stmt);
 

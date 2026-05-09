@@ -20,8 +20,6 @@
 #include "parse/symbol.h"
 #include "parse/semantic.h"
 
-// #include "parse/scope.h"
-
 typedef struct Parser {
     // How we will give diagnostics.
     DiagnosticManager* dm;

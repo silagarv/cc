@@ -6,8 +6,6 @@
 #include <string.h>
 #include <assert.h>
 
-#include "lex/preprocessor.h"
-#include "parse/ast.h"
 #include "util/vec.h"
 
 #include "files/location.h"

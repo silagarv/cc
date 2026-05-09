@@ -64,6 +64,8 @@ LEX = src/lex/identifier_table.c \
 	src/lex/directives.c \
 	src/lex/preprocessor.c
 
+AST = src/ast/statement.c
+
 PARSE = src/parse/ast_allocator.c \
 	src/parse/ast.c \
 	src/parse/compound_layout_calculator.c \

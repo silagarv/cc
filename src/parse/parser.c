@@ -3127,7 +3127,7 @@ static Statement* parse_statement(Parser* parser, bool declaration_allowed)
     maybe_parse_c23_attributes(parser);
     maybe_parse_gnu_attributes(parser);
 
-    switch(current_token_type(parser))
+    switch (current_token_type(parser))
     {
         case TOK_LCURLY:
             return parse_compound_statement(parser);
